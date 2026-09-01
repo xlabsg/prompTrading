@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "strategy_templates"
+version = "0.1.0"
+description = "Trading strategy templates for the Stratsmith"
+authors = [{name = "Stratsmith"}]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["strategy_templates*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

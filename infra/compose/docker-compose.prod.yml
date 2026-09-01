@@ -1,0 +1,222 @@
+# Production Docker Compose - Uses pre-built images from GitHub Container Registry
+# Usage: docker compose -f infra/compose/docker-compose.prod.yml up -d
+#
+# Prerequisites:
+#   1. Login to GitHub Container Registry:
+#      echo $PAT | docker login ghcr.io -u USERNAME --password-stdin
+#   2. Create .env file with required environment variables
+#   3. Set IMAGE_TAG to desired version (default: latest)
+
+services:
+  # ==================== Infrastructure ====================
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - ./data/pg:/var/lib/postgresql/data
+    networks:
+      - default
+    restart: unless-stopped
+
+  redis:
+    image: redis:8.4.0-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - default
+    restart: unless-stopped
+
+  # ==================== Backend API ====================
+  api:
+    image: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-api:${IMAGE_TAG:-latest}
+    environment:
+      APP_LOG_DIR: /var/log/app
+      APP_DB_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      APP_REPOS_DIR: /workspaces/repos
+      APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
+      APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://ai.example.com}
+      APP_SANDBOX_BASE_URL: ${APP_SANDBOX_BASE_URL:-https://ai.example.com}
+      APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
+      APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+      APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
+      APP_ADMIN_API_KEY: ${APP_ADMIN_API_KEY:-}
+
+      # GitHub App config
+      APP_GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      APP_GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      APP_GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+      APP_GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+
+      # GitHub OAuth config
+      APP_GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      APP_GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      APP_GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-}
+
+      # LLM config
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      # LLM request timeouts (seconds)
+      LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
+      LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+
+      # Trading encryption key
+      TRADING_API_ENCRYPTION_KEY: ${TRADING_API_ENCRYPTION_KEY}
+      # Langfuse observability
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT}
+      LANGFUSE_SESSION_ID: ${LANGFUSE_SESSION_ID}
+      LANGFUSE_USER_ID: ${LANGFUSE_USER_ID}
+    volumes:
+      - workspaces:/workspaces
+      - ./logs/api:/var/log/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker-rpc:
+        condition: service_started
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz', timeout=2); raise SystemExit(0 if 200 <= r.status < 300 else 1)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ==================== Background Worker ====================
+  worker:
+    image: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-worker:${IMAGE_TAG:-latest}
+    environment:
+      LOG_DIR: /var/log/app
+      APP_DB_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      REPO_SYNC_INTERVAL_S: ${REPO_SYNC_INTERVAL_S:-900}
+
+      # Worker configuration
+      WORKER_DOCKER_NETWORK: ai_strategy_proxy
+      WORKER_WORKSPACES_VOLUME: ai_strategy_workspaces
+      WORKER_AGENT_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-agent:${IMAGE_TAG:-latest}
+      WORKER_BACKTEST_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-backtest:${IMAGE_TAG:-latest}
+      WORKER_DEV_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-dev:${IMAGE_TAG:-latest}
+
+      # LLM config
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      # LLM request timeouts (seconds) passed through into agent sandbox
+      LLM_HTTP_TIMEOUT_S: ${AGENT_LLM_HTTP_TIMEOUT_S:-180}
+      LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
+      # Fail-fast timeout for strategy name generation (seconds)
+      STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
+      # Langfuse observability (read from .env, passed to agent containers)
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+      LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL}
+      LANGFUSE_TRACING_ENVIRONMENT: ${LANGFUSE_TRACING_ENVIRONMENT}
+      LANGFUSE_SESSION_ID: ${LANGFUSE_SESSION_ID}
+      LANGFUSE_USER_ID: ${LANGFUSE_USER_ID}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/workspaces
+      - ./logs/worker:/var/log/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+
+  worker-rpc:
+    image: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-worker:${IMAGE_TAG:-latest}
+    environment:
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+    command: ["uvicorn", "worker.rpc_server:app", "--host", "0.0.0.0", "--port", "8010"]
+    expose:
+      - "8010"
+    volumes:
+      - workspaces:/workspaces
+      - ./logs/worker-rpc:/var/log/app
+    depends_on:
+      worker:
+        condition: service_started
+    networks:
+      - default
+      - proxy
+    restart: unless-stopped
+
+  # ==================== Frontend (Vite) ====================
+  web:
+    image: ghcr.io/${GITHUB_ORG:-your-org}/stratsmith-web:${IMAGE_TAG:-latest}
+    # Note: VITE_API_BASE_URL is baked into the build at image build time
+    # Runtime environment variables won't work for Vite
+    command: sh -c "mkdir -p /var/log/app && nginx -g 'daemon off;' 2>&1 | tee -a /var/log/app/web.log"
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./logs/web:/var/log/app
+
+volumes:
+  workspaces:
+    name: ai_strategy_workspaces
+
+networks:
+  proxy:
+    name: ai_strategy_proxy
+  default:
+    name: ai_strategy_network

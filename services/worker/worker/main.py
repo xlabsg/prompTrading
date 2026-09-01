@@ -1,0 +1,2534 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import shutil
+import time
+import traceback
+import textwrap
+import sys
+import re
+import logging
+import logging.config
+import threading
+import uuid
+from collections import deque
+from datetime import datetime, timezone, timedelta
+from typing import Any, Optional
+
+import docker
+from docker.types import Ulimit
+import redis
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+from sqlalchemy import text, or_
+from sqlalchemy.orm import Session
+
+from control_plane.db import create_db_engine, create_session_factory, session_scope
+from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, SandboxStatus, TrendingBacktestStatus, TrendingSourceType
+from control_plane.models import Base, BacktestRun, Dataset, Job, SandboxSession, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, SearchStats, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
+from control_plane.queue import QUEUE_NAME, job_log_channel
+from control_plane.workspaces import git_commit, init_git_repo, restore_version_to_current_strategy
+from worker.settings import settings
+from worker.repo_sync import clone_or_update, ensure_worktree
+from worker.search_index import open_db, index_full
+from worker.github_app import get_installation_token
+from worker.template_performance_job import generate_template_performance_data
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+AGENT_RUNNER_V2_COMMAND = ["python", "-m", "agent.runner_v2"]
+STRATEGY_NAME_MAX_CHARS = 20
+
+
+def _configure_logging(log_dir: str, service_name: str) -> None:
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, f"{service_name}.log")
+    log_config = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
+            }
+        },
+        "handlers": {
+            "stdout": {
+                "class": "logging.StreamHandler",
+                "formatter": "default",
+                "stream": "ext://sys.stdout",
+            },
+            "file": {
+                "class": "logging.handlers.RotatingFileHandler",
+                "formatter": "default",
+                "filename": log_path,
+                "maxBytes": 10 * 1024 * 1024,
+                "backupCount": 5,
+                "encoding": "utf-8",
+            },
+        },
+        "root": {"level": "INFO", "handlers": ["stdout", "file"]},
+    }
+    logging.config.dictConfig(log_config)
+
+
+_configure_logging(settings.log_dir, "worker")
+
+
+def _wait_for_db(db_url: str, timeout_s: float = 90.0) -> None:
+    """Wait for database to be ready with retry logic."""
+    deadline = time.monotonic() + timeout_s
+    last_err: Exception | None = None
+    attempt = 0
+    while time.monotonic() < deadline:
+        try:
+            engine = create_db_engine(db_url)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            print(f"[worker] Database connection successful (attempt {attempt + 1})")
+            return
+        except Exception as e:
+            last_err = e
+            attempt += 1
+            print(f"[worker] DB connection attempt {attempt} failed: {e}")
+            time.sleep(1.0)
+    raise RuntimeError(f"db_not_ready after {attempt} attempts") from last_err
+
+
+def _wait_for_redis(redis_url: str, timeout_s: float = 60.0) -> redis.Redis:
+    rds = redis.Redis.from_url(redis_url, decode_responses=True)
+    deadline = time.monotonic() + timeout_s
+    last_err: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            rds.ping()
+            return rds
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+    raise RuntimeError("redis_not_ready") from last_err
+
+
+LOG_TAIL_KEY_PREFIX = "jobs:logtail:v1:"
+LAST_LOG_KEY_PREFIX = "jobs:lastlog:v1:"
+CANCEL_KEY_PREFIX = "jobs:cancel:v1:"
+
+
+def _publish_log(rds: redis.Redis, job_id: str, message: str) -> None:
+    # PubSub is used by the UI log stream; store a small Redis tail as well so admins
+    # can inspect progress without relying on transient pubsub subscribers.
+    rds.publish(job_log_channel(job_id), message)
+    try:
+        pipe = rds.pipeline()
+        tail_key = f"{LOG_TAIL_KEY_PREFIX}{job_id}"
+        pipe.rpush(tail_key, message)
+        pipe.ltrim(tail_key, -200, -1)
+        pipe.expire(tail_key, 86400)
+        pipe.setex(f"{LAST_LOG_KEY_PREFIX}{job_id}", 86400, message)
+        pipe.execute()
+    except Exception:
+        # Never let logging break job execution.
+        pass
+
+
+def _cancel_key(job_id: str) -> str:
+    return f"{CANCEL_KEY_PREFIX}{job_id}"
+
+
+def _is_cancel_requested(rds: redis.Redis, job_id: str) -> bool:
+    try:
+        return str(rds.get(_cancel_key(job_id)) or "") == "1"
+    except Exception:
+        return False
+
+
+def _raise_if_cancelled(rds: redis.Redis, job_id: str) -> None:
+    if _is_cancel_requested(rds, job_id):
+        raise RuntimeError("job_cancelled")
+
+
+def _safe_mkdir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
+
+
+def _tail_excerpt(lines: list[str], *, max_lines: int = 20, max_chars: int = 2000) -> str:
+    if not lines:
+        return "<no logs captured>"
+    text = "\n".join(lines[-max_lines:])
+    if len(text) > max_chars:
+        text = text[-max_chars:]
+    return text
+
+
+def _ensure_strategy_repo(strategy_dir: str) -> None:
+    os.makedirs(strategy_dir, exist_ok=True)
+    init_git_repo(strategy_dir)
+
+
+def _agent_sandbox_options() -> dict[str, Any]:
+    opts: dict[str, Any] = {}
+    if settings.agent_memory_limit_mb and settings.agent_memory_limit_mb > 0:
+        opts["mem_limit"] = int(settings.agent_memory_limit_mb) * 1024 * 1024
+    if settings.agent_cpu_limit and settings.agent_cpu_limit > 0:
+        opts["nano_cpus"] = int(float(settings.agent_cpu_limit) * 1_000_000_000)
+    if settings.agent_pids_limit and settings.agent_pids_limit > 0:
+        opts["pids_limit"] = int(settings.agent_pids_limit)
+    if settings.agent_read_only:
+        opts["read_only"] = True
+        size_mb = int(settings.agent_tmpfs_size_mb or 0)
+        if size_mb > 0:
+            opts["tmpfs"] = {"/tmp": f"rw,noexec,nosuid,size={size_mb}m"}
+    opts["ulimits"] = [
+        Ulimit(name="nofile", soft=4096, hard=4096),
+        Ulimit(name="nproc", soft=int(settings.agent_pids_limit or 256), hard=int(settings.agent_pids_limit or 256)),
+    ]
+    return opts
+
+
+def _run_container_and_stream_logs(
+    client: docker.DockerClient,
+    *,
+    job_id: str,
+    rds: redis.Redis,
+    image: str,
+    name: str,
+    command: Optional[list[str]] = None,
+    environment: Optional[dict[str, str]] = None,
+    volumes: Optional[dict[str, dict[str, str]]] = None,
+    network: Optional[str] = None,
+    labels: Optional[dict[str, str]] = None,
+    detach: bool = True,
+    remove: bool = True,
+    log_file_path: Optional[str] = None,
+    tail_max_lines: int = 200,
+    timeout_s: int | None = None,
+    mem_limit: int | str | None = None,
+    nano_cpus: int | None = None,
+    read_only: bool | None = None,
+    tmpfs: Optional[dict[str, str]] = None,
+    ulimits: Optional[list[Ulimit]] = None,
+    pids_limit: int | None = None,
+) -> tuple[int, list[str]]:
+    tail: deque[str] = deque(maxlen=max(1, int(tail_max_lines)))
+    log_f = None
+    if log_file_path:
+        _safe_mkdir(os.path.dirname(log_file_path))
+        log_f = open(log_file_path, "w", encoding="utf-8")
+
+    run_kwargs: dict[str, Any] = {
+        "image": image,
+        "name": name,
+        "command": command,
+        "environment": environment or {},
+        "volumes": volumes or {},
+        "network": network,
+        "labels": labels or {},
+        "detach": detach,
+        "cap_drop": ["ALL"],
+        "security_opt": ["no-new-privileges:true"],
+        "pids_limit": pids_limit if pids_limit is not None else 512,
+    }
+    if mem_limit is not None:
+        run_kwargs["mem_limit"] = mem_limit
+    if nano_cpus is not None:
+        run_kwargs["nano_cpus"] = nano_cpus
+    if read_only is not None:
+        run_kwargs["read_only"] = read_only
+    if tmpfs:
+        run_kwargs["tmpfs"] = tmpfs
+    if ulimits:
+        run_kwargs["ulimits"] = ulimits
+
+    container = client.containers.run(**run_kwargs)
+    stop_event = threading.Event()
+    def _stream_logs() -> None:
+        try:
+            for raw in container.logs(stream=True, follow=True, stdout=True, stderr=True):
+                if stop_event.is_set():
+                    break
+                try:
+                    line = raw.decode("utf-8", errors="replace").rstrip("\n")
+                except Exception:
+                    line = str(raw)
+                if not line:
+                    continue
+                tail.append(line)
+                _publish_log(rds, job_id, line)
+                if log_f is not None:
+                    log_f.write(line + "\n")
+        except BaseException:
+            # Log streaming failures are non-fatal; the main thread decides job status.
+            pass
+
+    t = threading.Thread(target=_stream_logs, name=f"job-log-{job_id[:8]}", daemon=True)
+    t.start()
+
+    exit_code = 1
+    start = time.monotonic()
+    try:
+        while True:
+            try:
+                container.reload()
+            except Exception:
+                # If the daemon or container disappears, treat as failure and let cleanup run.
+                break
+
+            if _is_cancel_requested(rds, job_id):
+                _publish_log(rds, job_id, "[worker] job_cancelled: killing container")
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+                exit_code = 125
+                break
+
+            if container.status in ("exited", "dead"):
+                try:
+                    res = container.wait()
+                    exit_code = int(res.get("StatusCode", 1))
+                except Exception:
+                    exit_code = 1
+                break
+
+            if timeout_s is not None and (time.monotonic() - start) > float(timeout_s):
+                _publish_log(rds, job_id, f"[worker] job_timeout: killing container after {timeout_s}s")
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+                exit_code = 124
+                break
+
+            time.sleep(0.5)
+
+        return exit_code, list(tail)
+    finally:
+        stop_event.set()
+        try:
+            t.join(timeout=2.0)
+        except Exception:
+            pass
+        if log_f is not None:
+            try:
+                log_f.close()
+            except Exception:
+                pass
+        if remove:
+            try:
+                container.remove(force=True)
+            except Exception:
+                pass
+
+
+def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    strategy_id = job.payload["strategy_id"]
+    version_id = job.payload["version_id"]
+    run_id = job.payload["run_id"]
+    dataset_id = job.payload["dataset_id"]
+
+    run = db.get(BacktestRun, run_id)
+    if run is None:
+        raise RuntimeError(f"backtest_run_not_found: {run_id}")
+    ds = db.get(Dataset, dataset_id)
+    if ds is None:
+        raise RuntimeError(f"dataset_not_found: {dataset_id}")
+
+    run.status = BacktestStatus.RUNNING
+    run.started_at = _utcnow()
+    db.flush()
+
+    # Ensure run directory exists (within the shared workspaces volume mount)
+    run_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id)
+    _safe_mkdir(run_dir)
+
+    backtest_log_path = os.path.join(run_dir, "backtest.log")
+    exit_code, tail = _run_container_and_stream_logs(
+        docker_client,
+        job_id=job.id,
+        rds=rds,
+        image=settings.worker_backtest_image,
+        name=f"backtest-{job.id}",
+        command=None,
+        environment={
+            "STRATEGY_ID": strategy_id,
+            "VERSION_ID": version_id,
+            "RUN_ID": run_id,
+            "WORKSPACES_DIR": "/workspaces",
+            # Per-run params passed from control plane (overrides spec.params).
+            "RUN_PARAMS_JSON": json.dumps(run.params or {}, ensure_ascii=False),
+            "EXCHANGE": ds.exchange,
+            "SYMBOL": ds.symbol,
+            "INTERVAL": ds.interval,
+            "START_MS": "" if ds.start_ms is None else str(ds.start_ms),
+            "END_MS": "" if ds.end_ms is None else str(ds.end_ms),
+            **{
+                key: val
+                for key in (
+                    "US_STOCK_PROVIDER",
+                    "US_STOCK_FALLBACK_PROVIDER",
+                    "US_STOCK_FALLBACK",
+                    "US_STOCK_CACHE_DIR",
+                    "US_STOCK_CACHE_TTL_DAYS",
+                    "US_STOCK_MAX_RETRIES",
+                    "US_STOCK_RATE_LIMIT_SLEEP_S",
+                )
+                if (val := os.getenv(key)) is not None
+            },
+            **{
+                key: val
+                for key in (
+                    "NETWORK_GUARD_ENABLED",
+                    "NETWORK_ALLOWLIST",
+                )
+                if (val := os.getenv(key)) is not None
+            },
+        },
+        volumes={
+            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
+        },
+        network=settings.worker_docker_network,
+        log_file_path=backtest_log_path,
+        timeout_s=settings.worker_job_timeout_s,
+    )
+    if exit_code != 0:
+        run.status = BacktestStatus.FAILED
+        run.finished_at = _utcnow()
+        msg = (
+            f"backtest_container_exit_code={exit_code}\n"
+            f"--- backtest.log tail ---\n{_tail_excerpt(tail)}\n"
+            "See artifact: backtest.log"
+        )
+        run.error_message = msg
+        db.flush()
+        raise RuntimeError(msg)
+
+    run.status = BacktestStatus.SUCCEEDED
+    run.finished_at = _utcnow()
+    # Best-effort: read metrics.json written by the runner.
+    metrics_payload = None
+    try:
+        metrics_path = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id, "metrics.json")
+        if os.path.isfile(metrics_path):
+            with open(metrics_path, "r", encoding="utf-8") as f:
+                metrics_payload = json.load(f)
+                run.metrics = metrics_payload
+    except Exception:
+        metrics_payload = None
+
+    if metrics_payload:
+        run.result_summary = {
+            "exchange": ds.exchange,
+            "symbol": ds.symbol,
+            "interval": ds.interval,
+            "start_ms": ds.start_ms,
+            "end_ms": ds.end_ms,
+            "total_return": metrics_payload.get("total_return"),
+            "max_drawdown": metrics_payload.get("max_drawdown"),
+            "sharpe_ratio": metrics_payload.get("sharpe_ratio"),
+            "win_rate": metrics_payload.get("win_rate"),
+            "profit_factor": metrics_payload.get("profit_factor"),
+            "total_trades": metrics_payload.get("total_trades"),
+            "num_bars": metrics_payload.get("num_bars"),
+            "final_equity": metrics_payload.get("final_equity"),
+            "initial_cash": metrics_payload.get("initial_cash"),
+        }
+    db.flush()
+
+
+def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    strategy_id = job.payload["strategy_id"]
+    version_id = job.payload["version_id"]
+    run_id = job.payload["run_id"]
+    dataset_id = job.payload["dataset_id"]
+    prompt = job.payload.get("prompt", "")
+    llm_meta = job.payload.get("llm_meta") or {}
+
+    # Store logs as artifacts under the backtest run directory for easier debugging.
+    run_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id)
+    _safe_mkdir(run_dir)
+
+    # Step 1: agent generates code into workspace
+    agent_env = {
+        "JOB_ID": job.id,
+        "STRATEGY_ID": strategy_id,
+        "VERSION_ID": version_id,
+        "RUN_ID": run_id,
+        "PROMPT": prompt,
+        "WORKSPACES_DIR": "/workspaces",
+    }
+    # Optional per-job overrides (kept in the job payload) for OpenAI-compatible endpoints.
+    if isinstance(llm_meta, dict):
+        if llm_meta.get("base_url"):
+            agent_env["LLM_BASE_URL"] = str(llm_meta["base_url"])
+        if llm_meta.get("model"):
+            agent_env["LLM_MODEL"] = str(llm_meta["model"])
+        if llm_meta.get("temperature") is not None:
+            agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+    # Pass-through optional LLM env vars into agent sandbox only.
+    # Support DeepSeek (OpenAI-compatible) as well.
+    for key in (
+        "LLM_PROVIDER",
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+        "LLM_TEMPERATURE",
+        "LLM_REASONING_EFFORT",
+        "LLM_HTTP_TIMEOUT_S",
+        "LLM_STREAM_TIMEOUT_S",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TEMPERATURE",
+        "LLM_FALLBACK_ON_ERROR",
+        "NETWORK_GUARD_ENABLED",
+        "NETWORK_ALLOWLIST",
+        # Langfuse observability
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        "LANGFUSE_SESSION_ID",
+        "LANGFUSE_USER_ID",
+    ):
+        val = os.getenv(key)
+        if val:
+            agent_env[key] = val
+
+    agent_log_path = os.path.join(run_dir, "agent.log")
+    sandbox_opts = _agent_sandbox_options()
+    agent_exit, agent_tail = _run_container_and_stream_logs(
+        docker_client,
+        job_id=job.id,
+        rds=rds,
+        image=settings.worker_agent_image,
+        command=AGENT_RUNNER_V2_COMMAND,
+        name=f"agent-{job.id}",
+        environment=agent_env,
+        volumes={
+            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
+        },
+        network=settings.worker_docker_network,
+        log_file_path=agent_log_path,
+        timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        mem_limit=sandbox_opts.get("mem_limit"),
+        nano_cpus=sandbox_opts.get("nano_cpus"),
+        read_only=sandbox_opts.get("read_only"),
+        tmpfs=sandbox_opts.get("tmpfs"),
+        ulimits=sandbox_opts.get("ulimits"),
+        pids_limit=sandbox_opts.get("pids_limit"),
+    )
+    if agent_exit != 0:
+        run = db.get(BacktestRun, run_id)
+        if run is not None:
+            run.status = BacktestStatus.FAILED
+            run.finished_at = _utcnow()
+            msg = (
+                f"agent_container_exit_code={agent_exit}\n"
+                f"--- agent.log tail ---\n{_tail_excerpt(agent_tail)}\n"
+                "See artifact: agent.log"
+            )
+            run.error_message = msg
+            db.flush()
+        raise RuntimeError(msg)
+
+    # Convenience: copy generated strategy sources into the run directory so the report UI can
+    # preview/download them as artifacts alongside metrics/logs.
+    try:
+        version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
+        for name in (
+            "strategy.py",
+            "strategy_spec.yaml",
+            "strategy_protocol.json",
+            "params_schema.json",
+            "strategy_meta.json",
+            "overview.md",
+            "llm_prompt.txt",
+            "llm_meta.json",
+            "plan.json",
+            "change_spec_report.json",
+            "backtest_config.json",
+            "smoke_backtest.py",
+            "smoke_validation.json",
+            "verification_report.json",
+            "diagnosis.json",
+            "hitl_required.json",
+            "strategy_explain.json",
+            "README.md",
+        ):
+            src = os.path.join(version_dir, name)
+            dst = os.path.join(run_dir, name)
+            if os.path.isfile(src):
+                shutil.copyfile(src, dst)
+    except Exception:
+        # Non-fatal: backtest/report still works without these extra artifacts.
+        pass
+
+    # Step 2: run backtest
+    _handle_backtest(db, rds, docker_client, job)
+
+
+def _dir_size_bytes(path: str) -> int:
+    total = 0
+    for root, dirs, files in os.walk(path):
+        # Skip .git object store inside repo root; worktrees are outside .git
+        if os.path.basename(root) == ".git":
+            dirs[:] = []
+            continue
+        for name in files:
+            try:
+                total += os.path.getsize(os.path.join(root, name))
+            except OSError:
+                pass
+    return total
+
+
+def _git_rev_parse(path: str) -> str | None:
+    try:
+        res = subprocess.run(["git", "rev-parse", "HEAD"], cwd=path, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if res.returncode != 0:
+            return None
+        return res.stdout.decode("utf-8", errors="replace").strip()
+    except Exception:
+        return None
+
+
+def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
+    repo_id = job.payload["repo_id"]
+    owner = job.payload["owner"]
+    name = job.payload["name"]
+    branches = job.payload.get("branches") or []
+    repos_root = job.payload["repos_root"]
+    index_path = job.payload["search_index_path"]
+    installation_id = job.payload.get("installation_id")
+
+    repo = db.get(Repository, repo_id)
+    if repo is None:
+        raise RuntimeError(f"repo_not_found: {repo_id}")
+
+    token = None
+    if installation_id:
+        token = get_installation_token(str(installation_id))
+
+    _publish_log(rds, job.id, f"Cloning {owner}/{name} (shallow, partial)…")
+    info = clone_or_update(repos_root, owner, name, token=token)
+    default_branch = info.default_branch
+    if not branches:
+        branches = repo.tracked_branches or [default_branch]
+
+    # Update repo record
+    repo.default_branch = default_branch
+    if branches:
+        repo.tracked_branches = branches
+    db.flush()
+
+    total_indexed = 0
+    total_size = 0
+    for br in branches:
+        _publish_log(rds, job.id, f"Preparing worktree for branch {br}…")
+        wt = ensure_worktree(info.repo_path, br, token=token)
+        sha = _git_rev_parse(wt)
+        rs = (
+            db.query(RepoSync).filter(RepoSync.repo_id == repo.id, RepoSync.branch == br).one_or_none()
+        )
+        if rs is None:
+            rs = RepoSync(repo_id=repo.id, branch=br, last_local_sha=sha, last_synced_at=_utcnow())
+            db.add(rs)
+        else:
+            rs.last_local_sha = sha
+            rs.last_synced_at = _utcnow()
+        db.flush()
+
+        total_size += _dir_size_bytes(wt)
+        _publish_log(rds, job.id, f"Indexing {owner}/{name}@{br}…")
+        with open_db(index_path) as conn:
+            count = index_full(conn, repo_id=repo.id, branch=br, worktree_path=wt)
+        total_indexed += count
+        st = (
+            db.query(SearchStats).filter(SearchStats.repo_id == repo.id, SearchStats.branch == br).one_or_none()
+        )
+        if st is None:
+            st = SearchStats(repo_id=repo.id, branch=br, doc_count=count, last_indexed_at=_utcnow())
+            db.add(st)
+        else:
+            st.doc_count = count
+            st.last_indexed_at = _utcnow()
+        db.flush()
+
+    repo.size_bytes = total_size
+    repo.quota_state = "ok" if total_size <= 1_000_000_000 else "over_quota"
+    repo.last_error = None
+    db.flush()
+    action = "Import" if job.type == JobType.REPO_IMPORT else "Sync"
+    _publish_log(rds, job.id, f"{action} complete. Indexed {total_indexed} files; size={total_size} bytes.")
+
+
+def _handle_repo_import(db: Session, rds: redis.Redis, job: Job) -> None:
+    _handle_repo_sync(db, rds, job)
+
+
+def _enqueue_stale_repo_syncs(session_factory, rds: redis.Redis, *, min_age_s: int) -> None:
+    cutoff = _utcnow() - timedelta(seconds=min_age_s)
+    with session_scope(session_factory) as db:
+        repos = db.query(Repository).filter(Repository.status == "active").all()
+        for repo in repos:
+            branches = repo.tracked_branches or ([repo.default_branch] if repo.default_branch else [])
+            if not branches:
+                continue
+            stale = False
+            for br in branches:
+                rs = (
+                    db.query(RepoSync)
+                    .filter(RepoSync.repo_id == repo.id, RepoSync.branch == br)
+                    .one_or_none()
+                )
+                if rs is None or rs.last_synced_at is None or rs.last_synced_at < cutoff:
+                    stale = True
+                    break
+            if not stale:
+                continue
+            job_exists = (
+                db.query(Job)
+                .filter(
+                    Job.type == JobType.REPO_SYNC,
+                    Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+                    Job.payload["repo_id"].astext == repo.id,
+                )
+                .first()
+            )
+            if job_exists:
+                continue
+            job = Job(
+                type=JobType.REPO_SYNC,
+                payload={
+                    "repo_id": repo.id,
+                    "provider": repo.provider,
+                    "owner": repo.owner,
+                    "name": repo.name,
+                    "branches": branches,
+                    "installation_id": repo.github_installation_id,
+                    "repos_root": os.path.join(settings.app_workspaces_dir, "repos"),
+                    "search_index_path": os.path.join(settings.app_workspaces_dir, "search", "search.sqlite"),
+                },
+            )
+            db.add(job)
+            db.flush()
+            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+
+
+def _parse_timeout_s(env_key: str) -> float | None:
+    raw = (os.getenv(env_key) or "").strip()
+    if not raw:
+        return None
+    try:
+        val = float(raw)
+        return val if val > 0 else None
+    except Exception:
+        print(f"[worker] invalid {env_key}={raw!r}; ignoring")
+        return None
+
+
+def _extract_name_hint_from_json_text(text: str) -> str:
+    raw = str(text or "").strip()
+    if not raw:
+        return ""
+
+    candidates = [raw]
+    match = re.search(r"\{[\s\S]*\}", raw)
+    if match:
+        candidates.insert(0, match.group(0))
+
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except Exception:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        for key in ("summary", "strategy_name", "name", "title"):
+            value = parsed.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+        nested = parsed.get("answer")
+        if isinstance(nested, str):
+            nested_hint = _extract_name_hint_from_json_text(nested)
+            if nested_hint:
+                return nested_hint
+    return ""
+
+
+def _normalize_strategy_name_candidate(raw: str) -> str:
+    text = str(raw or "").strip()
+    if not text:
+        return ""
+
+    json_hint = _extract_name_hint_from_json_text(text)
+    if json_hint:
+        text = json_hint
+
+    text = text.splitlines()[0] if "\n" in text else text
+    text = re.sub(r"^(strategy\s*name|name|title|策略名称|策略名)\s*[:：-]\s*", "", text, flags=re.IGNORECASE)
+    text = text.strip().strip("\"'`")
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) > STRATEGY_NAME_MAX_CHARS:
+        text = text[:STRATEGY_NAME_MAX_CHARS].rstrip()
+    return text
+
+
+def _is_valid_strategy_name(name: str) -> bool:
+    text = str(name or "").strip()
+    if len(text) < 2:
+        return False
+    lowered = text.lower()
+    if lowered.startswith("here is") or lowered.startswith("below is"):
+        return False
+    if re.fullmatch(r"\d+([.,]\d+)?", text):
+        return False
+    # Require at least one letter-like character, so names like "25" are rejected.
+    if not any(ch.isalpha() for ch in text):
+        return False
+    return True
+
+
+def _prompt_from_config_json(prompt: str) -> str:
+    raw = str(prompt or "").strip()
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return ""
+    if not isinstance(parsed, dict):
+        return ""
+
+    fields: list[tuple[str, str]] = [
+        ("strategy_type", "策略类型"),
+        ("symbol", "交易标的"),
+        ("interval", "周期"),
+        ("indicators", "指标"),
+        ("entry_rules", "入场规则"),
+        ("exit_rules", "出场规则"),
+        ("risk_management", "风控"),
+    ]
+    parts: list[str] = []
+    for key, label in fields:
+        value = parsed.get(key)
+        if value is None:
+            continue
+        text = str(value).strip()
+        if not text:
+            continue
+        parts.append(f"{label}: {text}")
+    return "\n".join(parts).strip()
+
+
+def _build_strategy_name_prompt(strategy: Strategy | None, fallback_prompt: str) -> tuple[str, str]:
+    if strategy and isinstance(strategy.chat_history, list):
+        user_messages: list[str] = []
+        for item in strategy.chat_history:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("role") or "") != "user":
+                continue
+            content = str(item.get("content") or "").strip()
+            if not content or content.startswith("/"):
+                continue
+            user_messages.append(content)
+        if user_messages:
+            # Keep recent user intent to avoid feeding JSON configs to name generation.
+            return "\n\n".join(user_messages[-3:])[:3000], "chat_history"
+
+    from_config = _prompt_from_config_json(fallback_prompt)
+    if from_config:
+        return from_config, "config_json"
+
+    cleaned = re.sub(r"```[\s\S]*?```", " ", str(fallback_prompt or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return (cleaned[:3000] if cleaned else "trading strategy"), "raw_prompt"
+
+
+def _fallback_strategy_name(prompt: str) -> str:
+    hint = _normalize_strategy_name_candidate(_extract_name_hint_from_json_text(prompt))
+    if _is_valid_strategy_name(hint):
+        return hint
+    cleaned = re.sub(r"```[\s\S]*?```", " ", str(prompt or ""))
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    candidate = _normalize_strategy_name_candidate(cleaned)
+    return candidate if _is_valid_strategy_name(candidate) else "Untitled Strategy"
+
+
+def _generate_strategy_name(prompt: str, *, llm_meta: dict | None = None) -> str:
+    """Use LLM to generate a short strategy name from the prompt."""
+    import requests
+
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("LLM_BASE_URL") or "https://api.deepseek.com/v1"
+    model = os.getenv("DEEPSEEK_MODEL") or os.getenv("LLM_MODEL") or "deepseek-chat"
+
+    if isinstance(llm_meta, dict):
+        if llm_meta.get("base_url"):
+            base_url = str(llm_meta["base_url"])
+        if llm_meta.get("model"):
+            model = str(llm_meta["model"])
+
+    if not api_key:
+        return _fallback_strategy_name(prompt)
+
+    # Name generation should be fast; use a dedicated fail-fast timeout to avoid blocking the worker.
+    timeout_s = _parse_timeout_s("STRATEGY_NAME_LLM_TIMEOUT_S") or 20.0
+
+    system_prompts = [
+        (
+            "You are a quantitative strategy naming assistant. "
+            "Generate one short strategy title from the user intent. "
+            "Output ONLY the title text, no JSON, no explanation. "
+            "Prefer Chinese format like 'RSI 策略' or 'MACD 趋势策略'. "
+            "Never output pure numbers."
+        ),
+        (
+            "Return exactly one concise strategy title. "
+            "No punctuation wrappers, no markdown, no JSON, no extra words. "
+            "The title must contain at least one alphabetic character and cannot be numeric-only."
+        ),
+    ]
+
+    for system_prompt in system_prompts:
+        try:
+            resp = requests.post(
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {
+                            "role": "user",
+                            "content": f"用户策略描述：\n{prompt}\n\n请输出策略标题。",
+                        },
+                    ],
+                    "max_tokens": 80,
+                    "temperature": 0.0,
+                },
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            raw_name = str(((data.get("choices") or [{}])[0].get("message") or {}).get("content") or "").strip()
+            candidate = _normalize_strategy_name_candidate(raw_name)
+            if _is_valid_strategy_name(candidate):
+                return candidate
+            print(f"[worker] Invalid generated strategy name: {raw_name!r}")
+        except requests.exceptions.HTTPError as e:
+            try:
+                body = e.response.text if e.response is not None else ""
+            except Exception:
+                body = ""
+            print(f"[worker] Failed to generate strategy name (http): {e} body={body[:500]!r}")
+        except Exception as e:
+            print(f"[worker] Failed to generate strategy name: {e}")
+
+    return _fallback_strategy_name(prompt)
+
+
+def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    """Generate strategy code from prompt, and generate AI strategy name."""
+    strategy_id = job.payload["strategy_id"]
+    version_id = job.payload["version_id"]
+    prompt = job.payload.get("prompt", "")
+    llm_meta = job.payload.get("llm_meta") or {}
+    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
+
+    # Store logs under the version directory for debugging/traceability.
+    version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
+    _safe_mkdir(version_dir)
+
+    agent_env = {
+        "JOB_ID": job.id,
+        "STRATEGY_ID": strategy_id,
+        "VERSION_ID": version_id,
+        "PROMPT": prompt,
+        "WORKSPACES_DIR": "/workspaces",
+    }
+    # Optional per-job overrides (kept in the job payload) for OpenAI-compatible endpoints.
+    if isinstance(llm_meta, dict):
+        if llm_meta.get("base_url"):
+            agent_env["LLM_BASE_URL"] = str(llm_meta["base_url"])
+        if llm_meta.get("model"):
+            agent_env["LLM_MODEL"] = str(llm_meta["model"])
+        if llm_meta.get("temperature") is not None:
+            agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+    # Pass-through optional LLM env vars into agent sandbox only.
+    for key in (
+        "LLM_PROVIDER",
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+        "LLM_TEMPERATURE",
+        "LLM_REASONING_EFFORT",
+        "LLM_HTTP_TIMEOUT_S",
+        "LLM_STREAM_TIMEOUT_S",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TEMPERATURE",
+        "LLM_FALLBACK_ON_ERROR",
+        "LLM_STREAM",
+        "NETWORK_GUARD_ENABLED",
+        "NETWORK_ALLOWLIST",
+        # Langfuse observability
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        "LANGFUSE_SESSION_ID",
+        "LANGFUSE_USER_ID",
+    ):
+        val = os.getenv(key)
+        if val:
+            agent_env[key] = val
+
+    agent_log_path = os.path.join(version_dir, "agent.log")
+    sandbox_opts = _agent_sandbox_options()
+    agent_exit, agent_tail = _run_container_and_stream_logs(
+        docker_client,
+        job_id=job.id,
+        rds=rds,
+        image=settings.worker_agent_image,
+        command=AGENT_RUNNER_V2_COMMAND,
+        name=f"agent-{job.id}",
+        environment=agent_env,
+        volumes={
+            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
+        },
+        network=settings.worker_docker_network,
+        log_file_path=agent_log_path,
+        timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        mem_limit=sandbox_opts.get("mem_limit"),
+        nano_cpus=sandbox_opts.get("nano_cpus"),
+        read_only=sandbox_opts.get("read_only"),
+        tmpfs=sandbox_opts.get("tmpfs"),
+        ulimits=sandbox_opts.get("ulimits"),
+        pids_limit=sandbox_opts.get("pids_limit"),
+    )
+    if agent_exit != 0:
+        msg = (
+            f"agent_container_exit_code={agent_exit}\n"
+            f"--- agent.log tail ---\n{_tail_excerpt(agent_tail)}\n"
+            "See artifact: agent.log"
+        )
+        raise RuntimeError(msg)
+
+    # Generate AI strategy name and update the strategy
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is not None:
+        naming_prompt, source = _build_strategy_name_prompt(strategy, prompt)
+        _publish_log(rds, job.id, f"Generating strategy name from {source}...")
+        new_name = _generate_strategy_name(naming_prompt, llm_meta=llm_meta)
+        strategy.name = new_name
+        strategy.chat_status = ChatStatus.DONE
+
+        strategy.updated_at = _utcnow()
+        db.flush()
+        _publish_log(rds, job.id, f"Strategy name: {new_name}")
+
+    _ensure_strategy_repo(strategy_dir)
+    git_commit(strategy_dir, f"AI generate: {prompt[:80]}" if prompt else "AI generate")
+
+
+def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    strategy_id = job.payload["strategy_id"]
+    version_id = job.payload["version_id"]
+    prompt = job.payload.get("prompt", "")
+    llm_meta = job.payload.get("llm_meta") or {}
+    mode = (job.payload.get("mode") or "").strip().lower()
+    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
+
+    if mode == "patch_validate":
+        _handle_refine_patch_validate(db, rds, job)
+        return
+    if mode == "proposal_validate":
+        _handle_refine_proposal_validate(db, rds, job)
+        return
+
+    # Store logs under the version directory for debugging/traceability.
+    version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
+    _safe_mkdir(version_dir)
+
+    agent_env = {
+        "JOB_ID": job.id,
+        "STRATEGY_ID": strategy_id,
+        "VERSION_ID": version_id,
+        "PROMPT": prompt,
+        "WORKSPACES_DIR": "/workspaces",
+    }
+    # Optional per-job overrides (kept in the job payload) for OpenAI-compatible endpoints.
+    if isinstance(llm_meta, dict):
+        if llm_meta.get("base_url"):
+            agent_env["LLM_BASE_URL"] = str(llm_meta["base_url"])
+        if llm_meta.get("model"):
+            agent_env["LLM_MODEL"] = str(llm_meta["model"])
+        if llm_meta.get("temperature") is not None:
+            agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+    # Pass-through optional LLM env vars into agent sandbox only.
+    # Support DeepSeek (OpenAI-compatible) as well.
+    for key in (
+        "LLM_PROVIDER",
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "LLM_BASE_URL",
+        "LLM_MODEL",
+        "LLM_TEMPERATURE",
+        "LLM_REASONING_EFFORT",
+        "LLM_HTTP_TIMEOUT_S",
+        "LLM_STREAM_TIMEOUT_S",
+        "DEEPSEEK_API_KEY",
+        "DEEPSEEK_BASE_URL",
+        "DEEPSEEK_MODEL",
+        "DEEPSEEK_TEMPERATURE",
+        "LLM_FALLBACK_ON_ERROR",
+        "LLM_STREAM",
+        "NETWORK_GUARD_ENABLED",
+        "NETWORK_ALLOWLIST",
+        # Langfuse observability
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENVIRONMENT",
+        "LANGFUSE_SESSION_ID",
+        "LANGFUSE_USER_ID",
+    ):
+        val = os.getenv(key)
+        if val:
+            agent_env[key] = val
+
+    agent_log_path = os.path.join(version_dir, "agent.log")
+    sandbox_opts = _agent_sandbox_options()
+    agent_exit, agent_tail = _run_container_and_stream_logs(
+        docker_client,
+        job_id=job.id,
+        rds=rds,
+        image=settings.worker_agent_image,
+        command=AGENT_RUNNER_V2_COMMAND,
+        name=f"agent-{job.id}",
+        environment=agent_env,
+        volumes={
+            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
+        },
+        network=settings.worker_docker_network,
+        log_file_path=agent_log_path,
+        timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        mem_limit=sandbox_opts.get("mem_limit"),
+        nano_cpus=sandbox_opts.get("nano_cpus"),
+        read_only=sandbox_opts.get("read_only"),
+        tmpfs=sandbox_opts.get("tmpfs"),
+        ulimits=sandbox_opts.get("ulimits"),
+        pids_limit=sandbox_opts.get("pids_limit"),
+    )
+    if agent_exit != 0:
+        msg = (
+            f"agent_container_exit_code={agent_exit}\n"
+            f"--- agent.log tail ---\n{_tail_excerpt(agent_tail)}\n"
+            "See artifact: agent.log"
+        )
+        raise RuntimeError(msg)
+
+    # Update strategy status to DONE (refinement complete)
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is not None:
+        strategy.chat_status = ChatStatus.DONE
+
+        strategy.updated_at = _utcnow()
+        db.flush()
+
+    _ensure_strategy_repo(strategy_dir)
+    git_commit(strategy_dir, f"AI refine: {prompt[:80]}" if prompt else "AI refine")
+
+
+def _load_signal_mode(version_dir: str) -> str:
+    protocol_path = os.path.join(version_dir, "strategy_protocol.json")
+    if not os.path.isfile(protocol_path):
+        return "target_weights"
+    try:
+        with open(protocol_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        mode = str(payload.get("signal_mode") or "").strip()
+        return mode or "target_weights"
+    except Exception:
+        return "target_weights"
+
+
+def _validate_strategy_version(version_dir: str, *, n_bars: int = 200, interval: str = "1h") -> dict[str, Any]:
+    strategy_path = os.path.join(version_dir, "strategy.py")
+    if not os.path.isfile(strategy_path):
+        raise RuntimeError("strategy_code_not_found")
+
+    with open(strategy_path, "r", encoding="utf-8") as f:
+        code = f.read()
+
+    from agent.smoke_validation import run_smoke_validation, run_static_checks
+
+    static_result = run_static_checks(code)
+    smoke_result = run_smoke_validation(
+        code,
+        n_bars=int(n_bars),
+        interval=str(interval),
+        signal_mode=_load_signal_mode(version_dir),
+    )
+    report = {
+        "static_check": static_result,
+        "smoke_backtest": smoke_result,
+    }
+
+    try:
+        with open(os.path.join(version_dir, "validation_report.json"), "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2, sort_keys=True)
+    except Exception:
+        pass
+
+    if not static_result.get("ok"):
+        raise RuntimeError(f"static_check_failed:{static_result.get('error')}")
+    if not smoke_result.get("ok"):
+        raise RuntimeError(f"smoke_backtest_failed:{smoke_result.get('error')}")
+    return report
+
+
+def _ensure_code_editor_path() -> None:
+    code_editor_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "code_editor")
+    if code_editor_path not in sys.path:
+        sys.path.insert(0, code_editor_path)
+
+
+def _apply_unified_diff_simple(original: str, diff: str) -> str:
+    lines = diff.splitlines()
+    if not lines:
+        return original
+    if lines[0].startswith(("---", "+++")):
+        lines = lines[2:]
+    original_lines = original.splitlines()
+    new_lines: list[str] = []
+    orig_idx = 0
+
+    hunk_header = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if not line.startswith("@@"):
+            i += 1
+            continue
+
+        match = hunk_header.match(line)
+        if not match:
+            raise ValueError("invalid_hunk_header")
+
+        start_old = int(match.group(1))
+        if start_old < 1:
+            raise ValueError("invalid_hunk_header")
+
+        target_idx = start_old - 1
+        if target_idx < orig_idx:
+            raise ValueError("overlapping_hunks")
+        if target_idx > len(original_lines):
+            raise ValueError("hunk_out_of_range")
+
+        if target_idx > orig_idx:
+            new_lines.extend(original_lines[orig_idx:target_idx])
+            orig_idx = target_idx
+
+        i += 1
+        while i < len(lines) and not lines[i].startswith("@@"):
+            hunk_line = lines[i]
+            if hunk_line.startswith(" "):
+                expected = hunk_line[1:]
+                if orig_idx >= len(original_lines) or original_lines[orig_idx] != expected:
+                    raise ValueError("context_mismatch")
+                new_lines.append(expected)
+                orig_idx += 1
+            elif hunk_line.startswith("-"):
+                expected = hunk_line[1:]
+                if orig_idx >= len(original_lines) or original_lines[orig_idx] != expected:
+                    raise ValueError("delete_mismatch")
+                orig_idx += 1
+            elif hunk_line.startswith("+"):
+                new_lines.append(hunk_line[1:])
+            elif hunk_line.startswith("\\"):
+                pass
+            else:
+                raise ValueError("invalid_hunk_line")
+            i += 1
+
+    new_lines.extend(original_lines[orig_idx:])
+    result = "\n".join(new_lines)
+    if original.endswith("\n"):
+        result += "\n"
+    return result
+
+
+def _apply_change_spec_to_code(current_code: str, change_spec: dict[str, Any]) -> tuple[bool, str | None, str]:
+    operations = change_spec.get("operations") or []
+    if not isinstance(operations, list):
+        return False, "change_spec_invalid_operations", current_code
+
+    _ensure_code_editor_path()
+    try:
+        from code_editor.core.editor import replace, EditError
+    except Exception as exc:
+        return False, f"code_editor_unavailable:{exc}", current_code
+
+    updated = current_code
+
+    def normalize_for_search(text: str) -> str:
+        return " ".join(text.split())
+
+    for idx, op in enumerate(operations):
+        op_type = str(op.get("type") or "").strip()
+        try:
+            if op_type == "exact_replace":
+                old_text = op.get("old_text")
+                new_text = op.get("new_text")
+                if not old_text or new_text is None:
+                    return False, f"operation_{idx}_invalid_exact_replace", current_code
+                # Skip if old_text equals new_text (no-op)
+                if old_text == new_text:
+                    continue
+                updated = replace(updated, old_text, new_text, replace_all=False)
+            elif op_type == "insert_after":
+                anchor = op.get("anchor")
+                insert_text = op.get("insert_text")
+                if not anchor or not insert_text:
+                    return False, f"operation_{idx}_invalid_insert_after", current_code
+                anchor_normalized = normalize_for_search(anchor)
+                lines = updated.split("\n")
+                anchor_found = False
+                if "\n" in anchor:
+                    content_normalized = normalize_for_search(updated)
+                    if anchor_normalized in content_normalized:
+                        anchor_lines = anchor.strip().split("\n")
+                        last_anchor_line = anchor_lines[-1].strip()
+                        for i, line in enumerate(lines):
+                            if normalize_for_search(line) == normalize_for_search(last_anchor_line):
+                                lines.insert(i + 1, insert_text)
+                                anchor_found = True
+                                break
+                else:
+                    for i, line in enumerate(lines):
+                        if anchor_normalized in normalize_for_search(line):
+                            lines.insert(i + 1, insert_text)
+                            anchor_found = True
+                            break
+                if not anchor_found:
+                    return False, f"operation_{idx}_anchor_not_found", current_code
+                updated = "\n".join(lines)
+            elif op_type == "insert_before":
+                anchor = op.get("anchor")
+                insert_text = op.get("insert_text")
+                if not anchor or not insert_text:
+                    return False, f"operation_{idx}_invalid_insert_before", current_code
+                anchor_normalized = normalize_for_search(anchor)
+                lines = updated.split("\n")
+                anchor_found = False
+                if "\n" in anchor:
+                    content_normalized = normalize_for_search(updated)
+                    if anchor_normalized in content_normalized:
+                        anchor_lines = anchor.strip().split("\n")
+                        first_anchor_line = anchor_lines[0].strip()
+                        for i, line in enumerate(lines):
+                            if normalize_for_search(line) == normalize_for_search(first_anchor_line):
+                                lines.insert(i, insert_text)
+                                anchor_found = True
+                                break
+                else:
+                    for i, line in enumerate(lines):
+                        if anchor_normalized in normalize_for_search(line):
+                            lines.insert(i, insert_text)
+                            anchor_found = True
+                            break
+                if not anchor_found:
+                    return False, f"operation_{idx}_anchor_not_found", current_code
+                updated = "\n".join(lines)
+            elif op_type == "range_replace":
+                start_line = op.get("start_line")
+                end_line = op.get("end_line")
+                replacement = op.get("replacement")
+                if start_line is None or end_line is None or not replacement:
+                    return False, f"operation_{idx}_invalid_range_replace", current_code
+                lines = updated.split("\n")
+                start_idx = int(start_line) - 1
+                end_idx = int(end_line)
+                if start_idx < 0 or end_idx > len(lines):
+                    return False, f"operation_{idx}_range_out_of_bounds", current_code
+                lines[start_idx:end_idx] = [replacement]
+                updated = "\n".join(lines)
+            elif op_type == "unified_diff":
+                diff_content = op.get("diff_content")
+                if not diff_content:
+                    return False, f"operation_{idx}_invalid_unified_diff", current_code
+                updated = _apply_unified_diff_simple(updated, diff_content)
+            else:
+                return False, f"operation_{idx}_unsupported_type:{op_type}", current_code
+        except EditError as exc:
+            return False, f"operation_{idx}_edit_error:{exc}", current_code
+        except Exception as exc:
+            return False, f"operation_{idx}_failed:{exc}", current_code
+
+    return True, None, updated
+
+
+def _list_backtest_indicators() -> list[str]:
+    try:
+        from backtest import indicators as bt_indicators  # type: ignore
+    except Exception:
+        return []
+    names: list[str] = []
+    for name in dir(bt_indicators):
+        if name.startswith("_"):
+            continue
+        value = getattr(bt_indicators, name, None)
+        if callable(value):
+            names.append(name)
+    return sorted(set(names))
+
+
+def _extract_json_object(text: str) -> str:
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return text
+    return text[start : end + 1]
+
+
+def _normalize_refine_json(data: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    instructions = data.get("instructions") or data.get("instruction") or ""
+    change_spec = data.get("change_spec")
+    if change_spec is None:
+        change_spec = data.get("changeSpec") or data.get("changespec") or data.get("change")
+    if change_spec is None and isinstance(data.get("operations"), list):
+        change_spec = {"operations": data.get("operations")}
+    if change_spec is None:
+        return None
+    if not isinstance(change_spec, dict):
+        return None
+    return str(instructions).strip(), change_spec
+
+
+def _parse_json_change_spec(response: str) -> tuple[str, dict] | None:
+    if not response:
+        return None
+    try:
+        data = json.loads(_extract_json_object(response))
+    except Exception:
+        return None
+    normalized = _normalize_refine_json(data)
+    if not normalized:
+        return None
+    instructions, change_spec = normalized
+    ops = change_spec.get("operations")
+    if ops is None:
+        return None
+    if not isinstance(ops, list):
+        return None
+    return instructions, change_spec
+
+
+def _resolve_llm_config(llm_meta: dict | None = None) -> tuple[str | None, str, str]:
+    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+    base_url = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("LLM_BASE_URL") or "https://api.deepseek.com/v1"
+    model = os.getenv("DEEPSEEK_MODEL") or os.getenv("LLM_MODEL") or "deepseek-chat"
+    if isinstance(llm_meta, dict):
+        if llm_meta.get("base_url"):
+            base_url = str(llm_meta["base_url"])
+        if llm_meta.get("model"):
+            model = str(llm_meta["model"])
+    return api_key, base_url, model
+
+
+def _call_refine_llm(
+    *,
+    system_prompt: str,
+    user_prompt: str,
+    llm_meta: dict | None = None,
+) -> str | None:
+    api_key, base_url, model = _resolve_llm_config(llm_meta)
+    if not api_key:
+        return None
+    from agent.llm_openai_compat import ChatCompletionRequest, ChatMessage, chat_completion
+
+    req = ChatCompletionRequest(
+        api_key=api_key,
+        base_url=base_url,
+        model=model,
+        messages=[ChatMessage(role="system", content=system_prompt), ChatMessage(role="user", content=user_prompt)],
+        temperature=0.1,
+    )
+    return chat_completion(req)
+
+
+def _load_signal_mode_from_strategy_dir(strategy_dir: str) -> str:
+    protocol_path = os.path.join(strategy_dir, "strategy_protocol.json")
+    if not os.path.isfile(protocol_path):
+        return "target_weights"
+    try:
+        with open(protocol_path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        mode = str(payload.get("signal_mode") or "").strip()
+        return mode or "target_weights"
+    except Exception:
+        return "target_weights"
+
+
+def _run_minimal_validation_on_code(
+    *,
+    code: str,
+    signal_mode: str,
+    n_bars: int = 200,
+    interval: str = "1h",
+) -> dict[str, Any]:
+    from agent.smoke_validation import run_smoke_validation, run_static_checks
+
+    static_result = run_static_checks(code)
+    if not static_result.get("ok"):
+        return {"ok": False, "stage": "static_check", "static": static_result}
+
+    smoke_result = run_smoke_validation(code, n_bars=n_bars, interval=interval, signal_mode=signal_mode)
+    if not smoke_result.get("ok"):
+        return {"ok": False, "stage": "smoke_backtest", "static": static_result, "smoke": smoke_result}
+
+    return {"ok": True, "stage": "ok", "static": static_result, "smoke": smoke_result}
+
+
+def _repair_change_spec_with_llm(
+    *,
+    current_code: str,
+    user_message: str,
+    error_summary: str,
+    validation_report: dict[str, Any],
+    previous_change_spec: dict[str, Any],
+    llm_meta: dict | None,
+) -> tuple[str, dict] | None:
+    try:
+        from agent.refine_prompts import REFINE_SYSTEM_PROMPT, build_refine_user_prompt
+    except Exception:
+        return None
+
+    indicators = _list_backtest_indicators()
+    hint = "Available indicators from backtest.indicators: " + (", ".join(indicators) if indicators else "(unavailable)")
+    previous = json.dumps(previous_change_spec or {}, ensure_ascii=False)
+    report = json.dumps(validation_report or {}, ensure_ascii=False)
+    repair_message = textwrap.dedent(
+        f"""
+        User request:
+        {user_message}
+
+        Previous ChangeSpec failed minimal validation.
+        Error: {error_summary}
+
+        Validation report:
+        {report}
+
+        Previous ChangeSpec:
+        {previous}
+
+        {hint}
+
+        Please output a corrected ChangeSpec JSON that passes validation.
+        - Prefer using available indicators or implement missing ones in-line.
+        - Keep changes minimal and preserve existing logic unless required.
+        """
+    ).strip()
+    user_prompt = build_refine_user_prompt(current_code, repair_message)
+    system_prompt = (
+        REFINE_SYSTEM_PROMPT
+        + "\n\nYou MUST respond with a single JSON object (no markdown, no code fences).\n"
+        + "Schema:\n"
+        + '{\n  "instructions": "<string>",\n  "change_spec": {"operations": [<operation>, ...]}\n}\n'
+        + "Rules:\n"
+        + "- change_spec.operations MUST be a JSON array.\n"
+    )
+    reply = _call_refine_llm(system_prompt=system_prompt, user_prompt=user_prompt, llm_meta=llm_meta)
+    if not reply:
+        return None
+    return _parse_json_change_spec(reply)
+
+
+def _validate_refine_change_spec_with_loop(
+    *,
+    current_code: str,
+    user_message: str,
+    refine_instructions: str,
+    change_spec_dict: dict[str, Any],
+    signal_mode: str,
+    llm_meta: dict | None,
+    max_attempts: int = 2,
+) -> tuple[bool, str, dict[str, Any], dict[str, Any], str | None]:
+    last_error = ""
+    last_report: dict[str, Any] = {}
+    attempt = 0
+    while attempt < max_attempts:
+        attempt += 1
+        applied_ok, apply_error, updated_code = _apply_change_spec_to_code(current_code, change_spec_dict)
+        if not applied_ok:
+            last_error = apply_error or "change_spec_apply_failed"
+            last_report = {"stage": "change_spec_apply", "error": last_error}
+        else:
+            validation_report = _run_minimal_validation_on_code(
+                code=updated_code,
+                signal_mode=signal_mode,
+                n_bars=200,
+                interval="1h",
+            )
+            if validation_report.get("ok"):
+                return True, refine_instructions, change_spec_dict, validation_report, None
+            stage = str(validation_report.get("stage") or "validation_failed")
+            if stage == "static_check":
+                static_error = (validation_report.get("static") or {}).get("error")
+                last_error = f"static_check_failed:{static_error}" if static_error else stage
+            elif stage == "smoke_backtest":
+                smoke_error = (validation_report.get("smoke") or {}).get("error")
+                last_error = f"smoke_backtest_failed:{smoke_error}" if smoke_error else stage
+            else:
+                last_error = stage
+            last_report = dict(validation_report)
+            last_report["error"] = last_error
+
+        if attempt >= max_attempts:
+            break
+
+        repaired = _repair_change_spec_with_llm(
+            current_code=current_code,
+            user_message=user_message,
+            error_summary=last_error,
+            validation_report=last_report,
+            previous_change_spec=change_spec_dict,
+            llm_meta=llm_meta,
+        )
+        if not repaired:
+            break
+        refine_instructions, change_spec_dict = repaired
+
+    return False, refine_instructions, change_spec_dict, last_report, last_error
+
+
+def _handle_refine_proposal_validate(db: Session, rds: redis.Redis, job: Job) -> None:
+    strategy_id = job.payload["strategy_id"]
+    change_spec = job.payload.get("change_spec") or {}
+    refine_instructions = job.payload.get("refine_instructions") or ""
+    user_message = job.payload.get("source_message") or job.payload.get("prompt") or ""
+    llm_meta = job.payload.get("llm_meta") or {}
+
+    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
+    strategy_path = os.path.join(strategy_dir, "strategy.py")
+    if not os.path.isfile(strategy_path):
+        raise RuntimeError("strategy_code_not_found")
+
+    with open(strategy_path, "r", encoding="utf-8") as f:
+        current_code = f.read()
+
+    _publish_log(rds, job.id, "Validating refine proposal...")
+    signal_mode = _load_signal_mode_from_strategy_dir(strategy_dir)
+    ok, refine_instructions, change_spec, report, error = _validate_refine_change_spec_with_loop(
+        current_code=current_code,
+        user_message=user_message,
+        refine_instructions=refine_instructions,
+        change_spec_dict=change_spec,
+        signal_mode=signal_mode,
+        llm_meta=llm_meta,
+        max_attempts=2,
+    )
+
+    job.payload = dict(job.payload or {})
+    job.payload["validation_report"] = report
+    if not ok:
+        job.payload["validation_error"] = error or "proposal_validation_failed"
+        db.flush()
+        raise RuntimeError(job.payload["validation_error"])
+
+    job.payload["validated_change_spec"] = change_spec
+    job.payload["validated_instructions"] = refine_instructions
+    db.flush()
+
+
+def _handle_refine_patch_validate(db: Session, rds: redis.Redis, job: Job) -> None:
+    strategy_id = job.payload["strategy_id"]
+    version_id = job.payload["version_id"]
+    prompt = job.payload.get("prompt", "")
+    version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
+    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
+
+    _publish_log(rds, job.id, "Validating patched strategy...")
+    n_bars = int(job.payload.get("smoke_n_bars", 200))
+    interval = str(job.payload.get("smoke_interval", "1h"))
+    _validate_strategy_version(version_dir, n_bars=n_bars, interval=interval)
+    _publish_log(rds, job.id, "Validation passed. Promoting strategy...")
+
+    restore_version_to_current_strategy(settings.app_workspaces_dir, strategy_id, version_id)
+    _ensure_strategy_repo(strategy_dir)
+    commit_msg = f"AI patch: {prompt[:80]}" if prompt else "AI patch"
+    git_commit(strategy_dir, commit_msg)
+
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is not None:
+        strategy.chat_status = ChatStatus.DONE
+        strategy.updated_at = _utcnow()
+        db.flush()
+
+
+def _handle_scrape_tradingview_trending(
+    db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job
+) -> None:
+    """
+    Execute TradingView trending strategies scraping.
+
+    Process:
+    1. Use trending_scraper to scrape scripts/ideas
+    2. Detect trading symbols
+    3. Save to tradingview_trending_strategies table
+    4. If auto_backtest=True, create TRENDING_BACKTEST job
+    """
+    params = job.payload
+    source_types = params.get("source_types", ["scripts"])
+    max_count = params.get("max_count", 50)
+    auto_backtest = params.get("auto_backtest", True)
+    auto_backtest_top_n = params.get("auto_backtest_top_n", 15)
+
+    _publish_log(rds, job.id, f"Starting TradingView scrape: sources={source_types}, max={max_count}")
+    _raise_if_cancelled(rds, job.id)
+
+    try:
+        # Import scraper (may need to install package first)
+        try:
+            from trending_scraper.scraper import TradingViewTrendingScraper
+        except ImportError:
+            raise RuntimeError(
+                "trending_scraper package not found. Install with: pip install -e packages/trending_scraper"
+            )
+
+        scraper = TradingViewTrendingScraper(rate_limit_delay=0.5)
+
+        # Map singular to plural for scraper
+        source_type_map = {
+            "script": "scripts",
+            "idea": "ideas",
+        }
+
+        # Convert to plural form for parallel scraping
+        scraper_source_types = [source_type_map.get(st, st) for st in source_types]
+
+        # Use parallel scraping
+        _publish_log(rds, job.id, f"Parallel scraping {len(scraper_source_types)} source types...")
+        _raise_if_cancelled(rds, job.id)
+        all_strategies = scraper.scrape_trending_parallel(
+            source_types=scraper_source_types,
+            max_count=max_count,
+        )
+
+        # Save to database with idempotency
+        _publish_log(rds, job.id, f"Saving {len(all_strategies)} strategies to database...")
+        _raise_if_cancelled(rds, job.id)
+        saved_count = 0
+        skipped_count = 0
+        updated_count = 0
+
+        for strategy_data in all_strategies:
+            _raise_if_cancelled(rds, job.id)
+            tradingview_id = strategy_data.get("tradingview_id")
+            url = strategy_data.get("url")
+
+            # Check if strategy already exists (idempotency check)
+            existing = (
+                db.query(TradingViewTrendingStrategy)
+                .filter(
+                    or_(
+                        TradingViewTrendingStrategy.tradingview_id == tradingview_id,
+                        TradingViewTrendingStrategy.url == url,
+                    )
+                )
+                .first()
+            )
+
+            if existing:
+                # Strategy exists - skip or update dynamic fields
+                # For now, skip to avoid duplicate entries
+                skipped_count += 1
+                _publish_log(rds, job.id, f"Skipped existing strategy: {existing.title[:50]}")
+                continue
+
+            # Generate UUID for new strategies
+            if "id" not in strategy_data:
+                strategy_data["id"] = str(uuid.uuid4())
+
+            # Convert source_type string to enum if needed
+            if isinstance(strategy_data.get("source_type"), str):
+                # Map plural to singular for enum
+                source_type_map = {
+                    "scripts": TrendingSourceType.SCRIPT,
+                    "ideas": TrendingSourceType.IDEA,
+                    "script": TrendingSourceType.SCRIPT,
+                    "idea": TrendingSourceType.IDEA,
+                }
+                strategy_data["source_type"] = source_type_map.get(
+                    strategy_data["source_type"],
+                    TrendingSourceType.SCRIPT
+                )
+
+            # Create new strategy
+            strategy = TradingViewTrendingStrategy(**strategy_data)
+            db.add(strategy)
+            saved_count += 1
+
+        db.commit()
+        _publish_log(rds, job.id, f"Saved: {saved_count} new, Skipped: {skipped_count} existing, Updated: {updated_count}")
+
+        # If auto_backtest, create backtest job for top N strategies
+        if auto_backtest and all_strategies:
+            _raise_if_cancelled(rds, job.id)
+            top_strategies = all_strategies[:auto_backtest_top_n]
+
+            _publish_log(
+                rds, job.id,
+                f"Creating backtest job for top {len(top_strategies)} strategies..."
+            )
+
+            _create_backtest_trending_top_n_job(
+                db=db,
+                rds=rds,
+                strategy_ids=[s.get("tradingview_id") for s in top_strategies if s.get("tradingview_id")],
+            )
+
+    except Exception as e:
+        _publish_log(rds, job.id, f"Error during scraping: {e}")
+        raise
+
+
+def _handle_backtest_trending_top_n(
+    db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job
+) -> None:
+    """
+    Batch backtest top N trending strategies with full PineScript conversion.
+
+    Strategies are processed in parallel (up to 3 at a time).
+    """
+    from concurrent.futures import ThreadPoolExecutor
+    from worker.trending_backtest_impl import (
+        create_temporary_strategy_from_tradingview,
+        trigger_llm_conversion,
+        create_backtest_datasets,
+        create_backtest_jobs,
+        wait_for_backtest_completion,
+        update_trending_strategy_results,
+    )
+
+    params = job.payload
+    strategy_ids = params.get("strategy_ids", [])
+
+    default_symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    default_interval = "1h"
+    default_duration_days = 90
+
+    _publish_log(rds, job.id, f"Starting parallel backtest pipeline for {len(strategy_ids)} trending strategies (max_workers=3)")
+    _raise_if_cancelled(rds, job.id)
+
+    def process_single_strategy(tradingview_id: str) -> bool:
+        """Process a single strategy - returns True if successful."""
+        try:
+            _raise_if_cancelled(rds, job.id)
+            from control_plane.db import create_db_engine, create_session_factory, session_scope
+            from control_plane.models import TradingViewTrendingStrategy
+
+            engine = create_db_engine(settings.app_db_url)
+            local_session_factory = create_session_factory(engine)
+
+            with session_scope(local_session_factory) as local_db:
+                tv_strategy = local_db.query(TradingViewTrendingStrategy).filter_by(
+                    tradingview_id=tradingview_id
+                ).first()
+
+                if not tv_strategy:
+                    _publish_log(rds, job.id, f"Warning: strategy {tradingview_id} not found, skipping")
+                    return False
+
+                tv_strategy.backtest_status = "running"
+                local_db.flush()
+                _publish_log(rds, job.id, f"Processing {tv_strategy.title}...")
+                _raise_if_cancelled(rds, job.id)
+
+                symbols = tv_strategy.detected_symbols or default_symbols
+
+                _publish_log(rds, job.id, f"  Step 1: Creating temporary strategy...")
+                _raise_if_cancelled(rds, job.id)
+                strategy, version, pinescript_source = create_temporary_strategy_from_tradingview(
+                    local_db, rds, tv_strategy
+                )
+
+                _publish_log(rds, job.id, f"  Step 2: Triggering PineScript to Python conversion...")
+                _raise_if_cancelled(rds, job.id)
+                conversion_job = trigger_llm_conversion(
+                    local_db, rds, strategy, version, pinescript_source, tv_strategy
+                )
+
+                if conversion_job:
+                    _publish_log(rds, job.id, f"  Step 3: Waiting for LLM conversion...")
+                    conversion_timeout = 1800
+                    conversion_start = time.time()
+
+                    while time.time() - conversion_start < conversion_timeout:
+                        _raise_if_cancelled(rds, job.id)
+                        local_db.refresh(conversion_job)
+                        if conversion_job.status == "succeeded":
+                            _publish_log(rds, job.id, f"  Conversion completed successfully")
+                            break
+                        elif conversion_job.status == "failed":
+                            error_msg = conversion_job.error_message or "Unknown error"
+                            raise RuntimeError(f"LLM conversion failed: {error_msg}")
+                        time.sleep(5)
+                    else:
+                        raise RuntimeError("LLM conversion timeout")
+                else:
+                    _publish_log(rds, job.id, f"  Step 3: Skipped (reusing existing strategy code)")
+
+                _publish_log(rds, job.id, f"  Step 4: Creating backtest datasets for {symbols[:3]}...")
+                _raise_if_cancelled(rds, job.id)
+                datasets = create_backtest_datasets(
+                    local_db, strategy, version, symbols, default_interval, default_duration_days
+                )
+
+                _publish_log(rds, job.id, f"  Step 5: Triggering backtest jobs...")
+                _raise_if_cancelled(rds, job.id)
+                backtest_jobs = create_backtest_jobs(local_db, rds, datasets)
+
+                _publish_log(rds, job.id, f"  Step 6: Waiting for backtests to complete...")
+                _raise_if_cancelled(rds, job.id)
+                run_ids = [run.id for _, run in datasets]
+                backtest_results = wait_for_backtest_completion(local_db, run_ids, timeout_seconds=600)
+
+                _publish_log(rds, job.id, f"  Step 7: Updating results and quality score...")
+                _raise_if_cancelled(rds, job.id)
+                update_trending_strategy_results(local_db, tv_strategy, backtest_results)
+
+                _publish_log(rds, job.id, "  ✓ Completed")
+                return True
+
+        except Exception as e:
+            _publish_log(rds, job.id, f"  ✗ Error backtesting {tradingview_id}: {e}")
+            print(f"[ERROR] Error backtesting trending strategy {tradingview_id}: {e}")
+
+            try:
+                from control_plane.db import create_db_engine, create_session_factory, session_scope
+                from control_plane.models import TradingViewTrendingStrategy
+
+                engine = create_db_engine(settings.app_db_url)
+                local_session_factory = create_session_factory(engine)
+
+                with session_scope(local_session_factory) as local_db:
+                    tv_strategy = local_db.query(TradingViewTrendingStrategy).filter_by(
+                        tradingview_id=tradingview_id
+                    ).first()
+                    if tv_strategy:
+                        tv_strategy.backtest_status = "failed"
+                        tv_strategy.backtest_error = str(e)[:500]
+                        local_db.flush()
+            except Exception:
+                pass
+            return False
+
+    # Process strategies in parallel with max 3 workers
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = [executor.submit(process_single_strategy, tv_id) for tv_id in strategy_ids]
+        results = [f.result() for f in futures]
+
+    success_count = sum(results)
+    _publish_log(rds, job.id, f"Trending strategy backtests completed: {success_count}/{len(strategy_ids)} successful")
+
+
+def _create_backtest_trending_top_n_job(
+    db: Session, rds: redis.Redis, strategy_ids: list[str]
+) -> None:
+    """Create a batch backtest job for trending strategies."""
+    job_id = str(uuid.uuid4())
+
+    job = Job(
+        id=job_id,
+        type=JobType.TRENDING_BACKTEST.value,
+        payload={"strategy_ids": strategy_ids},
+        status="queued",
+    )
+
+    db.add(job)
+    db.commit()
+
+    # Add to Redis queue
+    import json
+    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+
+
+
+def _handle_start_sandbox(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    """Sandbox feature disabled - Traefik has been removed."""
+    _publish_log(rds, job.id, "Sandbox feature is disabled. Traefik reverse proxy has been removed.")
+    raise RuntimeError(
+        "Sandbox (code-server) feature is disabled. "
+        "Traefik reverse proxy has been removed from the infrastructure. "
+        "Please use your local development environment to edit strategies."
+    )
+
+
+def _handle_stop_sandbox(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    session_id = job.payload["session_id"]
+    session = db.get(SandboxSession, session_id)
+    if session is None:
+        raise RuntimeError(f"sandbox_not_found: {session_id}")
+
+    if session.container_id:
+        try:
+            container = docker_client.containers.get(session.container_id)
+            container.remove(force=True)
+        except Exception:
+            pass
+
+    session.status = SandboxStatus.STOPPED
+    session.stopped_at = _utcnow()
+    db.flush()
+    _publish_log(rds, job.id, "dev sandbox stopped")
+
+
+def _process_job(session_factory, rds: redis.Redis, docker_client: docker.DockerClient, job_id: str) -> None:
+    # DB/queue are not transactional together; the worker may see the queue message
+    # slightly before the DB commit. Retry a bit to avoid dropping jobs.
+    job_found = False
+    for _ in range(25):
+        with session_scope(session_factory) as db:
+            job = db.get(Job, job_id)
+            if job is None:
+                job_found = False
+            else:
+                job_found = True
+                # If an admin already cancelled this job, don't override it.
+                if str(job.status) == JobStatus.CANCELLED:
+                    return
+                if _is_cancel_requested(rds, job_id) and str(job.status) == JobStatus.QUEUED:
+                    job.status = JobStatus.CANCELLED
+                    job.finished_at = _utcnow()
+                    job.error_message = "cancelled"
+                    db.flush()
+                    return
+                job.status = JobStatus.RUNNING
+                job.started_at = _utcnow()
+                db.flush()
+        if job_found:
+            break
+        time.sleep(0.2)
+    if not job_found:
+        return
+
+    try:
+        with session_scope(session_factory) as db:
+            job = db.get(Job, job_id)
+            if job is None:
+                return
+            if str(job.status) == JobStatus.CANCELLED:
+                return
+            if _is_cancel_requested(rds, job_id):
+                job.status = JobStatus.CANCELLED
+                job.finished_at = _utcnow()
+                job.error_message = "cancelled"
+                db.flush()
+                return
+            if job.type == JobType.BACKTEST.value:
+                _handle_backtest(db, rds, docker_client, job)
+            elif job.type == JobType.GENERATE_STRATEGY.value:
+                _handle_generate_strategy(db, rds, docker_client, job)
+            elif job.type == JobType.GENERATE_AND_BACKTEST.value:
+                _handle_generate_and_backtest(db, rds, docker_client, job)
+            elif job.type == JobType.REFINE_STRATEGY.value:
+                _handle_refine_strategy(db, rds, docker_client, job)
+            elif job.type == JobType.START_SANDBOX.value:
+                _handle_start_sandbox(db, rds, docker_client, job)
+            elif job.type == JobType.STOP_SANDBOX.value:
+                _handle_stop_sandbox(db, rds, docker_client, job)
+            # Handle job types (now plain strings)
+            elif job.type == JobType.REPO_IMPORT.value:
+                _handle_repo_import(db, rds, job)
+            elif job.type == JobType.REPO_SYNC.value:
+                # For M1, treat as re-run of import for selected branches
+                _handle_repo_import(db, rds, job)
+            elif job.type in (JobType.TRENDING_SCRAPE.value, JobType.TRENDING_BACKTEST.value) and not settings.trending_scheduler_enabled:
+                _publish_log(rds, job.id, "trending_disabled")
+                job.status = JobStatus.CANCELLED
+                job.finished_at = _utcnow()
+                job.error_message = "trending_disabled"
+                db.flush()
+                return
+            elif job.type == JobType.TRENDING_SCRAPE.value:
+                _handle_scrape_tradingview_trending(db, rds, docker_client, job)
+            elif job.type == JobType.TRENDING_BACKTEST.value:
+                _handle_backtest_trending_top_n(db, rds, docker_client, job)
+            elif job.type == JobType.TEMPLATE_PERFORMANCE_UPDATE.value:
+                generate_template_performance_data(db, rds, job)
+            elif job.type == JobType.TEMPLATE_BACKTEST.value:
+                from worker.template_backtest_job import handle_template_backtest
+                handle_template_backtest(db, rds, docker_client, job)
+            elif job.type == JobType.TEMPLATE_STABLE5_SCREENING.value:
+                from worker.template_stable5_screening_job import run_template_stable5_screening
+                run_template_stable5_screening(db, rds, job)
+            else:
+                raise RuntimeError(f"unsupported_job_type: {job.type}")
+
+        with session_scope(session_factory) as db:
+            job = db.get(Job, job_id)
+            if job is None:
+                return
+            job.status = JobStatus.SUCCEEDED
+            job.finished_at = _utcnow()
+            db.flush()
+            _publish_log(rds, job_id, "job succeeded")
+    except Exception as e:
+        err = f"{type(e).__name__}: {e}"
+        tb = traceback.format_exc()
+        _publish_log(rds, job_id, err)
+        _publish_log(rds, job_id, tb)
+        with session_scope(session_factory) as db:
+            job = db.get(Job, job_id)
+            if job is None:
+                return
+            if _is_cancel_requested(rds, job_id) or "cancelled" in err.lower():
+                job.status = JobStatus.CANCELLED
+                job.error_message = "cancelled"
+            else:
+                job.status = JobStatus.FAILED
+                job.error_message = err
+            job.finished_at = _utcnow()
+
+            # Ensure related entities reflect failure even if the original transaction rolled back.
+            run_id = None
+            session_id = None
+            strategy_id = None
+            try:
+                if isinstance(job.payload, dict):
+                    run_id = job.payload.get("run_id")
+                    session_id = job.payload.get("session_id")
+                    strategy_id = job.payload.get("strategy_id")
+            except Exception:
+                run_id = None
+                session_id = None
+                strategy_id = None
+
+            if run_id:
+                run = db.get(BacktestRun, run_id)
+                if run is not None:
+                    run.status = BacktestStatus.FAILED
+                    run.finished_at = _utcnow()
+                    run.error_message = err
+
+            if session_id:
+                sess = db.get(SandboxSession, session_id)
+                if sess is not None and sess.status != SandboxStatus.STOPPED:
+                    sess.status = SandboxStatus.FAILED
+
+            if strategy_id:
+                strat = db.get(Strategy, strategy_id)
+                if strat is not None:
+                    if job.type in (JobType.GENERATE_STRATEGY, JobType.GENERATE_AND_BACKTEST):
+                        strat.chat_status = ChatStatus.READY
+                    elif job.type == JobType.REFINE_STRATEGY.value:
+                        strat.chat_status = ChatStatus.DONE
+                    strat.updated_at = _utcnow()
+            db.flush()
+
+
+def _run_scheduled_scrape(rds: redis.Redis) -> None:
+    """Run the scheduled trending scrape job."""
+    logger = logging.getLogger(__name__)
+
+    try:
+        engine = create_db_engine(settings.app_db_url)
+        session_factory = create_session_factory(engine)
+
+        with session_scope(session_factory) as db:
+            schedule = db.query(TrendingSchedule).first()
+            if not schedule or not schedule.enabled:
+                logger.info("Trending schedule is disabled or not configured")
+                return
+
+            job_id = str(uuid.uuid4())
+            job = Job(
+                id=job_id,
+                type=JobType.TRENDING_SCRAPE.value,
+                payload={
+                    "source_types": schedule.source_types or ["script"],
+                    "max_count": schedule.max_count,
+                    "auto_backtest": schedule.auto_backtest,
+                    "auto_backtest_top_n": schedule.auto_backtest_top_n,
+                    "scheduled": True,
+                },
+                status="queued",
+            )
+            db.add(job)
+            db.commit()
+
+            schedule.last_run_at = _utcnow()
+            schedule.next_run_at = None
+            db.commit()
+
+            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+            logger.info(f"Created scheduled scrape job: {job_id}")
+    except Exception as e:
+        logger.error(f"Error running scheduled scrape: {e}")
+
+
+def _setup_trending_scheduler(session_factory, rds: redis.Redis) -> BackgroundScheduler | None:
+    """Set up the APScheduler for trending scrape."""
+    logger = logging.getLogger(__name__)
+
+    if not settings.trending_scheduler_enabled:
+        logger.info("Trending scheduler is disabled via settings")
+        return None
+
+    scheduler = BackgroundScheduler(timezone="UTC")
+
+    try:
+        with session_scope(session_factory) as db:
+            schedule = db.query(TrendingSchedule).first()
+
+            # Auto-create default schedule if not exists
+            if not schedule:
+                schedule = TrendingSchedule(
+                    enabled=True,
+                    cron_expression="0 */6 * * *",
+                    source_types=["script"],
+                    max_count=50,
+                    auto_backtest=True,
+                    auto_backtest_top_n=15,
+                )
+                db.add(schedule)
+                db.commit()
+                logger.info("Created default trending schedule configuration")
+                # Refresh to get the created object
+                db.refresh(schedule)
+
+        if not schedule.enabled:
+            logger.info("Trending schedule is disabled")
+            return None
+
+        cron_expr = schedule.cron_expression or settings.trending_default_cron
+        trigger = CronTrigger.from_crontab(cron_expr, timezone="UTC")
+
+        scheduler.add_job(
+            _run_scheduled_scrape,
+            trigger=trigger,
+            id="trending_scrape",
+            name="TradingView Trending Scrape",
+            replace_existing=True,
+            args=[rds],
+        )
+
+        scheduler.start()
+        logger.info(f"Trending scheduler started with cron: {cron_expr}")
+
+    except Exception as e:
+        logger.error(f"Error setting up trending scheduler: {e}")
+        scheduler.shutdown(wait=False)
+        return None
+
+    return scheduler
+
+
+def _run_scheduled_template_update(rds: redis.Redis) -> None:
+    """Run scheduled template performance update."""
+    logger = logging.getLogger(__name__)
+
+    try:
+        engine = create_db_engine(settings.app_db_url)
+        session_factory = create_session_factory(engine)
+
+        with session_scope(session_factory) as db:
+            schedule = db.query(TemplatePerformanceSchedule).first()
+            if not schedule or not schedule.enabled:
+                logger.info("Template performance schedule is disabled or not configured")
+                return
+
+            job_id = str(uuid.uuid4())
+            job = Job(
+                id=job_id,
+                type=JobType.TEMPLATE_PERFORMANCE_UPDATE.value,
+                payload={},
+                status="queued",
+            )
+            db.add(job)
+            db.commit()
+
+            if schedule:
+                schedule.last_run_at = _utcnow()
+                schedule.next_run_at = None
+                db.commit()
+
+            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+            logger.info(f"Created scheduled template performance update job: {job_id}")
+    except Exception as e:
+        logger.error(f"Error running scheduled template update: {e}")
+
+
+def _setup_template_performance_scheduler(session_factory, rds: redis.Redis) -> BackgroundScheduler | None:
+    """Set up scheduler for template performance updates."""
+    logger = logging.getLogger(__name__)
+
+    # Default to enabled unless explicitly disabled
+    enabled = getattr(settings, "template_performance_scheduler_enabled", True)
+
+    if not enabled:
+        logger.info("Template performance scheduler is disabled via settings")
+        return None
+
+    scheduler = BackgroundScheduler(timezone="UTC")
+
+    try:
+        with session_scope(session_factory) as db:
+            schedule = db.query(TemplatePerformanceSchedule).first()
+
+            # Auto-create default schedule if not exists
+            if not schedule:
+                schedule = TemplatePerformanceSchedule(
+                    enabled=True,
+                    cron_expression="0 2 * * *",  # Daily at 2 AM UTC
+                    templates_per_batch=5,
+                    backtest_days_history=90,
+                    signals_per_day=3,
+                    max_signals_per_template=100,
+                )
+                db.add(schedule)
+                db.commit()
+                logger.info("Created default template performance schedule configuration")
+                db.refresh(schedule)
+
+        if not schedule.enabled:
+            logger.info("Template performance schedule is disabled")
+            return None
+
+        cron_expr = schedule.cron_expression or "0 2 * * *"
+        trigger = CronTrigger.from_crontab(cron_expr, timezone="UTC")
+
+        scheduler.add_job(
+            _run_scheduled_template_update,
+            trigger=trigger,
+            id="template_performance_update",
+            name="Template Performance Update",
+            replace_existing=True,
+            args=[rds],
+        )
+
+        scheduler.start()
+        logger.info(f"Template performance scheduler started with cron: {cron_expr}")
+
+    except Exception as e:
+        logger.error(f"Error setting up template performance scheduler: {e}")
+        scheduler.shutdown(wait=False)
+        return None
+
+    return scheduler
+
+
+def _run_scheduled_stable5_screening(rds: redis.Redis) -> None:
+    logger = logging.getLogger(__name__)
+    try:
+        engine = create_db_engine(settings.app_db_url)
+        session_factory = create_session_factory(engine)
+
+        job_id = str(uuid.uuid4())
+        with session_scope(session_factory) as db:
+            job = Job(
+                id=job_id,
+                type=JobType.TEMPLATE_STABLE5_SCREENING.value,
+                payload={"limit": int(getattr(settings, "stable5_default_limit", 50) or 50)},
+                status="queued",
+            )
+            db.add(job)
+            db.commit()
+
+        import json
+
+        rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+        logger.info(f"Created scheduled Stable5 screening job: {job_id}")
+    except Exception as e:
+        logger.error(f"Error running scheduled Stable5 screening: {e}")
+
+
+def _setup_stable5_scheduler(session_factory, rds: redis.Redis) -> BackgroundScheduler | None:
+    logger = logging.getLogger(__name__)
+    enabled = bool(getattr(settings, "stable5_scheduler_enabled", False))
+    if not enabled:
+        logger.info("Stable5 scheduler is disabled via settings")
+        return None
+
+    scheduler = BackgroundScheduler(timezone="UTC")
+    try:
+        cron_expr = str(getattr(settings, "stable5_default_cron", "0 3 * * *") or "0 3 * * *")
+        trigger = CronTrigger.from_crontab(cron_expr, timezone="UTC")
+        scheduler.add_job(
+            _run_scheduled_stable5_screening,
+            trigger=trigger,
+            id="template_stable5_screening",
+            name="Template Stable5 Screening",
+            replace_existing=True,
+            args=[rds],
+        )
+        scheduler.start()
+        logger.info(f"Stable5 scheduler started with cron: {cron_expr}")
+    except Exception as e:
+        logger.error(f"Error setting up Stable5 scheduler: {e}")
+        scheduler.shutdown(wait=False)
+        return None
+    return scheduler
+
+
+def main() -> None:
+    print("worker starting")
+
+    # Wait for database with better error messages
+    print("[worker] Waiting for database connection...")
+    _wait_for_db(settings.app_db_url, timeout_s=90.0)
+    print("[worker] Database connected")
+
+    engine = create_db_engine(settings.app_db_url)
+    session_factory = create_session_factory(engine)
+    # Multiple workers/tests may start concurrently in e2e. Use an advisory lock to
+    # avoid DDL races (e.g., duplicate composite types for tables) during create_all.
+    with engine.begin() as conn:
+        conn.execute(text("SELECT pg_advisory_lock(8811223344)"))
+        try:
+            Base.metadata.create_all(conn)
+        finally:
+            conn.execute(text("SELECT pg_advisory_unlock(8811223344)"))
+
+    print("[worker] Waiting for Redis connection...")
+    rds = _wait_for_redis(settings.app_redis_url, timeout_s=60.0)
+    print("[worker] Redis connected")
+
+    mode = (getattr(settings, "worker_mode", "all") or "all").strip().lower()
+    run_scheduler = mode in {"all", "scheduler"}
+    run_consumer = mode in {"all", "consumer"}
+
+    # Set up schedulers (optional)
+    trending_scheduler = None
+    template_perf_scheduler = None
+    stable5_scheduler = None
+    if run_scheduler:
+        trending_scheduler = _setup_trending_scheduler(session_factory, rds)
+        template_perf_scheduler = _setup_template_performance_scheduler(session_factory, rds)
+        stable5_scheduler = _setup_stable5_scheduler(session_factory, rds)
+
+    docker_client = None
+    if run_consumer:
+        docker_client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+
+    last_sync_check = 0.0
+    processed_jobs = 0
+    processed_jobs_lock = threading.Lock()
+    stop_event = threading.Event()
+
+    if not run_consumer:
+        print(f"[worker] Worker mode={mode}; schedulers active, queue consumer disabled")
+        try:
+            while True:
+                time.sleep(60)
+        finally:
+            if trending_scheduler:
+                trending_scheduler.shutdown(wait=False)
+            if template_perf_scheduler:
+                template_perf_scheduler.shutdown(wait=False)
+            if stable5_scheduler:
+                stable5_scheduler.shutdown(wait=False)
+        return
+
+    consumers = max(1, int(getattr(settings, "worker_consumers", 1) or 1))
+    print(f"[worker] Starting job processing loop (mode={mode}, consumers={consumers})...")
+
+    def _consumer_loop(consumer_id: int) -> None:
+        nonlocal last_sync_check, processed_jobs
+        while not stop_event.is_set():
+            try:
+                item = rds.blpop(QUEUE_NAME, timeout=5)
+            except Exception as e:
+                print(f"[worker] Redis BLPOP error (c{consumer_id}): {e}")
+                time.sleep(1.0)
+                continue
+
+            if not item:
+                # Only one consumer performs periodic repo-sync enqueue to avoid noisy duplication.
+                if consumer_id == 0:
+                    now = time.monotonic()
+                    if now - last_sync_check >= settings.repo_sync_interval_s:
+                        last_sync_check = now
+                        try:
+                            _enqueue_stale_repo_syncs(session_factory, rds, min_age_s=settings.repo_sync_interval_s)
+                        except Exception:
+                            pass
+                continue
+
+            _, raw = item
+            job_id = None
+            try:
+                payload = json.loads(raw)
+                if isinstance(payload, dict):
+                    job_id = payload.get("job_id")
+                elif isinstance(payload, str):
+                    job_id = payload
+            except Exception:
+                # Fall back to raw string payloads from older producers.
+                if isinstance(raw, str):
+                    job_id = raw
+
+            if not job_id:
+                print(f"[worker] Failed to parse job payload: 'job_id' (c{consumer_id})")
+                continue
+
+            print(f"[worker] (c{consumer_id}) Processing job: {job_id[:8]}...")
+
+            try:
+                _process_job(session_factory, rds, docker_client, job_id)
+                with processed_jobs_lock:
+                    processed_jobs += 1
+                    total = processed_jobs
+                print(f"[worker] (c{consumer_id}) Job {job_id[:8]}... completed (total: {total})")
+            except Exception as e:
+                print(f"[worker] (c{consumer_id}) Job {job_id[:8]}... FAILED: {e}")
+                import traceback
+                traceback.print_exc()
+
+            time.sleep(0.01)
+
+    threads = [
+        threading.Thread(target=_consumer_loop, args=(i,), name=f"worker-consumer-{i}", daemon=True)
+        for i in range(consumers)
+    ]
+    for t in threads:
+        t.start()
+
+    try:
+        while True:
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        print("\n[worker] Shutting down...")
+    finally:
+        stop_event.set()
+        for t in threads:
+            try:
+                t.join(timeout=2.0)
+            except Exception:
+                pass
+        print("[worker] Cleaning up...")
+        if trending_scheduler:
+            trending_scheduler.shutdown(wait=False)
+        if template_perf_scheduler:
+            template_perf_scheduler.shutdown(wait=False)
+
+
+if __name__ == "__main__":
+    main()

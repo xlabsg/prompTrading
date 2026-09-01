@@ -1,0 +1,20 @@
+docker==7.1.0
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+redis==5.2.1
+requests==2.32.3
+numpy==2.2.1
+pandas==2.2.3
+TA-Lib==0.6.8
+yfinance==0.2.54
+PyYAML==6.0.2
+PyJWT==2.10.1
+cryptography==43.0.3
+sqlalchemy==2.0.36
+psycopg[binary]==3.2.3
+pydantic==2.10.4
+pydantic-settings==2.7.0
+APScheduler==3.11.0
+# LLM and observability (smoke_validation depends on these)
+openai>=1.0.0
+langfuse>=2.0.0

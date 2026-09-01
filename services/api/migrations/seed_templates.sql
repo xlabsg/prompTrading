@@ -1,0 +1,148 @@
+-- Seed data for built-in strategy templates
+-- Run this after add_strategy_templates.sql
+
+INSERT INTO strategy_templates (
+  id,
+  name,
+  description,
+  template_type,
+  prompt,
+  config_snapshot,
+  code_snapshot,
+  author,
+  tags,
+  risk_level,
+  trading_frequency,
+  complexity_score,
+  min_capital_usdt,
+  supported_exchanges,
+  supported_symbols,
+  is_public,
+  is_featured,
+  subscriber_count
+)
+VALUES
+(
+  'tmpl-divergence',
+  'divergence',
+  'Regular divergence with multi-indicator confirmation and S/R risk filter.',
+  'builtin',
+  $code$Regular divergence on confirmed pivots using MACD, histogram, and stochastic.
+Optional VW-MACD, OBV, RSI, MFI, CCI confirmations.
+Dynamic TP/SL based on support/resistance with minimum R:R filtering.$code$,
+  '{
+    "live_bar_interval": "1h",
+    "live_history_bars": 200,
+    "default_max_position_pct": 10.0,
+    "default_stop_loss_pct": 1.0,
+    "pivot_period": 10,
+    "pivot_confirm_bars": 1,
+    "min_confirmations": 3,
+    "min_risk_reward": 1.0,
+    "use_dynamic_tpsl": true,
+    "stop_loss_pct": 0.01,
+    "take_profit_pct": 0.02,
+    "cooldown_bars": 0,
+    "position_size_pct": 1.0,
+    "min_rsi_delta": 0.0,
+    "indicators": {
+      "macd_fast": 12,
+      "macd_slow": 26,
+      "macd_signal": 9,
+      "stochastic_k": 14,
+      "stochastic_d": 3,
+      "stochastic_smooth": 3,
+      "vw_macd_fast": 12,
+      "vw_macd_slow": 26,
+      "vw_macd_signal": 9,
+      "vw_macd_enabled": true,
+      "obv_enabled": true,
+      "rsi_enabled": false,
+      "rsi_period": 14,
+      "mfi_enabled": false,
+      "mfi_period": 14,
+      "cci_enabled": false,
+      "cci_period": 20,
+      "stochastic_zone_filter": {
+        "enabled": false,
+        "overbought": 70.0,
+        "oversold": 30.0
+      }
+    }
+  }'::jsonb,
+  '{
+    "module": "strategy_templates.templates.divergence",
+    "entrypoint": "create_live_strategy"
+  }'::jsonb,
+  'Stratsmith',
+  '["divergence", "rsi", "macd", "mean_reversion"]',
+  'medium',
+  'intraday',
+  4,
+  100.0,
+  '["okx"]',
+  '["BTC-USDT-SWAP", "ETH-USDT-SWAP"]',
+  true,
+  false,
+  0
+),
+(
+  'tmpl-flow-right',
+  'flow_right',
+  'Order-flow momentum strategy with multi-window flow scoring and regime filters.',
+  'builtin',
+  $code$Order-flow momentum strategy with impulse/confirmation/context windows.
+Uses flow imbalance, velocity, volatility, anomaly detection, and EMA regime filtering.$code$,
+  '{
+    "live_bar_interval": "1m",
+    "live_history_bars": 300,
+    "default_max_position_pct": 15.0,
+    "default_stop_loss_pct": 1.0,
+    "flow_windows": [10, 30, 60],
+    "window_weights": [1.0, 0.7, 0.5],
+    "min_score": 0.55,
+    "min_short_imbalance": 0.55,
+    "min_mid_imbalance": 0.45,
+    "min_long_imbalance": 0.35,
+    "min_total_notional": 150000,
+    "min_trade_count": 10,
+    "min_velocity_bps": 1.0,
+    "max_volatility_bps": 35.0,
+    "cooldown_ms": 1200,
+    "max_position_seconds": 45,
+    "signal_expiry_seconds": 3,
+    "anomaly_enabled": true,
+    "anomaly_min_score": 0.3,
+    "ms_confirm_enabled": true,
+    "ms_confirm_5m_bars": 5,
+    "ms_confirm_15m_bars": 15,
+    "ms_confirm_5m_min_imbalance": 0.1,
+    "ms_confirm_15m_min_imbalance": 0.1,
+    "ms_confirm_5m_min_volume_zscore": 0.3,
+    "ms_confirm_15m_min_volume_zscore": 0.3,
+    "trend_filter_enabled": true,
+    "trend_timeframe_minutes": 5,
+    "trend_ema_period": 50,
+    "trend_slope_lookback": 10,
+    "trend_price_buffer_pct": 0.05,
+    "trend_neutral_policy": "skip",
+    "trend_insufficient_policy": "skip",
+    "trend_max_entry_distance_pct": 0.0
+  }'::jsonb,
+  '{
+    "module": "strategy_templates.templates.flow_right",
+    "entrypoint": "create_live_strategy"
+  }'::jsonb,
+  'Stratsmith',
+  '["order_flow", "momentum", "high_frequency"]',
+  'high',
+  'high_frequency',
+  4,
+  500.0,
+  '["okx", "binance"]',
+  '["BTC-USDT-SWAP", "ETH-USDT-SWAP"]',
+  true,
+  false,
+  0
+)
+ON CONFLICT (id) DO NOTHING;

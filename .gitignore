@@ -1,0 +1,39 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+
+.env
+.env.*
+infra/compose/.env
+
+node_modules/
+.next/
+out/
+dist/
+
+.DS_Store
+
+*.log
+.e2e_artifacts/
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+
+# Local agent & tooling scratch
+.shared/
+.cursor/worktrees.json
+
+# Build & test artifacts
+coverage/
+.pytest_cache/
+*.egg-info/
+
+# ...but the template must be tracked
+!infra/compose/.env.example

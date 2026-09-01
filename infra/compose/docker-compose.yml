@@ -1,0 +1,197 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - default
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - redisdata:/data
+    networks:
+      - default
+
+  api:
+    build:
+      context: ../../
+      dockerfile: services/api/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      APP_REPOS_DIR: /workspaces/repos
+      APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
+      APP_PUBLIC_BASE_URL: http://localhost:3000
+      APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
+      APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+      # Admin allowlist (comma-separated emails or JSON list)
+      APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
+      APP_ADMIN_API_KEY: ${APP_ADMIN_API_KEY:-}
+      # GitHub App config (optional)
+      APP_GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      APP_GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      APP_GITHUB_APP_WEBHOOK_SECRET: ${GITHUB_APP_WEBHOOK_SECRET:-}
+      APP_GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:-}
+      # GitHub OAuth config (for user authentication)
+      APP_GITHUB_OAUTH_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID:-}
+      APP_GITHUB_OAUTH_CLIENT_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET:-}
+      APP_GITHUB_OAUTH_REDIRECT_URI: ${GITHUB_OAUTH_REDIRECT_URI:-}
+      # Google OAuth config (for user authentication)
+      APP_GOOGLE_OAUTH_CLIENT_ID: ${GOOGLE_OAUTH_CLIENT_ID:-}
+      APP_GOOGLE_OAUTH_CLIENT_SECRET: ${GOOGLE_OAUTH_CLIENT_SECRET:-}
+      APP_GOOGLE_OAUTH_REDIRECT_URI: ${GOOGLE_OAUTH_REDIRECT_URI:-}
+      # LLM config for chat API (from ./infra/compose/.env)
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      # LLM request timeouts (seconds)
+      LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
+      LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+      # Trading API encryption key (required for live trading)
+      TRADING_API_ENCRYPTION_KEY: ${TRADING_API_ENCRYPTION_KEY:-}
+    volumes:
+      - workspaces:/workspaces
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker-rpc:
+        condition: service_started
+    networks:
+      - default
+
+  worker:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      GITHUB_APP_ID: ${GITHUB_APP_ID:-}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
+      REPO_SYNC_INTERVAL_S: ${REPO_SYNC_INTERVAL_S:-900}
+      WORKER_DOCKER_NETWORK: compose_default
+      WORKER_WORKSPACES_VOLUME: ai_strategy_workspaces
+      WORKER_AGENT_IMAGE: stratsmith-agent:local
+      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
+      WORKER_DEV_IMAGE: stratsmith-dev:local
+      WORKER_JOB_TIMEOUT_S: ${WORKER_JOB_TIMEOUT_S:-420}
+      WORKER_CONSUMERS: ${WORKER_CONSUMERS:-2}
+      # LLM config (from ./infra/compose/.env)
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      # LLM request timeouts (seconds) passed through into agent sandbox
+      LLM_HTTP_TIMEOUT_S: ${AGENT_LLM_HTTP_TIMEOUT_S:-180}
+      LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
+      # Fail-fast timeout for strategy name generation (seconds)
+      STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces:/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - default
+
+  worker-rpc:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+    command: ["uvicorn", "worker.rpc_server:app", "--host", "0.0.0.0", "--port", "8010"]
+    expose:
+      - "8010"
+    volumes:
+      - workspaces:/workspaces
+    depends_on:
+      worker:
+        condition: service_started
+    networks:
+      - default
+
+  web:
+    build:
+      context: ../../
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        VITE_GA_MEASUREMENT_ID: ${VITE_GA_MEASUREMENT_ID:-}
+        VITE_GA_COOKIE_DOMAIN: ${VITE_GA_COOKIE_DOMAIN:-}
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      API_INTERNAL_BASE_URL: http://api:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    networks:
+      - default
+    command: sh -c "mkdir -p /var/log/app && nginx -g 'daemon off;' 2>&1 | tee -a /var/log/app/web.log"
+
+  agent-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/agent/Dockerfile
+    image: stratsmith-agent:local
+    command: ["true"]
+
+  backtest-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/backtest/Dockerfile
+    image: stratsmith-backtest:local
+    command: ["true"]
+
+  dev-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/dev/Dockerfile
+    image: stratsmith-dev:local
+    entrypoint: ["true"]
+
+volumes:
+  pgdata:
+    name: ai_strategy_pgdata
+  redisdata:
+    name: ai_strategy_redisdata
+  workspaces:
+    name: ai_strategy_workspaces

@@ -1,0 +1,235 @@
+# E2E compose (real external dependencies)
+# Usage:
+#   ./infra/compose/run_e2e.sh core
+services:
+  # ==================== Infrastructure ====================
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - pgdata_e2e:/var/lib/postgresql/data
+
+  redis:
+    image: redis:8.4.0-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - redisdata_e2e:/data
+
+  # ==================== Backend API ====================
+  api:
+    build:
+      context: ../../
+      dockerfile: services/api/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      APP_REPOS_DIR: /workspaces/repos
+      APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
+      APP_PUBLIC_BASE_URL: http://localhost:3000
+      APP_SANDBOX_BASE_URL: http://localhost:8080
+      APP_DEV_SKIP_SUBSCRIPTION_CHECK: "true"
+      APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
+      APP_ADMIN_API_KEY: ${APP_ADMIN_API_KEY:-}
+      # LLM config (real external)
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      # LLM request timeouts (seconds)
+      LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
+      LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+    volumes:
+      - workspaces_e2e:/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz', timeout=2); raise SystemExit(0 if 200 <= r.status < 300 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # ==================== Background Workers ====================
+  worker-scheduler:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_MODE: scheduler
+      WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
+      WORKER_WORKSPACES_VOLUME: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_workspaces_e2e
+      WORKER_AGENT_IMAGE: stratsmith-agent:local
+      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
+      WORKER_DEV_IMAGE: stratsmith-dev:local
+      # Scheduler enabled here
+      # Default: keep schedulers OFF for e2e to avoid cron-triggered background jobs
+      # that can interfere with deterministic test runs. Enable explicitly when needed.
+      TRENDING_SCHEDULER_ENABLED: ${E2E_SCHEDULERS_ENABLED:-false}
+      TEMPLATE_PERFORMANCE_SCHEDULER_ENABLED: ${E2E_SCHEDULERS_ENABLED:-false}
+      # LLM request timeouts (seconds) passed through into agent sandbox
+      LLM_HTTP_TIMEOUT_S: ${AGENT_LLM_HTTP_TIMEOUT_S:-180}
+      LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
+      # Fail-fast timeout for strategy name generation (seconds)
+      STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
+    volumes:
+      - workspaces_e2e:/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker-consumer:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_MODE: consumer
+      WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
+      WORKER_WORKSPACES_VOLUME: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_workspaces_e2e
+      WORKER_AGENT_IMAGE: stratsmith-agent:local
+      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
+      WORKER_DEV_IMAGE: stratsmith-dev:local
+      # LLM config passed through into agent sandbox
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      # LLM request timeouts (seconds) passed through into agent sandbox
+      LLM_HTTP_TIMEOUT_S: ${AGENT_LLM_HTTP_TIMEOUT_S:-180}
+      LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
+      # Fail-fast timeout for strategy name generation (seconds)
+      STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
+      # Schedulers disabled here (safety; mode already prevents starting them)
+      TRENDING_SCHEDULER_ENABLED: "false"
+      TEMPLATE_PERFORMANCE_SCHEDULER_ENABLED: "false"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces_e2e:/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # ==================== Frontend (optional) ====================
+  web:
+    profiles: ["ui"]
+    build:
+      context: ../../
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+        VITE_GA_MEASUREMENT_ID: ${VITE_GA_MEASUREMENT_ID:-}
+        VITE_GA_COOKIE_DOMAIN: ${VITE_GA_COOKIE_DOMAIN:-}
+    ports:
+      - "${E2E_WEB_PORT:-0}:80"
+    depends_on:
+      - api
+    command: sh -c "nginx -g 'daemon off;'"
+
+  # ==================== Task Images (Build Once) ====================
+  agent-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/agent/Dockerfile
+    image: stratsmith-agent:local
+    command: ["true"]
+
+  backtest-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/backtest/Dockerfile
+    image: stratsmith-backtest:local
+    command: ["true"]
+
+  dev-image:
+    build:
+      context: ../../
+      dockerfile: infra/images/dev/Dockerfile
+    image: stratsmith-dev:local
+    entrypoint: ["true"]
+
+  # ==================== Test Runner ====================
+  e2e-runner:
+    build:
+      context: ../../
+      dockerfile: services/api/Dockerfile
+    environment:
+      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_REDIS_URL: redis://redis:6379/0
+      APP_WORKSPACES_DIR: /workspaces
+      APP_DEV_SKIP_SUBSCRIPTION_CHECK: "true"
+      E2E_API_BASE_URL: ${E2E_API_BASE_URL:-http://api:8000}
+      # Enable real external E2E tests inside pytest
+      E2E_REAL_EXTERNAL: ${E2E_REAL_EXTERNAL:-0}
+      E2E_LLM_PROMPT: ${E2E_LLM_PROMPT:-}
+      # LLM config for test process
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
+      DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
+      LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      # LLM request timeouts (seconds)
+      LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
+      LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+    volumes:
+      - workspaces_e2e:/workspaces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+      worker-consumer:
+        condition: service_started
+    entrypoint: ["bash", "-lc"]
+    command: ["pytest -m integration -v"]
+
+volumes:
+  pgdata_e2e: {}
+  redisdata_e2e: {}
+  workspaces_e2e: {}

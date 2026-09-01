@@ -1,0 +1,99 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - 'v*'
+  pull_request:
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/stratsmith
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        include:
+          # Main services
+          - name: api
+            context: .
+            dockerfile: services/api/Dockerfile
+            image: api
+          - name: worker
+            context: .
+            dockerfile: services/worker/Dockerfile
+            image: worker
+          - name: web
+            context: .
+            dockerfile: apps/web/Dockerfile
+            image: web
+
+          # Task images
+          - name: agent
+            context: .
+            dockerfile: infra/images/agent/Dockerfile
+            image: agent
+          - name: backtest
+            context: .
+            dockerfile: infra/images/backtest/Dockerfile
+            image: backtest
+          - name: dev
+            context: .
+            dockerfile: infra/images/dev/Dockerfile
+            image: dev
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=sha
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          platforms: linux/arm64
+          build-args: |
+            VITE_API_BASE_URL=${{ matrix.name == 'web' && 'https://ai.example.com' || '' }}
+            VITE_GA_MEASUREMENT_ID=${{ matrix.name == 'web' && 'G-PMEMB446DS' || '' }}
+            VITE_GA_COOKIE_DOMAIN=${{ matrix.name == 'web' && 'ai.example.com' || '' }}
+
+      - name: Image digest
+        run: echo ${{ steps.meta.outputs.digest }}

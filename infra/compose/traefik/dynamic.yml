@@ -1,0 +1,8 @@
+http:
+  middlewares:
+    sandbox-forward-auth:
+      forwardAuth:
+        address: "http://api:8000/internal/sandbox/forward-auth"
+        trustForwardHeader: true
+        authResponseHeaders:
+          - X-Sandbox-Session-Id

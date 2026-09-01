@@ -1,0 +1,94 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Stratsmith Design System - Fintech with Orange Accent */
+
+@layer base {
+    :root {
+        /* Core brand - warm cream background with orange accent */
+        --background: 40 33% 98%;
+        --foreground: 30 10% 15%;
+
+        --card: 0 0% 100%;
+        --card-foreground: 30 10% 15%;
+
+        --popover: 0 0% 100%;
+        --popover-foreground: 30 10% 15%;
+
+        /* Orange brand color */
+        --primary: 30 100% 50%;
+        --primary-foreground: 0 0% 100%;
+
+        /* Secondary - dark for contrast */
+        --secondary: 30 10% 12%;
+        --secondary-foreground: 0 0% 100%;
+
+        --muted: 40 20% 94%;
+        --muted-foreground: 30 10% 45%;
+
+        --accent: 30 100% 50%;
+        --accent-foreground: 0 0% 100%;
+
+        --destructive: 0 84% 60%;
+        --destructive-foreground: 0 0% 100%;
+
+        --border: 40 20% 90%;
+        --input: 40 20% 90%;
+        --ring: 30 100% 50%;
+
+        --radius: 0.75rem;
+
+        /* Custom tokens */
+        --gradient-orange: linear-gradient(135deg, hsl(30 100% 50%) 0%, hsl(25 100% 55%) 100%);
+        --gradient-dark: linear-gradient(135deg, hsl(30 10% 8%) 0%, hsl(30 10% 15%) 100%);
+        --gradient-hero: linear-gradient(180deg, hsl(40 33% 98%) 0%, hsl(35 30% 95%) 100%);
+        --shadow-soft: 0 4px 20px -4px hsl(30 100% 50% / 0.15);
+        --shadow-glow: 0 0 40px hsl(30 100% 50% / 0.3);
+    }
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    html {
+        scroll-behavior: smooth;
+    }
+
+    body {
+        @apply bg-background text-foreground font-sans antialiased;
+        font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6 {
+        font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    }
+}
+
+@layer utilities {
+    .text-gradient-orange {
+        @apply bg-clip-text text-transparent;
+        background-image: var(--gradient-orange);
+    }
+
+    .bg-gradient-hero {
+        background: var(--gradient-hero);
+    }
+
+    .shadow-glow {
+        box-shadow: var(--shadow-glow);
+    }
+
+    .shadow-soft {
+        box-shadow: var(--shadow-soft);
+    }
+}
