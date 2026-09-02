@@ -3,7 +3,7 @@ name: ss-pre-push-checks
 description: Use before committing, pushing, force-pushing, opening a PR, or claiming checks pass in the prompt-trading repo, to select the smallest set of tests and checks that actually cover the outgoing diff instead of reflexively running every suite or the whole Compose stack.
 ---
 
-# PromptTrading pre-push checks
+# PrompTrading pre-push checks
 
 Run relevant local evidence once before a push. There is no repository-wide gate and no pre-commit hook here: CI (`.github/workflows/docker-build-push.yml`) only builds and pushes images, so nothing but this selection stands between a change and a broken deploy.
 

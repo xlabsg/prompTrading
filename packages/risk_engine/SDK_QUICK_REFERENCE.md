@@ -4,7 +4,7 @@
 
 ## Overview
 
-The Trading SDK is a comprehensive risk management and order execution framework integrated into the PromptTrading. It provides:
+The Trading SDK is a comprehensive risk management and order execution framework integrated into the PrompTrading. It provides:
 
 - **侵入式风险控制** (Invasive Risk Control) - Orders are automatically validated and rejected if they violate risk rules
 - **移动止损** (Trailing Stop Loss) - Automatically adjusts stop loss as price moves in profitable direction

@@ -2,7 +2,7 @@
 
 ## What Was Created
 
-A Claude Skill has been created to run integration tests for the PromptTrading. This allows AI assistants to execute end-to-end tests automatically when requested.
+A Claude Skill has been created to run integration tests for the PrompTrading. This allows AI assistants to execute end-to-end tests automatically when requested.
 
 ```
 .claude/
@@ -165,7 +165,7 @@ Claude: Running comprehensive test suite...
 
 **Name:** `integration-test`
 **Tools:** Bash, Read
-**Description:** Run end-to-end integration tests for the PromptTrading
+**Description:** Run end-to-end integration tests for the PrompTrading
 
 ## Advanced Usage
 

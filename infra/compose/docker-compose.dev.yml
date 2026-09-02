@@ -1,4 +1,4 @@
-# Simplified Docker Compose for PromptTrading
+# Simplified Docker Compose for PrompTrading
 # Usage: docker compose -f infra/compose/docker-compose.dev.yml up --build
 
 services:

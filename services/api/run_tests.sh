@@ -10,7 +10,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}==================================================${NC}"
-echo -e "${GREEN}  PromptTrading - Integration Tests${NC}"
+echo -e "${GREEN}  PrompTrading - Integration Tests${NC}"
 echo -e "${GREEN}==================================================${NC}"
 echo ""
 

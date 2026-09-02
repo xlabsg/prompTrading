@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "strategy_templates"
 version = "0.1.0"
-description = "Trading strategy templates for the PromptTrading"
-authors = [{name = "PromptTrading"}]
+description = "Trading strategy templates for the PrompTrading"
+authors = [{name = "PrompTrading"}]
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

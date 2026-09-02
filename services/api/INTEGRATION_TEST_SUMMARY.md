@@ -2,7 +2,7 @@
 
 ## Overview
 
-Full end-to-end integration tests have been implemented for the PromptTrading. These tests validate the complete workflow from strategy generation to backtesting using the **fallback strategy** (no LLM API key required).
+Full end-to-end integration tests have been implemented for the PrompTrading. These tests validate the complete workflow from strategy generation to backtesting using the **fallback strategy** (no LLM API key required).
 
 ## What Was Implemented
 
