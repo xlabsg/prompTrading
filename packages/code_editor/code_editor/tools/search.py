@@ -1,9 +1,5 @@
 """
 搜索工具 - 封装 ripgrep
-
-参考 OpenCode 的:
-- tool/grep.ts
-- file/ripgrep.ts
 """
 
 import subprocess
@@ -60,7 +56,7 @@ def grep(
     """
     使用 ripgrep 搜索代码
 
-    参考 OpenCode 的 grep.ts 第 368-406 行
+    JSON 输出解析。
 
     Args:
         pattern: 正则表达式模式
@@ -145,7 +141,7 @@ def glob_files(
     """
     使用 ripgrep 查找文件
 
-    参考 OpenCode 的 ripgrep.ts 第 206-264 行
+    定位可执行的 ripgrep 二进制。
 
     Args:
         pattern: glob 模式（如 "**/*.py"）

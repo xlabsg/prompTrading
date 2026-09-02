@@ -1,9 +1,5 @@
 """
-文件操作工具 - 防止并发写入冲突
-
-参考 OpenCode 的 FileTime 机制：
-- edit.ts 第 74 行: await FileTime.assert()
-- file/time.ts: FileTime.withLock() 并发写入保护
+文件操作工具 - 防止并发写入冲突（FileTime 机制：读取时记录时间戳，写入前校验）
 """
 
 import os

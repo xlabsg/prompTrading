@@ -1,8 +1,5 @@
 """
-核心编辑算法 - 多级模糊匹配链
-
-移植自 OpenCode 的 edit.ts，实现9种 Replacer 策略
-参考: OpenCode packages/opencode/src/tool/edit.ts
+核心编辑算法 - 多级模糊匹配链，实现9种 Replacer 策略
 """
 
 from typing import Generator, Callable
