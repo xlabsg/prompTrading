@@ -49,6 +49,8 @@ class TauSessionResult:
     backtest_metrics: list[dict[str, Any]] = field(default_factory=list)
     compactions: int = 0
     auto_retries: int = 0
+    tokens: dict[str, Any] = field(default_factory=dict)
+    cost_usd: float | None = None
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -219,6 +221,7 @@ def _drive(
 
         problems = validate()
         if not problems:
+            _collect_stats(proc, reader, result, event_timeout_s)
             return
 
         result.follow_ups += 1
@@ -240,6 +243,35 @@ def _drive(
     raise TauSessionError(
         "agent_incomplete_after_follow_ups: " + "; ".join(problems)
     )
+
+
+def _collect_stats(
+    proc: subprocess.Popen[str],
+    reader: _EventReader,
+    result: TauSessionResult,
+    event_timeout_s: float,
+) -> None:
+    """Record what the session cost, for the run's `llm_meta`.
+
+    Best effort: a session that produced good artifacts is not a failure just
+    because its accounting could not be read.
+    """
+    try:
+        _send(proc, {"id": 9000, "type": "get_session_stats"})
+        for event in _events(reader, event_timeout_s, proc):
+            if event.get("type") != "response" or event.get("command") != "get_session_stats":
+                continue
+            data = event.get("data")
+            if isinstance(data, dict):
+                tokens = data.get("tokens")
+                if isinstance(tokens, dict):
+                    result.tokens = tokens
+                cost = data.get("cost")
+                if isinstance(cost, (int, float)):
+                    result.cost_usd = float(cost)
+            return
+    except (TauSessionError, OSError, ValueError) as exc:
+        print(f"[agent] could not read session stats: {exc}", file=sys.stderr)
 
 
 def _prompt_command(request_id: int, message: str, behavior: str | None) -> dict[str, Any]:

@@ -10,7 +10,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import textwrap
 
 import pytest
 
@@ -140,6 +139,14 @@ def test_silence_times_out_and_kills_the_child(tmp_path, clean_env, monkeypatch)
         _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [], hang=True)
 
 
+def test_session_cost_is_recorded(tmp_path, clean_env, monkeypatch):
+    """Token usage and cost come from Tau, for the run's llm_meta."""
+    result = _run_with_fake(tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=lambda: [])
+
+    assert result.tokens == {"input": 100, "output": 20, "total": 120}
+    assert result.cost_usd == 0.0031
+
+
 def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
     script = [
         {"type": "turn_start"},
@@ -194,6 +201,53 @@ def test_non_json_output_is_skipped(tmp_path, clean_env, monkeypatch):
 
 # --- fake Tau plumbing -------------------------------------------------------
 
+# Stands in for `tau --mode rpc`: replays a JSONL script for each prompt it is
+# given. Kept unindented at module level so the generated file needs no dedent.
+_FAKE_TAU_SOURCE = """\
+import json, sys, time
+
+script = json.loads(sys.argv[1])
+hang = sys.argv[2] == "1"
+preamble = sys.argv[3]
+
+STATS = {
+    "type": "response",
+    "command": "get_session_stats",
+    "success": True,
+    "data": {"tokens": {"input": 100, "output": 20, "total": 120}, "cost": 0.0031},
+}
+
+
+def emit(payload):
+    sys.stdout.write(json.dumps(payload) + "\\n")
+    sys.stdout.flush()
+
+
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    command = json.loads(line)
+    if command.get("type") == "get_session_stats":
+        emit(STATS)
+        continue
+    if command.get("type") != "prompt":
+        continue
+    if preamble:
+        sys.stdout.write(preamble + "\\n")
+        sys.stdout.flush()
+    for event in script:
+        emit(event)
+    if hang:
+        time.sleep(30)
+    # A script that never settles stands for a child that died mid-turn: close
+    # stdout so the driver sees the stream end instead of waiting out its
+    # event timeout.
+    if not any(e.get("type") == "agent_settled" for e in script):
+        break
+"""
+
+
 
 def _run_with_fake(
     tmp_path,
@@ -207,37 +261,7 @@ def _run_with_fake(
 ):
     """Run the driver against a fake Tau that replays `script` for each prompt."""
     fake = tmp_path / "fake_tau.py"
-    fake.write_text(
-        textwrap.dedent(
-            """
-            import json, sys, time
-            script = json.loads(sys.argv[1])
-            hang = sys.argv[2] == "1"
-            preamble = sys.argv[3]
-
-            for line in sys.stdin:
-                line = line.strip()
-                if not line:
-                    continue
-                if json.loads(line).get("type") != "prompt":
-                    continue
-                if preamble:
-                    sys.stdout.write(preamble + "\\n")
-                    sys.stdout.flush()
-                for event in script:
-                    sys.stdout.write(json.dumps(event) + "\\n")
-                    sys.stdout.flush()
-                if hang:
-                    time.sleep(30)
-                # A script that never settles stands for a child that died
-                # mid-turn: close stdout so the driver sees the stream end
-                # instead of waiting out its event timeout.
-                if not any(e.get("type") == "agent_settled" for e in script):
-                    break
-            """
-        ).strip()
-        + "\n"
-    )
+    fake.write_text(_FAKE_TAU_SOURCE)
 
     # The driver builds `[executable, --mode, rpc, ...]`; a wrapper script lets a
     # plain interpreter stand in for the `tau` binary and ignore those flags.

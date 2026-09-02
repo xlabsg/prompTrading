@@ -349,6 +349,8 @@ def _session_stats(session: "tau_driver.TauSessionResult | None") -> dict[str, A
         "tool_errors": session.tool_errors,
         "compactions": session.compactions,
         "auto_retries": session.auto_retries,
+        "tokens": session.tokens,
+        "cost_usd": session.cost_usd,
     }
 
 

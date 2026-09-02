@@ -10,7 +10,8 @@ requires-python = ">=3.13"
 dependencies = [
     "fastapi==0.115.6",
     "uvicorn[standard]==0.34.0",
-    "pydantic==2.10.4",
+    # >=2.11 is tau-ai's floor; the API image installs both.
+    "pydantic>=2.11,<3",
     "pydantic-settings==2.7.0",
     "sqlalchemy==2.0.36",
     "psycopg[binary]==3.2.3",
