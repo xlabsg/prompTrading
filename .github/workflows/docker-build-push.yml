@@ -11,7 +11,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/stratsmith
+  IMAGE_PREFIX: ${{ github.repository_owner }}/prompt-trading
 
 jobs:
   build-and-push:

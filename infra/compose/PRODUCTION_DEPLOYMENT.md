@@ -69,7 +69,7 @@ git push origin v1.0.0
 **如果镜像是公开的**：
 ```bash
 # 可以跳过此步骤，直接拉取
-docker pull ghcr.io/your-org/stratsmith-api:latest
+docker pull ghcr.io/your-org/prompt-trading-api:latest
 ```
 
 **如果镜像是私有的**：
@@ -78,22 +78,22 @@ docker pull ghcr.io/your-org/stratsmith-api:latest
 echo $YOUR_PAT | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
 
 # 验证登录
-docker pull ghcr.io/your-org/stratsmith-api:latest
+docker pull ghcr.io/your-org/prompt-trading-api:latest
 ```
 
 ### 3.2 克隆仓库（或只下载配置文件）
 
 ```bash
 # 方式 1: 克隆完整仓库
-git clone https://github.com/your-org/stratsmith.git
-cd stratsmith/infra/compose
+git clone https://github.com/your-org/prompTrading.git
+cd prompTrading/infra/compose
 
 # 方式 2: 只下载需要的文件
-mkdir -p ~/stratsmith-deploy
-cd ~/stratsmith-deploy
-curl -O https://raw.githubusercontent.com/your-org/stratsmith/main/infra/compose/docker-compose.prod.yml
-curl -O https://raw.githubusercontent.com/your-org/stratsmith/main/infra/compose/.env.prod.example
-curl -O https://raw.githubusercontent.com/your-org/stratsmith/main/infra/compose/deploy.sh
+mkdir -p ~/prompt-trading-deploy
+cd ~/prompt-trading-deploy
+curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/docker-compose.prod.yml
+curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/.env.prod.example
+curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/deploy.sh
 chmod +x deploy.sh
 ```
 

@@ -449,7 +449,7 @@ const zh = {
       about: "关于我们",
       blog: "博客",
       careers: "加入我们",
-      copyright: "© 2026 Stratsmith. 保留所有权利。",
+      copyright: "© 2026 PromptTrading. 保留所有权利。",
     },
   },
   dashboard: {

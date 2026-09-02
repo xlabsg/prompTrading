@@ -96,7 +96,7 @@ class TelegramNotificationService:
                     return False, f"Bot info request failed: {response.text}"
 
             # Test sending a message
-            test_message = "🔔 Stratsmith Strategy Bot connected successfully!"
+            test_message = "🔔 PromptTrading Strategy Bot connected successfully!"
             await self.send_message(test_message)
             return True, f"Connected as @{bot_info.get('result', {}).get('username', 'unknown')}"
         except Exception as e:
