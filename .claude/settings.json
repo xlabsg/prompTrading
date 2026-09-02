@@ -3,5 +3,10 @@
     "frontend-design@claude-plugins-official": true,
     "context7@claude-plugins-official": true
   },
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
   "includeCoAuthoredBy": false
 }

@@ -29,7 +29,7 @@ from agent.backtest_tool import BacktestBudget, BacktestDataset, budget_summary
 from agent.observability.langfuse_client import get_langfuse
 from agent.observability.metrics import SessionMetrics
 from agent.protocol import OVERVIEW_FILE, STRATEGY_FILE
-from agent.tau_config import resolve_provider
+from agent.tau_config import ensure_catalog_entry, resolve_provider
 from agent.templates import (
     DEFAULT_STRATEGY_PROTOCOL,
     DEFAULT_STRATEGY_SPEC_YAML,
@@ -434,6 +434,7 @@ def main() -> int:
     print(f"[agent] backtest dataset={dataset.describe()} budget={budget.max_runs}")
 
     tau_target = resolve_provider()
+    ensure_catalog_entry(tau_target)
     print(f"[agent] tau provider={tau_target.provider} model={tau_target.model}")
 
     task = _build_agent_task(

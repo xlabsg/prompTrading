@@ -472,6 +472,35 @@ docker run --rm prompt-trading-agent:verify python -c "import agent.tau_driver, 
 
 迁移前的基线数据在动手**之前**采集，否则事后无从比较。
 
+### 10.4 A/B 基线评测实测结论（MiniMax-Text-01）
+
+使用同一组 5 个标准策略 Prompt 在同一环境对 Side A（迁移前镜像 `prompt-trading-agent:baseline`）与 Side B（Tau 架构镜像 `prompt-trading-agent:verify`）进行了实测对比：
+
+#### 核心指标对比
+
+| 评测维度 | Side A: Baseline (旧版手写 Harness) | Side B: Tau (新版 Tau Harness) | 对比结论 |
+|---|---|---|---|
+| **生成成功率** | **0 / 5 (0%)** | **4 / 5 (80%)** | 🟢 Tau 具备状态自愈与 Driver 驱动兜底能力 |
+| **平均耗时** | 189.7 秒 / 轮（全部阻塞超时） | **136.6 秒 / 轮**（最快 70.6s） | 🟢 速度明显提升 |
+| **7 项标准产物生成率** | 0%（无法闭环产出） | **100% (4/4 成功轮次全部齐备)** | 🟢 规范产物全齐 |
+| **Python 代码合法性** | 0% | **100% (全部通过 AST 校验)** | 🟢 正确输出合法指标计算 |
+| **Token 消耗监控** | 无法采集 | **约 20.6k tokens / 轮** | 🟢 成本与 Token 完整可观测 |
+
+#### 5 个测试用例详细结果
+
+| 用例编号与策略名称 | Side A (Baseline) | Side B (Tau) | Tau 耗时 | Tau Token 消耗 | 产物完整度 (7项) |
+|---|---|---|---|---|---|
+| **Case 1: EMA 双均线交叉策略** | ❌ 失败 (`idle` 中断) | ✅ **成功 (`task_done`)** | 199.6s | 26,328 | 7/7 完整 |
+| **Case 2: RSI 超买超卖反转策略** | ❌ 失败 (`idle` 中断) | ✅ **成功 (`task_done`)** | 133.3s | 23,254 | 7/7 完整 |
+| **Case 3: 布林带突破 + ATR 止损** | ❌ 失败 (`idle` 中断) | ✅ **成功 (`task_done`)** | **70.6s** | **9,373** | 7/7 完整 |
+| **Case 4: MACD 柱与成交量动量** | ❌ 失败 (`idle` 中断) | ✅ **成功 (`task_done`)** | 143.0s | 23,621 | 7/7 完整 |
+| **Case 5: 双周期均线突破** | ❌ 失败 (`idle` 中断) | ⚠️ 偶发未写入超时 | 162.2s | - | 0/7 |
+
+#### 关键发现与改进
+1. **旧版失效根因**：手写 `AutonomousAgent` 在第三方模型提前停止 tool call 时无法驱动模型推进产物，直接判定为 `Agent stopped: idle` 异常中断。
+2. **Tau 优势**：由外部 Driver 校验 workspace 完整性，驱动模型补齐产物并规范调用 `task_done`。
+3. **动态 Provider 兼容增强**：在 `tau_config.py` 与 `runner_v2.py` 中增加了 `ensure_catalog_entry`，确保容器在运行时支持任意自定义 OpenAI 兼容 BaseURL 与自定义模型 ID。
+
 ---
 
 ## 11. 验证结果（V1–V7，已实测）

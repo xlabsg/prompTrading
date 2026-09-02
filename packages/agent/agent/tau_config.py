@@ -137,6 +137,14 @@ def write_catalog_entry(target: TauProvider) -> None:
     )
 
 
+def ensure_catalog_entry(target: TauProvider | None = None) -> None:
+    """Ensure Tau catalog has an entry registered for custom gateway / base_url."""
+    if target is None:
+        target = resolve_provider()
+    if target.needs_catalog_entry:
+        write_catalog_entry(target)
+
+
 def main() -> int:
     target = resolve_provider()
     if not target.needs_catalog_entry:

@@ -946,13 +946,14 @@ def _run_autonomous_refine(
     on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     from agent import tau_driver
-    from agent.tau_config import resolve_provider
+    from agent.tau_config import ensure_catalog_entry, resolve_provider
 
     strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
     if not os.path.isfile(os.path.join(strategy_dir, "strategy.py")):
         raise RuntimeError("strategy_code_not_found")
 
     target = resolve_provider()
+    ensure_catalog_entry(target)
     if not os.getenv(target.api_key_env):
         raise RuntimeError("missing_llm_api_key")
 
@@ -1985,13 +1986,14 @@ def chat_with_strategy_stream(
 
         if user_message.strip() == "/generate_overview":
             from agent import tau_driver
-            from agent.tau_config import resolve_provider
+            from agent.tau_config import ensure_catalog_entry, resolve_provider
 
             yield f"data: {json.dumps({'type': 'token', 'content': 'Starting autonomous agent to generate overview...\\n'})}\n\n"
 
             try:
                 strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
                 target = resolve_provider()
+                ensure_catalog_entry(target)
 
                 task_prompt = (
                     "Analyze `strategy.py` and create/update `overview.md`.\n\n"
