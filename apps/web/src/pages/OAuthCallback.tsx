@@ -33,7 +33,7 @@ const OAuthCallback = () => {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">{t("errors.authTitle")}</h1>
+          <h1 className="text-2xl font-bold text-short mb-4">{t("errors.authTitle")}</h1>
           <p className="text-muted-foreground">{error}</p>
           <button
             onClick={() => navigate("/")}

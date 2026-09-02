@@ -54,7 +54,7 @@ export const TrendingStrategyCard = ({
 
   return (
     <Card
-      className="hover:shadow-lg transition-all cursor-pointer h-full flex flex-col group"
+      className="transition-colors cursor-pointer h-full flex flex-col group"
       onClick={onSelect}
     >
       {/* Strategy Image */}
@@ -63,7 +63,7 @@ export const TrendingStrategyCard = ({
           <img
             src={strategy.image_url}
             alt={strategy.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover transition-opacity group-hover:opacity-90"
             onError={(e) => {
               (e.target as HTMLImageElement).style.display = "none";
             }}
@@ -125,14 +125,14 @@ export const TrendingStrategyCard = ({
         {hasBacktest && bestResult && (
           <div className="mt-3 pt-3 border-t">
             <div className="flex items-center gap-1 mb-2">
-              <TrendingUp className="h-4 w-4 text-green-600" />
+              <TrendingUp className="h-4 w-4 text-long" />
               <span className="text-sm font-medium">{t("trending.bestResult")}</span>
             </div>
             <div className="grid grid-cols-2 gap-2 text-sm">
               <div>
                 <span className="text-muted-foreground text-xs">{t("trending.metrics.return")}</span>
                 <p className={`font-medium ${
-                  bestResult.total_return >= 0 ? "text-green-600" : "text-red-600"
+                  bestResult.total_return >= 0 ? "text-long" : "text-short"
                 }`}>
                   {bestResult.total_return.toFixed(2)}%
                 </p>
@@ -148,7 +148,7 @@ export const TrendingStrategyCard = ({
         {strategy.backtest_status === "running" && (
           <div className="mt-3 pt-3 border-t">
             <div className="flex items-center gap-2">
-              <div className="h-2 w-2 rounded-full bg-blue-600 animate-pulse" />
+              <div className="h-2 w-2 rounded-full bg-primary animate-pulse" />
               <span className="text-sm text-muted-foreground">{t("trending.backtesting")}</span>
             </div>
           </div>

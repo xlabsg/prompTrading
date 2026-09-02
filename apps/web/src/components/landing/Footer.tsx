@@ -3,134 +3,73 @@ import { useTranslation } from "react-i18next";
 
 const Footer = () => {
     const { t } = useTranslation();
+
+    const columns = [
+        {
+            heading: t("landing.footer.product"),
+            links: [
+                { label: t("landing.nav.features"), href: "#features" },
+                { label: t("landing.nav.pricing"), href: "#pricing" },
+                { label: t("landing.footer.documentation"), href: "#docs" },
+                { label: t("landing.footer.apiReference"), href: "#docs" },
+            ],
+        },
+        {
+            heading: t("landing.footer.company"),
+            links: [
+                { label: t("landing.footer.about"), href: "#" },
+                { label: t("landing.footer.blog"), href: "#" },
+                { label: t("landing.footer.careers"), href: "#" },
+                { label: t("landing.footer.contact"), href: "#" },
+            ],
+        },
+        {
+            heading: t("landing.footer.followUs"),
+            links: [
+                { label: t("landing.footer.twitter"), href: "#" },
+                { label: t("landing.footer.discord"), href: "#" },
+                { label: t("landing.footer.github"), href: "#" },
+            ],
+        },
+    ];
+
     return (
-        <footer className="bg-card border-t border-border py-16">
-            <div className="container mx-auto px-6">
-                <div className="grid md:grid-cols-4 gap-12">
-                    {/* Logo & Description */}
-                    <div className="md:col-span-2">
-                        <div className="mb-4">
-                            <Logo size="sm" />
-                        </div>
-                        <p className="text-muted-foreground max-w-sm mb-6">
+        <footer className="border-t border-border bg-background py-14">
+            <div className="container">
+                <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(3,1fr)]">
+                    <div>
+                        <Logo size="sm" />
+                        <p className="mt-4 max-w-[44ch] text-sm leading-relaxed text-muted-foreground">
                             {t("landing.footer.description")}
                         </p>
-                        <div className="flex gap-4">
-                            <a
-                                href="#"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                {t("landing.footer.twitter")}
-                            </a>
-                            <a
-                                href="#"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                {t("landing.footer.discord")}
-                            </a>
-                            <a
-                                href="#"
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                {t("landing.footer.github")}
-                            </a>
+                    </div>
+
+                    {columns.map((column) => (
+                        <div key={column.heading}>
+                            <h3 className="text-sm font-semibold text-foreground">{column.heading}</h3>
+                            <ul className="mt-4 space-y-2.5">
+                                {column.links.map((link) => (
+                                    <li key={link.label}>
+                                        <a
+                                            href={link.href}
+                                            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                                        >
+                                            {link.label}
+                                        </a>
+                                    </li>
+                                ))}
+                            </ul>
                         </div>
-                    </div>
-
-                    {/* Product Links */}
-                    <div>
-                        <h3 className="font-semibold text-foreground mb-4">{t("landing.footer.product")}</h3>
-                        <ul className="space-y-3">
-                            <li>
-                                <a
-                                    href="#features"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.nav.features")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#pricing"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.nav.pricing")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.documentation")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.apiReference")}
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
-
-                    {/* Company Links */}
-                    <div>
-                        <h3 className="font-semibold text-foreground mb-4">{t("landing.footer.company")}</h3>
-                        <ul className="space-y-3">
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.about")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.blog")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.careers")}
-                                </a>
-                            </li>
-                            <li>
-                                <a
-                                    href="#"
-                                    className="text-muted-foreground hover:text-foreground transition-colors"
-                                >
-                                    {t("landing.footer.contact")}
-                                </a>
-                            </li>
-                        </ul>
-                    </div>
+                    ))}
                 </div>
 
-                <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row justify-between items-center gap-4">
-                    <p className="text-sm text-muted-foreground">
-                        {t("landing.footer.copyright")}
-                    </p>
-                    <div className="flex gap-6 text-sm">
-                        <a
-                            href="#"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                        >
+                <div className="mt-12 flex flex-col gap-3 border-t border-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">{t("landing.footer.copyright")}</p>
+                    <div className="flex gap-5">
+                        <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
                             {t("landing.footer.privacy")}
                         </a>
-                        <a
-                            href="#"
-                            className="text-muted-foreground hover:text-foreground transition-colors"
-                        >
+                        <a href="#" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
                             {t("landing.footer.terms")}
                         </a>
                     </div>

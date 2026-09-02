@@ -112,7 +112,7 @@ export function SymbolMultiSelect({
                             {t("common.loading")}...
                         </div>
                     ) : error ? (
-                        <div className="text-center py-8 text-red-500 text-sm">
+                        <div className="text-center py-8 text-short text-sm">
                             {error}
                         </div>
                     ) : displaySymbols.length === 0 ? (

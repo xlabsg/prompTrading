@@ -371,12 +371,24 @@ const zh = {
   },
   landing: {
     nav: {
+      menu: "菜单",
       features: "功能亮点",
       howItWorks: "使用流程",
       pricing: "价格",
       docs: "文档",
     },
     hero: {
+      promptLabel: "你的想法",
+      promptExample:
+        "RSI 跌破 30 且 MACD 金叉时做多，2% 移动止损离场。",
+      panel: {
+        title: "回测",
+        chartAlt: "示例回测的净值曲线",
+        return: "收益",
+        sharpe: "夏普",
+        maxDrawdown: "最大回撤",
+        trades: "交易笔数",
+      },
       badge: "AI 驱动的交易策略",
       headline: "想法输入，策略输出。",
       headlineAccent: "全自动完成。",
@@ -1026,6 +1038,8 @@ const zh = {
     },
   },
   logsView: {
+    noMatches: "没有符合筛选条件的日志",
+    metadata: "元数据",
     loading: "加载日志...",
     emptyTitle: "暂无日志",
     emptySubtitle: "策略运行后日志将显示在这里。",

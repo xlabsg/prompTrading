@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import UsStockPickerDialog from "@/components/market/UsStockPickerDialog";
 import { useTranslation } from "react-i18next";
 import TradingViewChart from "@/components/charts/TradingViewChart";
+import { Readout, ReadoutList } from "@/components/console/Readout";
 
 interface BacktestViewProps {
     strategy: Strategy | null;
@@ -654,7 +655,7 @@ const BacktestView = ({
                                             <div className="text-xs text-muted-foreground">{formatShortDate(run.created_at)}</div>
                                             {run.status === "succeeded" && run.metrics && (
                                                 <div className="mt-2 flex items-center gap-3 text-xs">
-                                                    <span className={cn("font-medium", (run.metrics.total_return || 0) >= 0 ? "text-green-600" : "text-red-500")}>
+                                                    <span className={cn("font-medium", (run.metrics.total_return || 0) >= 0 ? "text-long" : "text-short")}>
                                                         {(run.metrics.total_return || 0) >= 0 ? "+" : ""}
                                                         {(run.metrics.total_return || 0).toFixed(2)}%
                                                     </span>
@@ -836,7 +837,7 @@ const BacktestView = ({
                                         <div className="text-xs text-muted-foreground">{formatShortDate(run.created_at)}</div>
                                         {run.status === "succeeded" && run.metrics && (
                                             <div className="mt-2 flex items-center gap-3 text-xs">
-                                                <span className={cn("font-medium", (run.metrics.total_return || 0) >= 0 ? "text-green-600" : "text-red-500")}>
+                                                <span className={cn("font-medium", (run.metrics.total_return || 0) >= 0 ? "text-long" : "text-short")}>
                                                     {(run.metrics.total_return || 0) >= 0 ? "+" : ""}{(run.metrics.total_return || 0).toFixed(2)}%
                                                 </span>
                                                 <span className="text-muted-foreground">
@@ -937,19 +938,42 @@ const BacktestView = ({
 
                                 {selectedRun.status === "succeeded" && selectedRun.metrics ? (
                                     <>
-                                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                                            <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground mb-1">{t("backtest.metricCards.finalEquity")}</div><div className="text-xl font-semibold">${alignedEquitySeries.length > 0 ? alignedEquitySeries[alignedEquitySeries.length - 1].equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "10,000.00"}</div></CardContent></Card>
-                                            <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground mb-1">{t("backtest.metricCards.totalReturn")}</div><div className={cn("text-xl font-semibold", (selectedRun.metrics.total_return || 0) >= 0 ? "text-green-600" : "text-red-600")}>{(selectedRun.metrics.total_return || 0) >= 0 ? "+" : ""}{(selectedRun.metrics.total_return || 0).toFixed(2)}%</div></CardContent></Card>
-                                            <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground mb-1">{t("backtest.metricCards.maxDrawdown")}</div><div className="text-xl font-semibold text-red-600">{(selectedRun.metrics.max_drawdown || 0).toFixed(2)}%</div></CardContent></Card>
-                                            <Card><CardContent className="pt-6"><div className="text-xs text-muted-foreground mb-1">{t("backtest.metricCards.sharpeRatio")}</div><div className="text-xl font-semibold">{selectedRun.metrics.sharpe_ratio?.toFixed(2) ?? "-"}</div></CardContent></Card>
-                                        </div>
-                                        <Card><CardHeader className="pb-2"><CardTitle className="text-base">{t("backtest.summary.title")}</CardTitle></CardHeader><CardContent><div className="divide-y divide-border text-sm">
-                                            <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.created")}</span><span className="font-medium">{formatDate(selectedRun.created_at)}</span></div>
-                                            <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.started")}</span><span className="font-medium">{backtestWindowStartMs ? formatTimestampLong(backtestWindowStartMs) : "-"}</span></div>
-                                            <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.finished")}</span><span className="font-medium">{backtestWindowEndMs ? formatTimestampLong(backtestWindowEndMs) : "-"}</span></div>
-                                            <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.trades")}</span><span className="font-medium">{selectedRun.metrics.total_trades ?? "-"}</span></div>
-                                            <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.winRate")}</span><span className="font-medium">{selectedRun.metrics.win_rate?.toFixed(1) ?? "-"}%</span></div>
-                                        </div></CardContent></Card>
+                                        <Readout
+                                            items={[
+                                                {
+                                                    label: t("backtest.metricCards.finalEquity"),
+                                                    value: `$${alignedEquitySeries.length > 0 ? alignedEquitySeries[alignedEquitySeries.length - 1].equity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "10,000.00"}`,
+                                                },
+                                                {
+                                                    label: t("backtest.metricCards.totalReturn"),
+                                                    value: `${(selectedRun.metrics.total_return || 0) >= 0 ? "+" : ""}${(selectedRun.metrics.total_return || 0).toFixed(2)}%`,
+                                                    tone: (selectedRun.metrics.total_return || 0) >= 0 ? "long" : "short",
+                                                },
+                                                {
+                                                    label: t("backtest.metricCards.maxDrawdown"),
+                                                    value: `${(selectedRun.metrics.max_drawdown || 0).toFixed(2)}%`,
+                                                    tone: "short",
+                                                },
+                                                {
+                                                    label: t("backtest.metricCards.sharpeRatio"),
+                                                    value: selectedRun.metrics.sharpe_ratio?.toFixed(2) ?? "-",
+                                                },
+                                            ]}
+                                        />
+                                        <Card>
+                                            <CardHeader className="pb-2"><CardTitle>{t("backtest.summary.title")}</CardTitle></CardHeader>
+                                            <CardContent>
+                                                <ReadoutList
+                                                    items={[
+                                                        { label: t("backtest.summary.created"), value: formatDate(selectedRun.created_at) },
+                                                        { label: t("backtest.summary.started"), value: backtestWindowStartMs ? formatTimestampLong(backtestWindowStartMs) : "-" },
+                                                        { label: t("backtest.summary.finished"), value: backtestWindowEndMs ? formatTimestampLong(backtestWindowEndMs) : "-" },
+                                                        { label: t("backtest.summary.trades"), value: String(selectedRun.metrics.total_trades ?? "-") },
+                                                        { label: t("backtest.summary.winRate"), value: `${selectedRun.metrics.win_rate?.toFixed(1) ?? "-"}%` },
+                                                    ]}
+                                                />
+                                            </CardContent>
+                                        </Card>
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                             <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span>{t("backtest.charts.equityCurve")}</span><span className="text-[11px] font-normal text-muted-foreground">{candleAligned ? `timeline: candles (${candleBarCount} bars)` : "timeline: equity"}</span></CardTitle></CardHeader><CardContent>
                                                 {alignedEquitySeries.length > 0 ? (
@@ -963,9 +987,9 @@ const BacktestView = ({
                                                             height={256}
                                                         />
                                                     </div>
-                                                ) : (<div className="h-64 bg-zinc-950 rounded-lg flex items-center justify-center text-muted-foreground"><p className="text-sm">{t("backtest.charts.noEquity")}</p></div>)}
+                                                ) : (<div className="h-64 bg-muted rounded-lg flex items-center justify-center text-muted-foreground"><p className="text-sm">{t("backtest.charts.noEquity")}</p></div>)}
                                             </CardContent></Card>
-                                            <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span>{t("backtest.charts.drawdown")}</span><span className="flex items-center gap-2"><span className="text-[11px] font-normal text-red-600">DD {latestDrawdownPct.toFixed(2)}% | Max {maxDrawdownPct.toFixed(2)}%</span><span className="text-[11px] font-normal text-muted-foreground">{candleAligned ? `timeline: candles (${candleBarCount} bars)` : "timeline: equity"}</span></span></CardTitle></CardHeader><CardContent>
+                                            <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span>{t("backtest.charts.drawdown")}</span><span className="flex items-center gap-2"><span className="text-[11px] font-normal text-short">DD {latestDrawdownPct.toFixed(2)}% | Max {maxDrawdownPct.toFixed(2)}%</span><span className="text-[11px] font-normal text-muted-foreground">{candleAligned ? `timeline: candles (${candleBarCount} bars)` : "timeline: equity"}</span></span></CardTitle></CardHeader><CardContent>
                                                 {drawdownSeries.series.length > 0 ? (
                                                     <div className="h-64">
                                                         <TradingViewChart
@@ -976,7 +1000,7 @@ const BacktestView = ({
                                                             height={256}
                                                         />
                                                     </div>
-                                                ) : (<div className="h-64 bg-zinc-950 rounded-lg flex items-center justify-center text-muted-foreground"><p className="text-sm">{t("backtest.charts.noDrawdown")}</p></div>)}
+                                                ) : (<div className="h-64 bg-muted rounded-lg flex items-center justify-center text-muted-foreground"><p className="text-sm">{t("backtest.charts.noDrawdown")}</p></div>)}
                                             </CardContent></Card>
                                         </div>
                                         <Card>
@@ -991,7 +1015,7 @@ const BacktestView = ({
                                             <CardContent>
                                                 <Tabs value={detailTab} onValueChange={(v) => setDetailTab(v as "trades" | "positions" | "orders" | "signals")}>
                                                     <div className="overflow-x-auto pb-1">
-                                                        <TabsList className="bg-muted/50 w-max min-w-full justify-start">
+                                                        <TabsList className="w-max min-w-full justify-start">
                                                             <TabsTrigger value="trades" className="gap-1 whitespace-nowrap text-xs sm:text-sm">
                                                             {t("backtest.tabs.trades")}
                                                             <Badge variant="secondary" className="ml-1 h-4 px-1 text-[10px] sm:h-5 sm:px-1.5 sm:text-xs">
@@ -1030,31 +1054,31 @@ const BacktestView = ({
                                                                 <table className="w-full text-sm">
                                                                     <thead className="sticky top-0 bg-card">
                                                                         <tr className="border-b border-border">
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.side")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.entry")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.exit")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.return")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.pnl")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.trades.hold")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.side")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.entry")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.exit")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.return")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.pnl")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.trades.hold")}</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
                                                                         {tradesData.trades.map((trade, idx) => (
                                                                             <tr key={idx} className="border-b border-border/50">
                                                                                 <td className="py-2 px-2">
-                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", trade.side === "long" ? "bg-green-500/20 text-green-600" : "bg-red-500/20 text-red-600")}>
+                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", trade.side === "long" ? "bg-long/20 text-long" : "bg-short/20 text-short")}>
                                                                                         {trade.side}
                                                                                     </span>
                                                                                 </td>
                                                                                 <td className="py-2 px-2 text-muted-foreground">{trade.entry_time}</td>
                                                                                 <td className="py-2 px-2 text-muted-foreground">{trade.exit_time}</td>
-                                                                                <td className={cn("py-2 px-2 text-right font-medium", trade.return_pct >= 0 ? "text-green-600" : "text-red-600")}>
+                                                                                <td className={cn("py-2 px-2 text-right font-medium", trade.return_pct >= 0 ? "text-long" : "text-short")}>
                                                                                     {trade.return_pct >= 0 ? "+" : ""}{trade.return_pct.toFixed(2)}%
                                                                                 </td>
-                                                                                <td className={cn("py-2 px-2 text-right font-medium", trade.pnl >= 0 ? "text-green-600" : "text-red-600")}>
+                                                                                <td className={cn("py-2 px-2 text-right font-medium", trade.pnl >= 0 ? "text-long" : "text-short")}>
                                                                                     {trade.pnl >= 0 ? "+" : ""}{trade.pnl.toFixed(2)}
                                                                                 </td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">
                                                                                     {trade.holding_time_ms ? formatDurationMs(trade.holding_time_ms) : trade.duration}
                                                                                 </td>
                                                                             </tr>
@@ -1078,12 +1102,12 @@ const BacktestView = ({
                                                                 <table className="w-full text-sm">
                                                                     <thead className="sticky top-0 bg-card">
                                                                         <tr className="border-b border-border">
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.time")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.type")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.side")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.reason")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.price")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.signals.weight")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.time")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.type")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.side")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.reason")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.price")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.signals.weight")}</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
@@ -1093,10 +1117,10 @@ const BacktestView = ({
                                                                                 <td className="py-2 px-2">
                                                                                     <span className={cn(
                                                                                         "inline-flex px-2 py-0.5 rounded text-xs font-medium",
-                                                                                        ev.type === "entry" && "bg-green-500/20 text-green-600",
-                                                                                        ev.type === "exit" && "bg-red-500/20 text-red-600",
-                                                                                        ev.type === "flip" && "bg-amber-500/20 text-amber-600",
-                                                                                        ev.type === "rebalance" && "bg-blue-500/20 text-blue-600",
+                                                                                        ev.type === "entry" && "bg-long/20 text-long",
+                                                                                        ev.type === "exit" && "bg-short/20 text-short",
+                                                                                        ev.type === "flip" && "bg-warn/20 text-warn",
+                                                                                        ev.type === "rebalance" && "bg-primary/20 text-primary",
                                                                                     )}>
                                                                                         {ev.type}
                                                                                     </span>
@@ -1113,8 +1137,8 @@ const BacktestView = ({
                                                                                         </div>
                                                                                     )}
                                                                                 </td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{ev.price.toFixed(2)}</td>
-                                                                                <td className="py-2 px-2 text-right font-mono text-xs text-muted-foreground">
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{ev.price.toFixed(2)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric font-mono text-xs text-muted-foreground">
                                                                                     {ev.weight_from.toFixed(3)}→{ev.weight_to.toFixed(3)}
                                                                                 </td>
                                                                             </tr>
@@ -1143,33 +1167,33 @@ const BacktestView = ({
                                                                 <table className="w-full text-sm">
                                                                     <thead className="sticky top-0 bg-card">
                                                                         <tr className="border-b border-border">
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.side")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.entry")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.exit")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs" title={t("backtest.tables.positions.qtyHint")}>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.side")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.entry")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.exit")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs" title={t("backtest.tables.positions.qtyHint")}>
                                                                                 {t("backtest.tables.positions.qty")}
                                                                             </th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.avgEntry")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.avgExit")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.hold")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.positions.pnl")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.avgEntry")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.avgExit")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.hold")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.positions.pnl")}</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
                                                                         {positionsData.positions.map((pos, idx) => (
                                                                             <tr key={idx} className="border-b border-border/50">
                                                                                 <td className="py-2 px-2">
-                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", pos.side === "long" ? "bg-green-500/20 text-green-600" : "bg-red-500/20 text-red-600")}>
+                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", pos.side === "long" ? "bg-long/20 text-long" : "bg-short/20 text-short")}>
                                                                                         {pos.side}
                                                                                     </span>
                                                                                 </td>
                                                                                 <td className="py-2 px-2 text-muted-foreground">{pos.entry_time}</td>
                                                                                 <td className="py-2 px-2 text-muted-foreground">{pos.exit_time}</td>
-                                                                                <td className="py-2 px-2 text-right font-mono text-xs">{(pos.avg_qty ?? pos.max_qty ?? pos.entry_qty).toFixed(6)}</td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{pos.entry_price.toFixed(2)}</td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{pos.exit_price.toFixed(2)}</td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{formatDurationMs(pos.holding_time_ms)}</td>
-                                                                                <td className={cn("py-2 px-2 text-right font-medium", pos.pnl >= 0 ? "text-green-600" : "text-red-600")}>
+                                                                                <td className="py-2 px-2 text-right numeric font-mono text-xs">{(pos.avg_qty ?? pos.max_qty ?? pos.entry_qty).toFixed(6)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{pos.entry_price.toFixed(2)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{pos.exit_price.toFixed(2)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{formatDurationMs(pos.holding_time_ms)}</td>
+                                                                                <td className={cn("py-2 px-2 text-right font-medium", pos.pnl >= 0 ? "text-long" : "text-short")}>
                                                                                     {pos.pnl >= 0 ? "+" : ""}{pos.pnl.toFixed(2)}
                                                                                 </td>
                                                                             </tr>
@@ -1193,13 +1217,13 @@ const BacktestView = ({
                                                                 <table className="w-full text-sm">
                                                                     <thead className="sticky top-0 bg-card">
                                                                         <tr className="border-b border-border">
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.time")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.side")}</th>
-                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.reason")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.qty")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.price")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.fee")}</th>
-                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("backtest.tables.orders.weight")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.time")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.side")}</th>
+                                                                            <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.reason")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.qty")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.price")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.fee")}</th>
+                                                                            <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("backtest.tables.orders.weight")}</th>
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
@@ -1207,7 +1231,7 @@ const BacktestView = ({
                                                                             <tr key={idx} className="border-b border-border/50">
                                                                                 <td className="py-2 px-2 text-muted-foreground">{o.time}</td>
                                                                                 <td className="py-2 px-2">
-                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", o.side === "buy" ? "bg-green-500/20 text-green-600" : "bg-red-500/20 text-red-600")}>
+                                                                                    <span className={cn("inline-flex px-2 py-0.5 rounded text-xs font-medium", o.side === "buy" ? "bg-long/20 text-long" : "bg-short/20 text-short")}>
                                                                                         {o.side}
                                                                                     </span>
                                                                                 </td>
@@ -1222,10 +1246,10 @@ const BacktestView = ({
                                                                                         </div>
                                                                                     )}
                                                                                 </td>
-                                                                                <td className="py-2 px-2 text-right font-mono text-xs">{o.qty.toFixed(6)}</td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{o.price.toFixed(2)}</td>
-                                                                                <td className="py-2 px-2 text-right text-muted-foreground">{o.fee.toFixed(6)}</td>
-                                                                                <td className="py-2 px-2 text-right font-mono text-xs text-muted-foreground">
+                                                                                <td className="py-2 px-2 text-right numeric font-mono text-xs">{o.qty.toFixed(6)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{o.price.toFixed(2)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric text-muted-foreground">{o.fee.toFixed(6)}</td>
+                                                                                <td className="py-2 px-2 text-right numeric font-mono text-xs text-muted-foreground">
                                                                                     {o.weight_from.toFixed(3)}→{o.weight_to.toFixed(3)}
                                                                                 </td>
                                                                             </tr>
@@ -1251,7 +1275,7 @@ const BacktestView = ({
                                 ) : selectedRun.status === "queued" ? (
                                     <Card><CardContent className="py-16"><div className="flex flex-col items-center justify-center gap-4"><Loader2 className="w-12 h-12 animate-spin text-primary" /><div className="text-center"><p className="font-medium text-lg">{t("backtest.state.queuedTitle")}</p><p className="text-sm text-muted-foreground mt-1">{t("backtest.state.queuedSubtitle")}</p></div></div></CardContent></Card>
                                 ) : selectedRun.status === "failed" ? (
-                                    <Card><CardContent className="py-12"><div className="text-center"><div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/20 flex items-center justify-center mx-auto mb-4"><TrendingDown className="w-6 h-6 text-red-600" /></div><p className="font-medium text-lg text-red-600">{t("backtest.state.failedTitle")}</p><p className="text-sm text-muted-foreground mt-2">{selectedRun.error_message || t("backtest.state.unknownError")}</p></div></CardContent></Card>
+                                    <Card><CardContent className="py-12"><div className="text-center"><div className="w-12 h-12 rounded-full bg-short-soft dark:bg-short/20 flex items-center justify-center mx-auto mb-4"><TrendingDown className="w-6 h-6 text-short" /></div><p className="font-medium text-lg text-short">{t("backtest.state.failedTitle")}</p><p className="text-sm text-muted-foreground mt-2">{selectedRun.error_message || t("backtest.state.unknownError")}</p></div></CardContent></Card>
                                 ) : null}
                             </div>
                         </div>

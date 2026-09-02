@@ -1,132 +1,66 @@
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface LogoProps {
     size?: "sm" | "md" | "lg";
     variant?: "full" | "icon";
     className?: string;
+    /** Set when the logo sits on an ink surface (nav rail, landing header). */
+    onInk?: boolean;
+    /** Kept for call sites that still pass it; the mark no longer animates. */
     animated?: boolean;
 }
 
-// 精致几何 Logo - 六边形内嵌 Alpha 符号
-const LogoIcon = ({
-    size = "md",
-    animated = false,
-    className
-}: {
-    size?: "sm" | "md" | "lg";
-    animated?: boolean;
-    className?: string;
-}) => {
-    const sizeClasses = {
-        sm: "w-6 h-6",
-        md: "w-8 h-8",
-        lg: "w-10 h-10",
-    };
-
-    const svgContent = (
-        <svg
-            viewBox="0 0 40 40"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="w-full h-full"
-        >
-            {/* 外层六边形 - 代表稳固的基础 */}
-            <path
-                d="M20 2L36 11V29L20 38L4 29V11L20 2Z"
-                className="fill-primary"
-            />
-            {/* 内层六边形 - 渐变层次 */}
-            <path
-                d="M20 7L31 13.5V26.5L20 33L9 26.5V13.5L20 7Z"
-                className="fill-primary-foreground/20"
-            />
-            {/* Alpha 符号 - 抽象 A 形状 */}
-            <path
-                d="M20 11L28 27H24L22 23H18L16 27H12L20 11Z"
-                className="fill-primary-foreground"
-            />
-            {/* A 中间横杠 */}
-            <path
-                d="M17 20H23L22 22H18L17 20Z"
-                className="fill-primary"
-            />
-        </svg>
-    );
-
-    if (animated) {
-        return (
-            <motion.div
-                className={cn("relative", sizeClasses[size], className)}
-                initial={{ rotate: -10, scale: 0.9 }}
-                animate={{ rotate: 0, scale: 1 }}
-                transition={{ duration: 0.5, type: "spring" }}
-            >
-                {svgContent}
-            </motion.div>
-        );
-    }
-
-    return (
-        <div className={cn("relative", sizeClasses[size], className)}>
-            {svgContent}
-        </div>
-    );
+const sizeClasses = {
+    sm: "w-[22px] h-[22px]",
+    md: "w-7 h-7",
+    lg: "w-9 h-9",
 };
 
-const Logo = ({
+/**
+ * A candle and its wick inside a frame: the smallest true drawing of what the
+ * product operates on, rather than a generic geometric mark.
+ */
+const LogoIcon = ({
     size = "md",
-    variant = "full",
     className,
-    animated = false
-}: LogoProps) => {
-    const textSizeClasses = {
-        sm: "text-lg",
-        md: "text-xl lg:text-2xl",
-        lg: "text-2xl lg:text-3xl",
-    };
+}: {
+    size?: "sm" | "md" | "lg";
+    className?: string;
+}) => (
+    <div className={cn("relative shrink-0", sizeClasses[size], className)}>
+        <svg viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" className="h-full w-full">
+            <rect x="1" y="1" width="30" height="30" rx="5" className="fill-primary" />
+            <path d="M11 7v18" stroke="white" strokeWidth="1.6" strokeOpacity="0.55" strokeLinecap="round" />
+            <rect x="8" y="11" width="6" height="11" rx="1" fill="white" />
+            <path d="M21 9v16" stroke="white" strokeWidth="1.6" strokeOpacity="0.55" strokeLinecap="round" />
+            <rect x="18" y="13" width="6" height="7" rx="1" fill="white" fillOpacity="0.45" />
+        </svg>
+    </div>
+);
 
+const textSizeClasses = {
+    sm: "text-[15px]",
+    md: "text-lg",
+    lg: "text-xl",
+};
+
+const Logo = ({ size = "md", variant = "full", className, onInk = false }: LogoProps) => {
     if (variant === "icon") {
-        return <LogoIcon size={size} animated={animated} className={className} />;
-    }
-
-    const content = (
-        <>
-            <LogoIcon size={size} animated={animated} />
-            <div className="flex items-center gap-0.5">
-                <span className={cn(
-                    "font-display font-bold text-foreground",
-                    textSizeClasses[size]
-                )}>
-                    Alpha
-                </span>
-                <span className={cn(
-                    "font-display font-bold text-gradient-orange",
-                    textSizeClasses[size]
-                )}>
-                    Forge
-                </span>
-            </div>
-        </>
-    );
-
-    if (animated) {
-        return (
-            <motion.a
-                href="/"
-                className={cn("flex items-center gap-2", className)}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5 }}
-            >
-                {content}
-            </motion.a>
-        );
+        return <LogoIcon size={size} className={className} />;
     }
 
     return (
-        <a href="/" className={cn("flex items-center gap-2", className)}>
-            {content}
+        <a href="/" className={cn("flex items-center gap-2.5", className)}>
+            <LogoIcon size={size} />
+            <span
+                className={cn(
+                    "font-semibold tracking-[-0.02em]",
+                    textSizeClasses[size],
+                    onInk ? "text-ink-foreground" : "text-foreground",
+                )}
+            >
+                AlphaForge
+            </span>
         </a>
     );
 };

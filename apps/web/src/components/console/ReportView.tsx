@@ -13,7 +13,7 @@ const ReportView = ({ strategy }: ReportViewProps) => {
         <div className="h-full overflow-auto p-6">
             <div className="max-w-4xl mx-auto space-y-6">
                 <div className="flex items-center gap-4 mb-8">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-md bg-primary/10 flex items-center justify-center">
                         <FileText className="w-6 h-6 text-primary" />
                     </div>
                     <div>
@@ -42,12 +42,12 @@ const ReportView = ({ strategy }: ReportViewProps) => {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
-                        <div className="flex items-start gap-3 p-3 bg-green-500/10 rounded-lg">
-                            <CheckCircle className="w-5 h-5 text-green-500" />
+                        <div className="flex items-start gap-3 p-3 bg-long/10 rounded-lg">
+                            <CheckCircle className="w-5 h-5 text-long" />
                             <p className="text-sm">{t("reportView.riskGood")}</p>
                         </div>
-                        <div className="flex items-start gap-3 p-3 bg-yellow-500/10 rounded-lg">
-                            <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                        <div className="flex items-start gap-3 p-3 bg-warn/10 rounded-lg">
+                            <AlertTriangle className="w-5 h-5 text-warn" />
                             <p className="text-sm">{t("reportView.riskWarn")}</p>
                         </div>
                     </CardContent>

@@ -298,7 +298,7 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
                         <DialogHeader>
                             <DialogTitle className="flex items-center gap-2">
                                 {importStep === "success" ? (
-                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                    <CheckCircle2 className="w-5 h-5 text-long" />
                                 ) : importStep === "error" ? (
                                     <X className="w-5 h-5 text-destructive" />
                                 ) : (
@@ -330,7 +330,7 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
 
                             {importStep === "success" && (
                                 <div className="flex flex-col items-center text-center space-y-4">
-                                    <CheckCircle2 className="w-12 h-12 text-green-500" />
+                                    <CheckCircle2 className="w-12 h-12 text-long" />
                                     <div className="space-y-2">
                                         <p className="text-sm font-medium">{t("importStrategy.successTitle")}</p>
                                         <p className="text-xs text-muted-foreground">

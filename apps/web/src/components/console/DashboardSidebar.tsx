@@ -68,7 +68,7 @@ export const DashboardSidebar = ({
     ];
 
     return (
-        <aside className="w-56 bg-card/80 backdrop-blur-sm border-r border-border flex flex-col">
+        <aside className="w-56 bg-card border-r border-border flex flex-col">
             {/* Logo */}
             <div className="h-14 px-4 flex items-center justify-between border-b border-border">
                 <Logo size="sm" />
@@ -98,7 +98,7 @@ export const DashboardSidebar = ({
 
             {/* Projects Section */}
             <div className="px-3 mt-2">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
+                <div className="text-xs font-semibold text-muted-foreground px-3 py-2">
                     Projects
                 </div>
                 <div className="space-y-0.5">
@@ -117,7 +117,7 @@ export const DashboardSidebar = ({
 
             {/* Resources Section */}
             <div className="px-3 mt-4 flex-1">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
+                <div className="text-xs font-semibold text-muted-foreground px-3 py-2">
                     Resources
                 </div>
                 <div className="space-y-0.5">

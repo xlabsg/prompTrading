@@ -1,12 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
 import {
     Home,
     Compass,
     Layout,
     Tag,
-    Bell,
     Clock,
     LogOut,
     TrendingUp,
@@ -31,6 +29,24 @@ interface AppSidebarProps {
     error?: unknown;
     isAuthed: boolean;
 }
+
+const navItemClass = (isActive: boolean) =>
+    cn(
+        "relative flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors",
+        isActive
+            ? "bg-ink-raised text-ink-foreground"
+            : "text-ink-muted hover:bg-ink-raised/60 hover:text-ink-foreground",
+    );
+
+// The active marker is a rule against the rail edge, not a filled pill: it reads
+// as position within the app rather than as another button.
+const ActiveMark = () => (
+    <span className="absolute -left-2.5 top-1.5 h-[calc(100%-0.75rem)] w-0.5 rounded-full bg-primary" aria-hidden />
+);
+
+const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <div className="px-2.5 pb-1.5 pt-5 text-xs text-ink-muted">{children}</div>
+);
 
 export const AppSidebar = ({
     currentPage,
@@ -64,116 +80,78 @@ export const AppSidebar = ({
         { icon: Layout, label: t("nav.templates"), path: "/templates", page: "templates" as PageType },
         { icon: Tag, label: t("nav.subscriptions"), path: "/subscriptions", page: "subscriptions" as PageType },
     ];
-    const adminNavItems = isAdmin ? [
-        { icon: Shield, label: t("nav.admin"), path: "/admin/trending", page: "home" as PageType },
-    ] : [];
+    const adminNavItems = isAdmin
+        ? [{ icon: Shield, label: t("nav.admin"), path: "/admin/trending" }]
+        : [];
+    const resourceItems = TRENDING_ENABLED
+        ? [{ icon: Compass, label: t("sidebar.discover"), path: "/trending" }]
+        : [];
 
     const recentStrategies = strategies.slice(0, 5);
 
-    const resourceItems = [
-        ...(TRENDING_ENABLED ? [{ icon: Compass, label: t("sidebar.discover"), path: "/trending" }] : []),
-    ];
-
     return (
-        <aside className="w-56 bg-card/80 backdrop-blur-sm border-r border-border flex flex-col">
-            {/* Logo */}
-            <div className="h-14 px-4 flex items-center border-b border-border">
-                <Logo size="sm" />
+        <aside className="ink-panel flex w-60 flex-col border-r border-ink-line">
+            <div className="flex h-14 items-center border-b border-ink-line px-4">
+                <Logo size="sm" onInk />
             </div>
 
-            {/* Main Navigation */}
-            <div className="p-3 space-y-1">
-                {mainNavItems.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = currentPage === item.page;
-                    return (
-                        <button
-                            key={item.path}
-                            onClick={() => navigate(item.path)}
-                            className={cn(
-                                "w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                                isActive
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                            )}
-                        >
-                            <Icon size={18} />
-                            <span>{item.label}</span>
-                        </button>
-                    );
-                })}
-            </div>
-
-            {/* Projects Section */}
-            <div className="px-3 mt-2">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
-                    {t("sidebar.projects")}
-                </div>
-                {renderProjects()}
-            </div>
-
-            {/* Resources Section */}
-            <div className="px-3 mt-4 flex-1">
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-3 py-2">
-                    {t("sidebar.resources")}
-                </div>
-                <div className="space-y-0.5">
-                    {adminNavItems.map((item) => (
-                        <button
-                            key={item.path}
-                            onClick={() => navigate(item.path)}
-                            className={cn(
-                                "w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors",
-                                window.location.pathname.startsWith("/admin/")
-                                    ? "bg-primary/10 text-primary"
-                                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                            )}
-                        >
-                            <item.icon size={16} />
-                            <span>{item.label}</span>
-                        </button>
-                    ))}
-                    {resourceItems.map((item, i) => {
-                        const isActive = item.path ? window.location.pathname === item.path : false;
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+                <nav className="space-y-0.5">
+                    {mainNavItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = currentPage === item.page;
                         return (
-                            <button
-                                key={i}
-                                onClick={() => item.path && navigate(item.path)}
-                                className={cn(
-                                    "w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors",
-                                    isActive
-                                        ? "bg-primary/10 text-primary"
-                                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
-                                )}
-                            >
-                                <item.icon size={16} />
+                            <button key={item.path} onClick={() => navigate(item.path)} className={navItemClass(isActive)}>
+                                {isActive && <ActiveMark />}
+                                <Icon size={16} strokeWidth={1.75} />
                                 <span>{item.label}</span>
                             </button>
                         );
                     })}
-                </div>
+                </nav>
+
+                <SectionLabel>{t("sidebar.projects")}</SectionLabel>
+                {renderProjects()}
+
+                {(adminNavItems.length > 0 || resourceItems.length > 0) && (
+                    <>
+                        <SectionLabel>{t("sidebar.resources")}</SectionLabel>
+                        <nav className="space-y-0.5">
+                            {[...adminNavItems, ...resourceItems].map((item) => {
+                                const Icon = item.icon;
+                                const isActive = window.location.pathname === item.path;
+                                return (
+                                    <button key={item.label} onClick={() => navigate(item.path)} className={navItemClass(isActive)}>
+                                        {isActive && <ActiveMark />}
+                                        <Icon size={16} strokeWidth={1.75} />
+                                        <span>{item.label}</span>
+                                    </button>
+                                );
+                            })}
+                        </nav>
+                    </>
+                )}
             </div>
 
-            {/* User Section */}
             {user && (
-                <div className="p-3 border-t border-border">
-                    <div className="flex items-center gap-2 px-2 py-2">
-                        <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                            <span className="text-sm font-medium text-primary">
-                                {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
-                            </span>
+                <div className="border-t border-ink-line p-3">
+                    <div className="flex items-center gap-2.5 px-1.5 py-1">
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-ink-raised text-xs font-medium text-ink-foreground">
+                            {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
                         </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium text-foreground truncate">{user.name || t("console.defaultUser")}</div>
-                            <div className="text-xs text-muted-foreground truncate">{user.email || "-"}</div>
+                        <div className="min-w-0 flex-1">
+                            <div className="truncate text-sm text-ink-foreground">
+                                {user.name || t("console.defaultUser")}
+                            </div>
+                            <div className="truncate text-xs text-ink-muted">{user.email || "-"}</div>
                         </div>
                         <button
                             onClick={handleLogout}
                             disabled={isLoggingOut}
-                            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                            className="shrink-0 rounded-md p-1.5 text-ink-muted transition-colors hover:bg-ink-raised hover:text-ink-foreground disabled:opacity-50"
                             title={t("common.signOut")}
                         >
-                            <LogOut size={16} />
+                            <LogOut size={15} strokeWidth={1.75} />
                         </button>
                     </div>
                 </div>
@@ -182,51 +160,36 @@ export const AppSidebar = ({
     );
 
     function renderProjects() {
-        // Show error state but don't block the sidebar
         if (error) {
             return (
-                <div className="px-3 py-2">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <AlertCircle size={14} className="text-destructive" />
-                        <span>{t("sidebar.loadProjectsFailed")}</span>
-                    </div>
+                <div className="flex items-center gap-2 px-2.5 py-1.5 text-xs text-ink-muted">
+                    <AlertCircle size={13} className="text-short" />
+                    <span>{t("sidebar.loadProjectsFailed")}</span>
                 </div>
             );
         }
 
-        // Not authenticated - show empty state
         if (!isAuthed) {
-            return (
-                <div className="px-3 py-2">
-                    <div className="text-xs text-muted-foreground">{t("sidebar.signInToSeeProjects")}</div>
-                </div>
-            );
+            return <div className="px-2.5 py-1.5 text-xs text-ink-muted">{t("sidebar.signInToSeeProjects")}</div>;
         }
 
-        // No strategies
         if (recentStrategies.length === 0) {
-            return (
-                <div className="px-3 py-2">
-                    <div className="text-xs text-muted-foreground">{t("sidebar.noProjects")}</div>
-                </div>
-            );
+            return <div className="px-2.5 py-1.5 text-xs text-ink-muted">{t("sidebar.noProjects")}</div>;
         }
 
-        // Show recent strategies
         return (
             <div className="space-y-0.5">
-                <button className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                    <Clock size={16} />
+                <div className="flex items-center gap-2.5 px-2.5 py-1.5 text-sm text-ink-muted">
+                    <Clock size={15} strokeWidth={1.75} />
                     <span>{t("sidebar.recent")}</span>
-                </button>
+                </div>
                 {recentStrategies.map((strategy) => (
                     <button
                         key={strategy.id}
                         onClick={() => onStrategySelect(strategy)}
-                        className="w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                        className="w-full truncate rounded-md py-1.5 pl-[2.1rem] pr-2.5 text-left text-sm text-ink-muted transition-colors hover:bg-ink-raised/60 hover:text-ink-foreground"
                     >
-                        <div className="w-4" />
-                        <span className="truncate">{strategy.name}</span>
+                        {strategy.name}
                     </button>
                 ))}
             </div>

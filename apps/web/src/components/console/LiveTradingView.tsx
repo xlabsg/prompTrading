@@ -15,12 +15,14 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    Play, Pause, Settings, AlertCircle, CheckCircle, Activity,
+    Play, Pause, Settings, AlertCircle, CheckCircle,
     ArrowRight, Wallet, Shield, Radio, Sparkles, Code
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { tradingApi, type TradingStatus } from "@/lib/api/trading";
+import { Readout } from "@/components/console/Readout";
+import { cn } from "@/lib/utils";
 import ExchangeAccountsDialog from "@/components/console/ExchangeAccountsDialog";
 import SignalsView from "@/components/console/SignalsView";
 import { exchangeAccountsApi, strategiesApi } from "@/lib/api";
@@ -283,10 +285,10 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
         return (
             <div className="h-full overflow-auto p-6">
                 <div className="max-w-2xl mx-auto">
-                    <Card className="border-amber-500/30 bg-amber-500/5">
+                    <Card className="border-warn/30/30 bg-warn/20">
                         <CardHeader className="text-center pb-4">
-                            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
-                                <Code className="w-8 h-8 text-amber-500" />
+                            <div className="w-16 h-16 rounded-md bg-warn/20 flex items-center justify-center mx-auto mb-4">
+                                <Code className="w-8 h-8 text-warn" />
                             </div>
                             <CardTitle className="text-xl">{t("liveTradingView.upgrade.title")}</CardTitle>
                             <CardDescription className="text-base">
@@ -296,14 +298,14 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                         <CardContent className="space-y-4">
                             <div className="p-4 bg-muted/30 rounded-lg space-y-2">
                                 <div className="flex items-center gap-2 text-sm">
-                                    <CheckCircle className="w-4 h-4 text-green-500" />
+                                    <CheckCircle className="w-4 h-4 text-long" />
                                     <span>
                                         {t("liveTradingView.upgrade.hasSignals")}
                                         <code className="text-xs bg-muted px-1 py-0.5 rounded">generate_signals()</code>
                                     </span>
                                 </div>
                                 <div className="flex items-center gap-2 text-sm">
-                                    <AlertCircle className="w-4 h-4 text-amber-500" />
+                                    <AlertCircle className="w-4 h-4 text-warn" />
                                     <span>
                                         {t("liveTradingView.upgrade.missingLive")}
                                         <code className="text-xs bg-muted px-1 py-0.5 rounded">LiveStrategy</code>
@@ -338,7 +340,7 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                 <div className="max-w-2xl mx-auto space-y-6">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
+                        <div className="w-16 h-16 rounded-md bg-primary/10 flex items-center justify-center mx-auto mb-4">
                             <Radio className="w-8 h-8 text-primary" />
                         </div>
                         <h2 className="text-2xl font-bold text-foreground">{t("liveTradingView.config.title")}</h2>
@@ -350,7 +352,7 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                         {["exchange", "account", "risk", "confirm"].map((step, idx) => (
                             <div key={step} className="flex items-center">
                                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${configStep === step ? "bg-primary text-primary-foreground" :
-                                    ["exchange", "account", "risk", "confirm"].indexOf(configStep) > idx ? "bg-green-500 text-white" :
+                                    ["exchange", "account", "risk", "confirm"].indexOf(configStep) > idx ? "bg-long text-white" :
                                         "bg-muted text-muted-foreground"
                                     }`}>
                                     {["exchange", "account", "risk", "confirm"].indexOf(configStep) > idx ? "✓" : idx + 1}
@@ -427,7 +429,7 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                         {t("liveTradingView.actions.manageAccounts")}
                                     </Button>
                                 </ExchangeAccountsDialog>
-                                <div className="p-3 bg-yellow-500/10 rounded-lg text-sm text-yellow-600 flex items-start gap-2">
+                                <div className="p-3 bg-warn/10 rounded-lg text-sm text-warn flex items-start gap-2">
                                     <AlertCircle size={16} className="mt-0.5 shrink-0" />
                                     <span>{t("liveTradingView.warnings.apiPermissions")}</span>
                                 </div>
@@ -449,7 +451,7 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                     </Button>
                                 </div>
                                 {error && (
-                                    <div className="p-3 bg-red-500/10 rounded-lg text-sm text-red-600">
+                                    <div className="p-3 bg-short/10 rounded-lg text-sm text-short">
                                         {error}
                                     </div>
                                 )}
@@ -697,18 +699,18 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                     <div className="flex justify-between"><span className="text-muted-foreground">{t("liveTradingView.confirm.intervals")}</span><span className="font-medium">{config.intervals.join(", ")}</span></div>
                                     <div className="flex justify-between"><span className="text-muted-foreground">{t("liveTradingView.confirm.maxPosition")}</span><span className="font-medium">{config.maxPosition}%</span></div>
                                     <div className="flex justify-between"><span className="text-muted-foreground">{t("liveTradingView.confirm.stopLoss")}</span><span className="font-medium">{config.stopLossPercent}%</span></div>
-                                    <div className="flex justify-between"><span className="text-muted-foreground">{t("liveTradingView.confirm.apiStatus")}</span><span className="font-medium text-green-500">{t("liveTradingView.confirm.apiConfigured")}</span></div>
+                                    <div className="flex justify-between"><span className="text-muted-foreground">{t("liveTradingView.confirm.apiStatus")}</span><span className="font-medium text-long">{t("liveTradingView.confirm.apiConfigured")}</span></div>
                                 </div>
                                 <div className="flex gap-2">
                                     <Button variant="outline" onClick={() => setConfigStep("risk")} className="flex-1" disabled={isLoading}>
                                         {t("common.back")}
                                     </Button>
-                                    <Button onClick={handleCompleteConfig} className="flex-1 bg-green-500 hover:bg-green-600 gap-2" disabled={isLoading}>
+                                    <Button onClick={handleCompleteConfig} className="flex-1 bg-long hover:bg-long gap-2" disabled={isLoading}>
                                         {isLoading ? t("liveTradingView.confirm.saving") : <><CheckCircle size={16} /> {t("liveTradingView.confirm.complete")}</>}
                                     </Button>
                                 </div>
                                 {error && (
-                                    <div className="p-3 bg-red-500/10 rounded-lg text-sm text-red-600">
+                                    <div className="p-3 bg-short/10 rounded-lg text-sm text-short">
                                         {error}
                                     </div>
                                 )}
@@ -760,7 +762,7 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                             {isLoading ? t("liveTradingView.dashboard.stopping") : t("liveTradingView.dashboard.stop")}
                                         </Button>
                                     ) : (
-                                        <Button size="sm" className="bg-green-500 hover:bg-green-600" onClick={handleStartTrading} disabled={isLoading || !config.accountId}>
+                                        <Button size="sm" className="bg-long hover:bg-long" onClick={handleStartTrading} disabled={isLoading || !config.accountId}>
                                             <Play className="w-4 h-4 mr-2" />
                                             {isLoading ? t("liveTradingView.dashboard.starting") : t("liveTradingView.dashboard.start")}
                                         </Button>
@@ -770,14 +772,14 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                         </div>
 
                         {error && (
-                            <div className="p-3 bg-red-500/10 rounded-lg text-sm text-red-600 flex items-start gap-2">
+                            <div className="p-3 bg-short/10 rounded-lg text-sm text-short flex items-start gap-2">
                                 <AlertCircle size={16} className="mt-0.5 shrink-0" />
                                 <span>{error}</span>
                             </div>
                         )}
 
                         <div className="flex items-center justify-between border-b border-border">
-                            <TabsList className="bg-transparent h-auto p-0 gap-6">
+                            <TabsList>
                                 <TabsTrigger
                                     value="dashboard"
                                     className="data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:border-b-2 data-[state=active]:border-primary rounded-none px-0 py-2"
@@ -798,48 +800,49 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                 <div className="flex-1 overflow-auto min-h-0 bg-muted/10">
                     <TabsContent value="dashboard" className="h-full p-6 mt-0">
                         <div className="max-w-4xl mx-auto space-y-6">
-                            <div className="grid md:grid-cols-3 gap-4">
-                                <Card>
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2"><Activity className="w-4 h-4" />{t("liveTradingView.dashboard.status")}</CardTitle></CardHeader>
-                                    <CardContent>
-                                        <div className="flex items-center gap-2">
-                                            <div className={`w-2 h-2 rounded-full ${isRunning ? "bg-green-500 animate-pulse" : "bg-yellow-500"}`} />
-                                            <span className="font-medium">{isRunning ? t("liveTradingView.dashboard.running") : t("liveTradingView.dashboard.stopped")}</span>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm">{t("liveTradingView.dashboard.todayPnl")}</CardTitle></CardHeader>
-                                    <CardContent>
-                                        <span className={`text-2xl font-bold ${(tradingStatus?.active_session?.total_pnl || 0) >= 0 ? "text-green-500" : "text-red-500"
-                                            }`}>
-                                            {(tradingStatus?.active_session?.total_pnl || 0) >= 0 ? "+" : ""}
-                                            ${(tradingStatus?.active_session?.total_pnl || 0).toFixed(2)}
-                                        </span>
-                                    </CardContent>
-                                </Card>
-                                <Card>
-                                    <CardHeader className="pb-2"><CardTitle className="text-sm">{t("liveTradingView.dashboard.tradeCount")}</CardTitle></CardHeader>
-                                    <CardContent><span className="text-2xl font-bold">{tradingStatus?.active_session?.total_trades || 0}</span></CardContent>
-                                </Card>
+                            {/* Session state reads as a status line; the figures below read as a readout. */}
+                            <div className="flex items-center gap-2 rounded-md border border-border bg-card px-4 py-3">
+                                <span
+                                    className={cn("h-2 w-2 rounded-full", isRunning ? "bg-long" : "bg-warn")}
+                                    aria-hidden
+                                />
+                                <span className="text-sm text-muted-foreground">{t("liveTradingView.dashboard.status")}</span>
+                                <span className="ml-auto text-sm font-medium text-foreground">
+                                    {isRunning ? t("liveTradingView.dashboard.running") : t("liveTradingView.dashboard.stopped")}
+                                </span>
                             </div>
+
+                            <Readout
+                                columns={2}
+                                items={[
+                                    {
+                                        label: t("liveTradingView.dashboard.todayPnl"),
+                                        value: `${(tradingStatus?.active_session?.total_pnl || 0) >= 0 ? "+$" : "-$"}${Math.abs(tradingStatus?.active_session?.total_pnl || 0).toFixed(2)}`,
+                                        tone: (tradingStatus?.active_session?.total_pnl || 0) >= 0 ? "long" : "short",
+                                    },
+                                    {
+                                        label: t("liveTradingView.dashboard.tradeCount"),
+                                        value: String(tradingStatus?.active_session?.total_trades || 0),
+                                    },
+                                ]}
+                            />
 
                             <Card>
                                 <CardHeader><CardTitle>{t("liveTradingView.dashboard.connectionStatus")}</CardTitle></CardHeader>
                                 <CardContent className="space-y-3">
                                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                                         <div className="flex items-center gap-3">
-                                            <CheckCircle className="w-5 h-5 text-green-500" />
+                                            <CheckCircle className="w-5 h-5 text-long" />
                                             <span>{selectedAccount?.name || t("liveTradingView.labels.account")} · {config.exchange} {t("liveTradingView.dashboard.exchangeLabel")}</span>
                                         </div>
-                                        <span className="text-sm text-green-500">{t("liveTradingView.dashboard.connected")}</span>
+                                        <span className="text-sm text-long">{t("liveTradingView.dashboard.connected")}</span>
                                     </div>
                                     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                                         <div className="flex items-center gap-3">
-                                            <CheckCircle className="w-5 h-5 text-green-500" />
+                                            <CheckCircle className="w-5 h-5 text-long" />
                                             <span>{t("liveTradingView.dashboard.engine")}</span>
                                         </div>
-                                        <span className="text-sm text-green-500">{t("liveTradingView.dashboard.ready")}</span>
+                                        <span className="text-sm text-long">{t("liveTradingView.dashboard.ready")}</span>
                                     </div>
                                 </CardContent>
                             </Card>

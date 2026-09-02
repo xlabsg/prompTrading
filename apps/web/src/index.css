@@ -1,52 +1,123 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;450;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* PrompTrading Design System - Fintech with Orange Accent */
+/*
+ * PrompTrading design system — "terminal desk".
+ *
+ * Two grounds: ink chrome (nav, rails, headers) against a cool paper canvas
+ * where the work happens. Colour is semantic, not decorative:
+ *   primary  signal blue   interactive affordances only
+ *   long     green         data only — long side, gains
+ *   short    red           data only — short side, losses
+ * Never spend long/short on a button; never spend primary on a number.
+ */
 
 @layer base {
     :root {
-        /* Core brand - warm cream background with orange accent */
-        --background: 40 33% 98%;
-        --foreground: 30 10% 15%;
+        /* Paper canvas */
+        --background: 220 17% 96%;
+        --foreground: 213 28% 9%;
 
         --card: 0 0% 100%;
-        --card-foreground: 30 10% 15%;
+        --card-foreground: 213 28% 9%;
 
         --popover: 0 0% 100%;
-        --popover-foreground: 30 10% 15%;
+        --popover-foreground: 213 28% 9%;
 
-        /* Orange brand color */
-        --primary: 30 100% 50%;
+        /* Signal blue — the only interactive colour */
+        --primary: 226 82% 55%;
         --primary-foreground: 0 0% 100%;
 
-        /* Secondary - dark for contrast */
-        --secondary: 30 10% 12%;
-        --secondary-foreground: 0 0% 100%;
+        /* Ink — chrome surfaces on a light canvas */
+        --secondary: 215 24% 7%;
+        --secondary-foreground: 214 20% 92%;
 
-        --muted: 40 20% 94%;
-        --muted-foreground: 30 10% 45%;
+        --muted: 220 15% 93%;
+        --muted-foreground: 213 11% 40%;
 
-        --accent: 30 100% 50%;
-        --accent-foreground: 0 0% 100%;
+        --accent: 220 15% 93%;
+        --accent-foreground: 213 28% 9%;
 
-        --destructive: 0 84% 60%;
+        --destructive: 358 75% 59%;
         --destructive-foreground: 0 0% 100%;
 
-        --border: 40 20% 90%;
-        --input: 40 20% 90%;
-        --ring: 30 100% 50%;
+        --border: 216 16% 88%;
+        --input: 216 16% 84%;
+        --ring: 226 82% 55%;
 
-        --radius: 0.75rem;
+        --radius: 0.375rem;
 
-        /* Custom tokens */
-        --gradient-orange: linear-gradient(135deg, hsl(30 100% 50%) 0%, hsl(25 100% 55%) 100%);
-        --gradient-dark: linear-gradient(135deg, hsl(30 10% 8%) 0%, hsl(30 10% 15%) 100%);
-        --gradient-hero: linear-gradient(180deg, hsl(40 33% 98%) 0%, hsl(35 30% 95%) 100%);
-        --shadow-soft: 0 4px 20px -4px hsl(30 100% 50% / 0.15);
-        --shadow-glow: 0 0 40px hsl(30 100% 50% / 0.3);
+        /* Market semantics — read by charts, P&L, order sides */
+        --long: 165 100% 33%;
+        --long-soft: 165 55% 94%;
+        --short: 358 75% 59%;
+        --short-soft: 358 80% 96%;
+        --warn: 38 92% 44%;
+
+        /* Syntax colours. Deliberately separate from the market semantics above:
+         * a comment is not a long position, so it must not be the long green. */
+        --code-comment: 213 11% 48%;
+        --code-keyword: 268 46% 48%;
+        --code-string: 172 62% 30%;
+        --code-meta: 24 60% 42%;
+
+        /* Ink chrome — constant across themes, so rails never flip */
+        --ink: 215 24% 7%;
+        --ink-raised: 216 19% 12%;
+        --ink-line: 215 16% 20%;
+        --ink-foreground: 214 20% 92%;
+        --ink-muted: 214 11% 60%;
+
+        /* Elevation is reserved for true overlays */
+        --shadow-overlay: 0 16px 48px -12px hsl(215 24% 7% / 0.28), 0 2px 8px -2px hsl(215 24% 7% / 0.12);
+        --shadow-raised: 0 1px 2px hsl(215 24% 7% / 0.06);
+    }
+
+    .dark {
+        --background: 215 24% 7%;
+        --foreground: 214 20% 92%;
+
+        --card: 216 19% 10%;
+        --card-foreground: 214 20% 92%;
+
+        --popover: 216 19% 12%;
+        --popover-foreground: 214 20% 92%;
+
+        --primary: 226 90% 66%;
+        --primary-foreground: 215 24% 7%;
+
+        --secondary: 216 19% 14%;
+        --secondary-foreground: 214 20% 92%;
+
+        --muted: 216 16% 15%;
+        --muted-foreground: 214 11% 60%;
+
+        --accent: 216 16% 16%;
+        --accent-foreground: 214 20% 92%;
+
+        --destructive: 358 70% 60%;
+        --destructive-foreground: 0 0% 100%;
+
+        --border: 215 16% 18%;
+        --input: 215 16% 22%;
+        --ring: 226 90% 66%;
+
+        --long: 165 70% 42%;
+        --long-soft: 165 40% 14%;
+        --short: 358 70% 60%;
+        --short-soft: 358 40% 15%;
+        --warn: 38 88% 55%;
+
+        --code-comment: 214 11% 52%;
+        --code-keyword: 268 60% 74%;
+        --code-string: 172 50% 58%;
+        --code-meta: 24 70% 66%;
+
+        --shadow-overlay: 0 16px 48px -12px hsl(0 0% 0% / 0.6), 0 2px 8px -2px hsl(0 0% 0% / 0.4);
+        --shadow-raised: 0 1px 2px hsl(0 0% 0% / 0.4);
     }
 }
 
@@ -61,34 +132,66 @@
 
     body {
         @apply bg-background text-foreground font-sans antialiased;
-        font-family: 'Inter', system-ui, sans-serif;
+        font-feature-settings: "cv05" 1, "ss01" 1;
     }
 
-    h1,
-    h2,
-    h3,
-    h4,
-    h5,
-    h6 {
-        font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+    /* Numbers are data: monospaced and column-aligned wherever they appear. */
+    :where(td, th) {
+        font-variant-numeric: tabular-nums;
+    }
+
+    :focus-visible {
+        outline: 2px solid hsl(var(--ring));
+        outline-offset: 2px;
+    }
+
+    ::selection {
+        background: hsl(var(--primary) / 0.22);
     }
 }
 
 @layer utilities {
-    .text-gradient-orange {
-        @apply bg-clip-text text-transparent;
-        background-image: var(--gradient-orange);
+    /* Prices, sizes, timestamps, ids — anything that must line up in a column. */
+    .numeric {
+        font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-variant-numeric: tabular-nums;
+        font-feature-settings: "zero" 1;
+        letter-spacing: -0.01em;
     }
 
-    .bg-gradient-hero {
-        background: var(--gradient-hero);
+    .ink-panel {
+        background-color: hsl(var(--ink));
+        color: hsl(var(--ink-foreground));
     }
 
-    .shadow-glow {
-        box-shadow: var(--shadow-glow);
+    .shadow-overlay {
+        box-shadow: var(--shadow-overlay);
     }
 
-    .shadow-soft {
-        box-shadow: var(--shadow-soft);
+    .shadow-raised {
+        box-shadow: var(--shadow-raised);
+    }
+
+    /* Drafting-table ruling. Scoped to the surface that earns it, never the page. */
+    .grid-rule {
+        background-image:
+            linear-gradient(to right, hsl(var(--ink-line) / 0.7) 1px, transparent 1px),
+            linear-gradient(to bottom, hsl(var(--ink-line) / 0.7) 1px, transparent 1px);
+        background-size: 2rem 2rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+
+    html {
+        scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
     }
 }

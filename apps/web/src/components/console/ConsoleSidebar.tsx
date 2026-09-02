@@ -473,11 +473,11 @@ const ConsoleSidebar = ({
         switch (status) {
             case "generated":
             case "done":
-                return "bg-green-500";
+                return "bg-long";
             case "ready":
                 return "bg-primary";
             case "generating":
-                return "bg-blue-500 animate-pulse";
+                return "bg-primary animate-pulse";
             default:
                 return "bg-muted-foreground";
         }
@@ -488,7 +488,7 @@ const ConsoleSidebar = ({
             <motion.div
                 initial={{ width: 64 }}
                 animate={{ width: 64 }}
-                className="border-r border-border bg-card/50 flex flex-col items-center py-4"
+                className="border-r border-border bg-card flex flex-col items-center py-4"
             >
                 <Button
                     variant="ghost"
@@ -512,7 +512,7 @@ const ConsoleSidebar = ({
 
     return (
         <motion.div
-            className="border-r border-border bg-card/50 flex flex-col w-full h-full min-h-0"
+            className="border-r border-border bg-card flex flex-col w-full h-full min-h-0"
         >
             {/* Header with Back Button */}
             <div className="h-14 px-4 flex items-center justify-between border-b border-border">
@@ -623,10 +623,10 @@ const ConsoleSidebar = ({
                                     >
                                         <div
                                             className={cn(
-                                                "max-w-[92%] rounded-2xl px-4 py-2.5 text-sm",
+                                                "rounded-md px-4 py-2.5 text-sm",
                                                 msg.role === "user"
-                                                    ? "bg-primary text-primary-foreground rounded-br-md"
-                                                    : "bg-muted text-foreground rounded-bl-md"
+                                                    ? "max-w-[92%] bg-primary text-primary-foreground"
+                                                    : "max-w-full border border-border text-foreground"
                                             )}
                                         >
                                             {msg.role === "assistant" ? (
@@ -671,7 +671,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="flex justify-end"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                    <div className="max-w-[92%] rounded-md px-4 py-2.5 text-sm bg-primary text-primary-foreground">
                                         <p className="whitespace-pre-wrap break-words leading-relaxed">
                                             {pendingUserMessage}
                                         </p>
@@ -686,7 +686,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1 }}
                                     className="flex justify-start"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-full rounded-md border border-border px-4 py-3 text-sm">
                                         <div className="flex items-center gap-2 text-muted-foreground">
                                             <Loader2 size={14} className="animate-spin" />
                                             <span className="text-sm">
@@ -705,7 +705,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="flex justify-start"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-full rounded-md border border-border px-4 py-3 text-sm">
                                         <div className="text-sm text-foreground font-medium mb-2">
                                             {t("liveTrading.ready")}
                                         </div>
@@ -748,7 +748,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="flex justify-start"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-full rounded-md border border-border px-4 py-3 text-sm">
                                         <div className="text-sm text-foreground font-medium mb-2">
                                             {t("liveTrading.generateFailedTitle")}
                                         </div>
@@ -765,7 +765,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1, y: 0 }}
                                     className="flex justify-start"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-full rounded-md border border-border px-4 py-3 text-sm">
                                         <Button
                                             size="sm"
                                             variant="outline"
@@ -802,8 +802,8 @@ const ConsoleSidebar = ({
 
                 {liveDraftStatus === "generating" && (
                     <div className="absolute inset-0 z-10 flex items-start justify-center">
-                        <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
-                        <div className="relative mt-6 w-[85%] max-w-md rounded-xl border border-primary/30 bg-background/95 p-4 shadow-lg">
+                        <div className="absolute inset-0 bg-background/80" />
+                        <div className="relative mt-6 w-[85%] max-w-md rounded-md border border-primary/30 bg-background/95 p-4">
                             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
                                 <Loader2 size={16} className="animate-spin text-primary" />
                                 {t("liveTrading.generating")}
@@ -837,7 +837,7 @@ const ConsoleSidebar = ({
                                 ? t("console.sidebar.refinePlaceholder")
                                 : t("console.sidebar.createStrategyPlaceholder")
                         }
-                        className="min-h-[80px] pr-12 resize-none bg-muted/50"
+                        className="min-h-[80px] resize-none pr-12"
                         disabled={isStreaming}
                     />
                     <Button

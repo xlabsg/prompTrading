@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
 import {
     Code,
     LineChart,
@@ -8,7 +7,6 @@ import {
     Radio,
     Users,
     LogOut,
-    TrendingUp,
     MessageSquare,
     ArrowLeft,
     Network,
@@ -152,10 +150,10 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
         return (
             <div
                 key={member.id}
-                className="flex items-center justify-between rounded-xl border border-orange-100 bg-white px-4 py-3"
+                className="flex items-center justify-between rounded-md border border-border bg-card px-4 py-3"
             >
                 <div className="flex items-center gap-3">
-                    <div className="h-9 w-9 rounded-full bg-orange-100 flex items-center justify-center text-orange-700 text-sm font-semibold">
+                    <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold">
                         {(member.user.name || member.user.email || "U").slice(0, 1).toUpperCase()}
                     </div>
                     <div>
@@ -189,155 +187,129 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
     };
 
     return (
-        <header className="border-b border-border bg-card/50 backdrop-blur-sm px-4 py-3 sm:py-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4 md:min-w-0 md:flex-1 md:overflow-hidden">
-                    <div className="flex items-center gap-3 min-w-0 mt-1 md:mt-0 md:h-9 shrink-0">
-                        {strategy && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => navigate("/")}
-                                className="md:hidden h-8 w-8 p-0"
+        <header className="bg-card">
+            {/* Identity rail: what you are working on, and who you are. */}
+            <div className="flex h-14 items-center gap-3 border-b border-border px-3 sm:px-4">
+                {strategy && (
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => navigate("/")}
+                        className="h-8 w-8 shrink-0"
+                        title={t("console.sidebar.backToDashboard")}
+                    >
+                        <ArrowLeft size={16} />
+                    </Button>
+                )}
+
+                {strategy && (
+                    <div className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-sm font-medium text-foreground">{strategy.name}</span>
+                        {originTemplate && (
+                            <button
+                                onClick={() => navigate(`/template/${originTemplate.templateId}/backtest`)}
+                                className="hidden shrink-0 truncate text-xs text-muted-foreground transition-colors hover:text-foreground sm:block"
+                                title={t("console.fromTemplateTitle", { name: originTemplate.templateName })}
                             >
-                                <ArrowLeft size={16} />
-                            </Button>
-                        )}
-                        {strategy && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => navigate("/")}
-                                className="hidden md:inline-flex h-9 gap-2"
-                            >
-                                <ArrowLeft size={16} />
-                                <span>{t("console.sidebar.backToDashboard")}</span>
-                            </Button>
-                        )}
-                        {strategy && (
-                            <div className="flex items-center gap-2 text-sm min-w-0 md:h-9">
-                                <span className="text-muted-foreground whitespace-nowrap">{t("console.strategyLabel", { defaultValue: "Strategy:" })}</span>
-                                <span className="font-medium text-foreground truncate max-w-[220px]">
-                                    {strategy.name}
-                                </span>
-                                {originTemplate && (
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
-                                        onClick={() => navigate(`/template/${originTemplate.templateId}/backtest`)}
-                                        title={t("console.fromTemplateTitle", { name: originTemplate.templateName })}
-                                    >
-                                        {t("console.fromTemplateLabel", { name: originTemplate.templateName })}
-                                    </Button>
-                                )}
-                            </div>
+                                {t("console.fromTemplateLabel", { name: originTemplate.templateName })}
+                            </button>
                         )}
                     </div>
+                )}
 
-                    <div className="flex items-center gap-2 md:flex-1 min-w-0 overflow-hidden">
-                        <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1 overflow-hidden w-full md:h-9">
-                            {onOpenSidebar && (
-                                <button
-                                    onClick={onOpenSidebar}
-                                    className="md:hidden relative flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium text-muted-foreground hover:text-foreground whitespace-nowrap"
-                                >
-                                    <MessageSquare size={16} className="relative z-10" />
-                                    <span className="relative z-10">{t("console.sidebar.chat", { defaultValue: "Chat" })}</span>
-                                </button>
-                            )}
-                            {views.map((view) => (
-                                <button
-                                    key={view.id}
-                                    onClick={() => onViewChange(view.id)}
-                                    className={cn(
-                                        "relative flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap",
-                                        currentView === view.id
-                                            ? "text-primary"
-                                            : "text-muted-foreground hover:text-foreground"
-                                    )}
-                                >
-                                    {currentView === view.id && (
-                                        <motion.div
-                                            layoutId="activeTab"
-                                            className="absolute inset-0 bg-primary/10 border border-primary/20 rounded-md shadow-sm"
-                                            transition={{ duration: 0.2 }}
-                                        />
-                                    )}
-                                    <view.icon size={16} className="relative z-10" />
-                                    <span className="relative z-10 hidden sm:inline">{view.label}</span>
-                                </button>
-                            ))}
-
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <button className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
-                                        <Plus size={16} />
-                                    </button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="start" className="w-48">
-                                    {additionalViews.map((view) => (
-                                        <DropdownMenuItem
-                                            key={view.id}
-                                            disabled={view.coming}
-                                            className="flex items-center justify-between"
-                                            onClick={() => !view.coming && onViewChange(view.id as ViewType)}
-                                        >
-                                            <div className="flex items-center gap-2">
-                                                <view.icon size={14} />
-                                                <span>{view.label}</span>
-                                            </div>
-                                            {view.coming && (
-                                                <span className="text-xs text-muted-foreground">{t("common.comingSoon")}</span>
-                                            )}
-                                        </DropdownMenuItem>
-                                    ))}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="hidden items-center justify-between gap-2 sm:flex sm:justify-end sm:gap-3">
+                <div className="ml-auto flex shrink-0 items-center gap-1">
                     <div className="hidden lg:flex">
                         <LanguageSwitcher />
                     </div>
-                    {user ? (
-                        <>
-                            {false && strategy && (
-                                <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsShareOpen(true)}>
-                                    <Users size={14} />
-                                    <span className="hidden sm:inline">{t("console.share")}</span>
-                                </Button>
-                            )}
-                            <div className="flex items-center gap-2 rounded-full border border-orange-200 bg-white px-2 py-1">
-                                <div className="h-6 w-6 rounded-full bg-orange-100 flex items-center justify-center text-xs font-semibold text-orange-700">
-                                    {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
-                                </div>
-                                <span className="hidden sm:inline text-sm font-medium text-foreground">
-                                    {user.name || user.email || t("console.defaultUser")}
-                                </span>
-                                <button
-                                    type="button"
-                                    onClick={() => logoutMutation.mutate()}
-                                    className="rounded-full p-1 text-muted-foreground hover:text-foreground"
-                                >
-                                    <LogOut size={14} />
-                                </button>
+                    {false && strategy && (
+                        <Button variant="ghost" size="sm" className="gap-2" onClick={() => setIsShareOpen(true)}>
+                            <Users size={14} />
+                            <span className="hidden sm:inline">{t("console.share")}</span>
+                        </Button>
+                    )}
+                    {user && (
+                        <div className="flex items-center gap-2 pl-1">
+                            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-muted text-xs font-medium text-foreground">
+                                {(user.name || user.email || "U").slice(0, 1).toUpperCase()}
                             </div>
-                        </>
-                    ) : null}
+                            <span className="hidden text-sm text-foreground sm:inline">
+                                {user.name || user.email || t("console.defaultUser")}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => logoutMutation.mutate()}
+                                className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                title={t("common.signOut")}
+                            >
+                                <LogOut size={14} />
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 
+            {/* View rail: underlined tabs on a hairline, matching the Tabs primitive. */}
+            <div className="flex items-stretch gap-5 overflow-x-auto border-b border-border px-3 sm:px-4">
+                {onOpenSidebar && (
+                    <button
+                        onClick={onOpenSidebar}
+                        className="-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 border-transparent py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground md:hidden"
+                    >
+                        <MessageSquare size={15} strokeWidth={1.75} />
+                        <span>{t("console.sidebar.chat", { defaultValue: "Chat" })}</span>
+                    </button>
+                )}
+
+                {views.map((view) => {
+                    const isActive = currentView === view.id;
+                    return (
+                        <button
+                            key={view.id}
+                            onClick={() => onViewChange(view.id)}
+                            className={cn(
+                                "-mb-px flex shrink-0 items-center gap-2 whitespace-nowrap border-b-2 py-2.5 text-sm font-medium transition-colors",
+                                isActive
+                                    ? "border-primary text-foreground"
+                                    : "border-transparent text-muted-foreground hover:text-foreground",
+                            )}
+                        >
+                            <view.icon size={15} strokeWidth={1.75} />
+                            <span>{view.label}</span>
+                        </button>
+                    );
+                })}
+
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button
+                            className="-mb-px flex shrink-0 items-center border-b-2 border-transparent px-0.5 py-2.5 text-muted-foreground transition-colors hover:text-foreground"
+                            title={t("console.views.logs")}
+                        >
+                            <Plus size={15} strokeWidth={1.75} />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-44">
+                        {additionalViews.map((view) => (
+                            <DropdownMenuItem
+                                key={view.id}
+                                className="flex items-center gap-2"
+                                onClick={() => onViewChange(view.id as ViewType)}
+                            >
+                                <view.icon size={14} />
+                                <span>{view.label}</span>
+                            </DropdownMenuItem>
+                        ))}
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
 
             <AuthDialog open={isAuthOpen} onOpenChange={setIsAuthOpen} />
 
             <Dialog open={isShareOpen} onOpenChange={setIsShareOpen}>
-                <DialogContent className="max-w-2xl border-orange-100 bg-white/95 p-0">
-                    <div className="px-8 py-6 border-b border-orange-100">
+                <DialogContent className="max-w-2xl border-border bg-popover p-0">
+                    <div className="px-8 py-6 border-b border-border">
                         <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/5 text-primary">
                                 <Users className="h-6 w-6" />
                             </div>
                             <div>
@@ -348,7 +320,7 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
                     </div>
                     <div className="px-8 py-6 space-y-5">
                         {!user && (
-                            <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 text-sm text-orange-700">
+                            <div className="rounded-md border border-border bg-primary/5 px-4 py-3 text-sm text-primary">
                                 {t("console.loginRequired")}
                             </div>
                         )}
@@ -395,7 +367,7 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
                             {membersQuery.data?.length ? (
                                 membersQuery.data.map(renderMemberRow)
                             ) : (
-                                <div className="rounded-xl border border-dashed border-orange-200 bg-orange-50/40 px-4 py-6 text-center text-sm text-muted-foreground">
+                                <div className="rounded-md border border-dashed border-border bg-primary/5 px-4 py-6 text-center text-sm text-muted-foreground">
                                     {t("console.noMembers")}
                                 </div>
                             )}

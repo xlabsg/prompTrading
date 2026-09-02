@@ -241,13 +241,13 @@ const AdminTrending = () => {
                                         <table className="w-full text-sm">
                                             <thead className="sticky top-0 bg-card">
                                                 <tr className="border-b border-border">
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.id")}</th>
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.type")}</th>
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.status")}</th>
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.created")}</th>
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.age")}</th>
-                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.lastLog")}</th>
-                                                    <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.jobs.columns.action")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.id")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.type")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.status")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.created")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.age")}</th>
+                                                    <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.lastLog")}</th>
+                                                    <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.jobs.columns.action")}</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -275,7 +275,7 @@ const AdminTrending = () => {
                                                             <td className="py-2 px-2 text-xs text-muted-foreground">
                                                                 <div className="max-w-[420px] truncate">{j.last_log ?? ""}</div>
                                                             </td>
-                                                            <td className="py-2 px-2 text-right">
+                                                            <td className="py-2 px-2 text-right numeric">
                                                                 <Button
                                                                     size="sm"
                                                                     variant="outline"
@@ -329,10 +329,10 @@ const AdminTrending = () => {
                                             {t("adminTrending.logs.refresh")}
                                         </Button>
                                     </div>
-                                    <ScrollArea className="h-64 rounded-md border border-border bg-zinc-950">
-                                        <div className="p-2 font-mono text-xs text-zinc-200 space-y-1">
+                                    <ScrollArea className="h-64 rounded-md border border-border bg-muted">
+                                        <div className="p-2 font-mono text-xs text-muted-foreground space-y-1">
                                             {(logQuery.data?.lines ?? []).length === 0 ? (
-                                                <div className="text-zinc-400">{t("adminTrending.logs.noLogs")}</div>
+                                                <div className="text-muted-foreground">{t("adminTrending.logs.noLogs")}</div>
                                             ) : (
                                                 (logQuery.data?.lines ?? []).map((line, idx) => (
                                                     <div key={idx} className="whitespace-pre-wrap break-words">
@@ -362,12 +362,12 @@ const AdminTrending = () => {
                                     <table className="w-full text-sm">
                                         <thead className="sticky top-0 bg-card">
                                             <tr className="border-b border-border">
-                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.id")}</th>
-                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.title")}</th>
-                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.source")}</th>
-                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.scraped")}</th>
-                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.backtest")}</th>
-                                                <th className="text-right py-2 px-2 font-medium text-muted-foreground uppercase text-xs">{t("adminTrending.scraped.columns.action")}</th>
+                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.id")}</th>
+                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.title")}</th>
+                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.source")}</th>
+                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.scraped")}</th>
+                                                <th className="text-left py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.backtest")}</th>
+                                                <th className="text-right py-2 px-2 font-medium text-muted-foreground text-xs">{t("adminTrending.scraped.columns.action")}</th>
                                             </tr>
                                         </thead>
                                         <tbody>
@@ -387,7 +387,7 @@ const AdminTrending = () => {
                                                     <td className="py-2 px-2 text-muted-foreground">{s.source_type}</td>
                                                     <td className="py-2 px-2 text-muted-foreground">{formatShort(s.scraped_at)}</td>
                                                     <td className="py-2 px-2 text-muted-foreground">{s.backtest_status}</td>
-                                                    <td className="py-2 px-2 text-right">
+                                                    <td className="py-2 px-2 text-right numeric">
                                                         <div className="flex justify-end gap-2">
                                                             <Button
                                                                 size="sm"

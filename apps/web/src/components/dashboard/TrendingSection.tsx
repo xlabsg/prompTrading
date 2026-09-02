@@ -91,10 +91,10 @@ export const TrendingSection = () => {
 
                 <div className="ml-3 flex flex-col items-end gap-1 shrink-0">
                   {strategy.backtest_status === "completed" && (
-                    <span className="text-xs text-green-600">{t("trendingSection.backtested")}</span>
+                    <span className="text-xs text-long">{t("trendingSection.backtested")}</span>
                   )}
                   {strategy.backtest_status === "running" && (
-                    <span className="text-xs text-blue-600">{t("trendingSection.testing")}</span>
+                    <span className="text-xs text-primary">{t("trendingSection.testing")}</span>
                   )}
                 </div>
               </div>

@@ -200,7 +200,7 @@ export function TemplatePerformanceDialog({
                                             </div>
                                             <div className="flex items-center gap-4 text-sm">
                                                 <Badge
-                                                    variant={run.total_return != null && run.total_return >= 0 ? "default" : "destructive"}
+                                                    variant={run.total_return != null && run.total_return >= 0 ? "long" : "short"}
                                                 >
                                                     {formatPercent(run.total_return)}
                                                 </Badge>
@@ -228,8 +228,8 @@ export function TemplatePerformanceDialog({
                                                     size={16}
                                                     className={cn(
                                                         signal.side === "buy"
-                                                            ? "text-green-500"
-                                                            : "text-red-500"
+                                                            ? "text-long"
+                                                            : "text-short"
                                                     )}
                                                 />
                                                 <div>
@@ -247,7 +247,7 @@ export function TemplatePerformanceDialog({
                                                 </span>
                                                 {signal.pnl != null && (
                                                     <Badge
-                                                        variant={signal.pnl >= 0 ? "default" : "destructive"}
+                                                        variant={signal.pnl >= 0 ? "long" : "short"}
                                                     >
                                                         {formatPercent(signal.pnl)}
                                                     </Badge>
@@ -290,8 +290,8 @@ function MetricCard({ label, value, icon: Icon, trend }: MetricCardProps) {
                 <div
                     className={cn(
                         "text-2xl font-bold",
-                        trend === "up" && "text-green-500",
-                        trend === "down" && "text-red-500"
+                        trend === "up" && "text-long",
+                        trend === "down" && "text-short"
                     )}
                 >
                     {value}

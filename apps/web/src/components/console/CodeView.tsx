@@ -380,14 +380,14 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     // Syntax highlighting helper
     const highlightLine = (line: string, filename: string) => {
         if (filename.endsWith(".py")) {
-            if (line.trim().startsWith("#")) return "text-green-600";
-            if (line.includes("def ")) return "text-blue-600";
-            if (line.includes('"""') || line.includes("'''")) return "text-green-600";
-            if (line.includes("import ") || line.includes("from ")) return "text-purple-600";
-            if (line.includes("return ")) return "text-pink-600";
+            if (line.trim().startsWith("#")) return "text-code-comment";
+            if (line.includes("def ")) return "text-code-keyword";
+            if (line.includes('"""') || line.includes("'''")) return "text-code-string";
+            if (line.includes("import ") || line.includes("from ")) return "text-code-meta";
+            if (line.includes("return ")) return "text-code-keyword";
         }
         if (filename.endsWith(".yaml") || filename.endsWith(".yml")) {
-            if (line.includes(":")) return "text-cyan-600";
+            if (line.includes(":")) return "text-code-meta";
         }
         return "text-foreground";
     };
@@ -473,8 +473,8 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                     </span>
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-[11px]">
-                    <span className="font-medium text-green-600">+{file.additions}</span>
-                    <span className="font-medium text-red-600">-{file.deletions}</span>
+                    <span className="font-medium text-long">+{file.additions}</span>
+                    <span className="font-medium text-short">-{file.deletions}</span>
                 </div>
             </button>
         );
@@ -719,7 +719,7 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                         >
                             {copied ? (
                                 <>
-                                    <Check size={14} className="text-green-500" />
+                                    <Check size={14} className="text-long" />
                                     <span>{t("common.copied")}</span>
                                 </>
                             ) : (
@@ -732,13 +732,13 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                     </div>
                 </div>
 
-                <div className={cn("flex-1 min-h-0 bg-muted/20 p-4", isShowingChanges ? "overflow-hidden flex flex-col" : "overflow-auto")}>
+                <div className={cn("flex-1 min-h-0 bg-card p-4", isShowingChanges ? "overflow-hidden flex flex-col" : "overflow-auto")}>
                     {isShowingChanges ? renderChangesContent() : fileContent ? (
-                        <pre className="text-sm font-mono">
+                        <pre className="font-mono text-[13px] leading-[1.7]">
                             <code>
                                 {fileContent.split("\n").map((line, i) => (
-                                    <div key={i} className="flex hover:bg-muted/50">
-                                        <span className="w-12 text-muted-foreground text-right pr-4 select-none shrink-0">
+                                    <div key={i} className="flex hover:bg-muted">
+                                        <span className="mr-4 w-10 shrink-0 select-none border-r border-border pr-3 text-right text-muted-foreground">
                                             {i + 1}
                                         </span>
                                         <span className={highlightLine(line, selectedFile?.name || "")}>

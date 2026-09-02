@@ -80,7 +80,7 @@ export function TemplateBacktestRunDialog({
                     <DialogTitle className="flex items-center gap-3">
                         <span>{title}</span>
                         {typeof totalReturn === "number" && (
-                            <Badge variant={totalReturn >= 0 ? "default" : "destructive"}>
+                            <Badge variant={totalReturn >= 0 ? "long" : "short"}>
                                 {formatPercent(totalReturn)}
                             </Badge>
                         )}
@@ -191,7 +191,7 @@ export function TemplateBacktestRunDialog({
                                                             <td className="py-2 pr-2">
                                                                 {exit == null ? "-" : new Date(exit).toLocaleString(locale)}
                                                             </td>
-                                                            <td className="py-2 pl-2 text-right">
+                                                            <td className="py-2 pl-2 text-right numeric">
                                                                 {ret == null ? "-" : `${ret.toFixed(2)}%`}
                                                             </td>
                                                         </tr>

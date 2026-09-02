@@ -137,8 +137,8 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
       </div>
 
       {error && (
-        <div className="w-full mt-4 p-3 rounded-lg bg-red-50 border border-red-200">
-          <p className="text-sm text-red-600">{error}</p>
+        <div className="w-full mt-4 p-3 rounded-lg bg-short-soft border border-short/30">
+          <p className="text-sm text-short">{error}</p>
         </div>
       )}
 
@@ -220,7 +220,7 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
             />
           </div>
           {error && (
-            <p className="text-sm text-red-500">{error}</p>
+            <p className="text-sm text-short">{error}</p>
           )}
         </div>
 

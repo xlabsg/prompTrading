@@ -1,12 +1,9 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Readout } from "@/components/console/Readout";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-    TrendingUp,
-    Wallet,
-    ArrowRightLeft,
-    Clock,
     BarChart3,
     Activity,
     Settings,
@@ -26,7 +23,6 @@ import {
 import { portfolioApi, PortfolioSummary, OrderData, PositionHistoryData } from "@/lib/api";
 import { Strategy, ExchangeAccountResponse } from "@/lib/types";
 import { useWebSocket } from "@/hooks/useWebSocket";
-import { cn } from "@/lib/utils";
 import AccountSidebar from "./AccountSidebar";
 import { useTranslation } from "react-i18next";
 import {
@@ -321,7 +317,7 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
     if (error) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8">
-                <div className="w-20 h-20 rounded-2xl bg-destructive/10 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-md bg-destructive/10 flex items-center justify-center mb-6">
                     <AlertCircle className="w-10 h-10 text-destructive" />
                 </div>
                 <h2 className="text-2xl font-bold text-foreground mb-2">{t("portfolioView.errorTitle")}</h2>
@@ -340,7 +336,7 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
     if (summary && !summary.has_trading_config) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8">
-                <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-md bg-primary/10 flex items-center justify-center mb-6">
                     <Settings className="w-10 h-10 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold text-foreground mb-2">{t("portfolioView.configureTitle")}</h2>
@@ -359,7 +355,7 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
     if (summary && !summary.has_active_session) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8">
-                <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-md bg-primary/10 flex items-center justify-center mb-6">
                     <BarChart3 className="w-10 h-10 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold text-foreground mb-2">{t("portfolioView.readyTitle")}</h2>
@@ -420,78 +416,31 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                         </Button>
                     </div>
 
-                {/* Summary Cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <TrendingUp className="w-4 h-4" />
-                                {t("portfolioView.summary.totalPnl")}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div
-                                className={cn(
-                                    "text-2xl font-bold",
-                                    total_pnl > 0 && "text-green-500",
-                                    total_pnl < 0 && "text-red-500",
-                                    total_pnl === 0 && "text-foreground"
-                                )}
-                            >
-                                {total_pnl >= 0 ? "+" : ""}{formatCurrency(total_pnl)}
-                            </div>
-                            {balance && balance.total_equity > 0 && (
-                                <div className="text-xs text-muted-foreground">
-                                    {formatPercent((total_pnl / balance.total_equity) * 100)}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <Wallet className="w-4 h-4" />
-                                {t("portfolioView.summary.balance")}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">
-                                {balance ? formatCurrency(balance.total_equity) : "--"}
-                            </div>
-                            {balance && (
-                                <div className="text-xs text-muted-foreground">
-                                    {t("portfolioView.summary.available")}: {formatCurrency(balance.available)}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <ArrowRightLeft className="w-4 h-4" />
-                                {t("portfolioView.summary.positions")}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{positions.length}</div>
-                        </CardContent>
-                    </Card>
-                    <Card>
-                        <CardHeader className="pb-2">
-                            <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                                <Clock className="w-4 h-4" />
-                                {t("portfolioView.summary.tradesToday")}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{total_trades}</div>
-                        </CardContent>
-                    </Card>
-                </div>
+                <Readout
+                    items={[
+                        {
+                            label: t("portfolioView.summary.totalPnl"),
+                            value: `${total_pnl >= 0 ? "+" : ""}${formatCurrency(total_pnl)}`,
+                            tone: total_pnl > 0 ? "long" : total_pnl < 0 ? "short" : "neutral",
+                            note: balance && balance.total_equity > 0
+                                ? formatPercent((total_pnl / balance.total_equity) * 100)
+                                : undefined,
+                        },
+                        {
+                            label: t("portfolioView.summary.balance"),
+                            value: balance ? formatCurrency(balance.total_equity) : "--",
+                            note: balance
+                                ? `${t("portfolioView.summary.available")}: ${formatCurrency(balance.available)}`
+                                : undefined,
+                        },
+                        { label: t("portfolioView.summary.positions"), value: String(positions.length) },
+                        { label: t("portfolioView.summary.tradesToday"), value: String(total_trades) },
+                    ]}
+                />
 
                     {/* Tabs */}
                     <Tabs defaultValue="positions" className="w-full">
-                        <TabsList className="grid w-full grid-cols-4 mb-4">
+                        <TabsList className="mb-4">
                         <TabsTrigger value="positions">{t("portfolioView.tabs.positions")}</TabsTrigger>
                         <TabsTrigger value="orders">{t("portfolioView.tabs.orders", { count: pendingOrders.length })}</TabsTrigger>
                         <TabsTrigger value="history">{t("portfolioView.tabs.history")}</TabsTrigger>
@@ -561,13 +510,13 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {positionHistory.map((pos, i) => (
-                                    <Card key={i} className="hover:shadow-lg transition-shadow">
+                                    <Card key={i} className="transition-colors hover:border-primary/40">
                                         <CardHeader className="pb-3">
                                             <div className="flex items-center justify-between">
                                                 <CardTitle className="text-lg font-bold">{pos.inst_id}</CardTitle>
                                                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${pos.pos_side.toLowerCase() === 'long'
-                                                    ? "bg-green-500/10 text-green-600"
-                                                    : "bg-red-500/10 text-red-600"
+                                                    ? "bg-long/10 text-long"
+                                                    : "bg-short/10 text-short"
                                                     }`}>
                                                     {pos.pos_side.toUpperCase()}
                                                 </span>
@@ -603,11 +552,11 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                                                 <div className="flex items-center justify-between">
                                                     <div>
                                                         <div className="text-xs text-muted-foreground mb-1">{t("portfolioView.fields.realizedPnl")}</div>
-                                                        <div className={`text-lg font-bold ${pos.realized_pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                                        <div className={`text-lg font-bold ${pos.realized_pnl >= 0 ? "text-long" : "text-short"}`}>
                                                             {pos.realized_pnl >= 0 ? "+" : ""}{formatCurrency(pos.realized_pnl)}
                                                         </div>
                                                     </div>
-                                                    <div className={`text-2xl font-bold ${pos.realized_pnl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                                    <div className={`text-2xl font-bold ${pos.realized_pnl >= 0 ? "text-long" : "text-short"}`}>
                                                         {formatPercent(pos.return_pct)}
                                                     </div>
                                                 </div>
@@ -631,13 +580,13 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                         ) : (
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {positions.map((pos, idx) => (
-                                    <Card key={idx} className="hover:shadow-lg transition-shadow">
+                                    <Card key={idx} className="transition-colors hover:border-primary/40">
                                         <CardHeader className="pb-3">
                                             <div className="flex items-center justify-between">
                                                 <CardTitle className="text-lg font-bold">{pos.inst_id}</CardTitle>
                                                 <span className={`px-3 py-1 rounded-full text-sm font-medium ${pos.pos_side === "long"
-                                                    ? "bg-green-500/10 text-green-600"
-                                                    : "bg-red-500/10 text-red-600"
+                                                    ? "bg-long/10 text-long"
+                                                    : "bg-short/10 text-short"
                                                     }`}>
                                                     {pos.pos_side.toUpperCase()}
                                                 </span>
@@ -668,11 +617,11 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                                                 <div className="flex items-center justify-between">
                                                     <div>
                                                         <div className="text-xs text-muted-foreground mb-1">{t("portfolioView.fields.unrealizedPnl")}</div>
-                                                        <div className={`text-lg font-bold ${pos.upl >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                                        <div className={`text-lg font-bold ${pos.upl >= 0 ? "text-long" : "text-short"}`}>
                                                             {pos.upl >= 0 ? "+" : ""}{formatCurrency(pos.upl)}
                                                         </div>
                                                     </div>
-                                                    <div className={`text-2xl font-bold ${pos.upl_ratio >= 0 ? "text-green-500" : "text-red-500"}`}>
+                                                    <div className={`text-2xl font-bold ${pos.upl_ratio >= 0 ? "text-long" : "text-short"}`}>
                                                         {formatPercent(pos.upl_ratio)}
                                                     </div>
                                                 </div>
@@ -711,20 +660,20 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                                                         <td className="px-4 py-3 font-medium">{order.inst_id}</td>
                                                         <td className="px-4 py-3">
                                                             <span className={`px-2 py-1 rounded text-xs ${order.side === "buy"
-                                                                ? "bg-green-500/10 text-green-600"
-                                                                : "bg-red-500/10 text-red-600"
+                                                                ? "bg-long/10 text-long"
+                                                                : "bg-short/10 text-short"
                                                                 }`}>
                                                                 {order.side}
                                                             </span>
                                                         </td>
                                                         <td className="px-4 py-3">{order.order_type}</td>
-                                                        <td className="px-4 py-3 text-right">
+                                                        <td className="px-4 py-3 text-right numeric">
                                                             {order.px ? formatCurrency(order.px) : t("portfolioView.market")}
                                                         </td>
-                                                        <td className="px-4 py-3 text-right">{formatNumber(order.sz, 4)}</td>
-                                                        <td className="px-4 py-3 text-right">{formatNumber(order.filled_size, 4)}</td>
+                                                        <td className="px-4 py-3 text-right numeric">{formatNumber(order.sz, 4)}</td>
+                                                        <td className="px-4 py-3 text-right numeric">{formatNumber(order.filled_size, 4)}</td>
                                                         <td className="px-4 py-3">
-                                                            <span className="px-2 py-1 rounded text-xs bg-blue-500/10 text-blue-600">
+                                                            <span className="px-2 py-1 rounded text-xs bg-primary/10 text-primary">
                                                                 {order.status}
                                                             </span>
                                                         </td>
@@ -767,22 +716,22 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
                                                         <td className="px-4 py-3 font-medium">{order.symbol}</td>
                                                         <td className="px-4 py-3">
                                                             <span className={`px-2 py-1 rounded text-xs ${order.side === "buy"
-                                                                ? "bg-green-500/10 text-green-600"
-                                                                : "bg-red-500/10 text-red-600"
+                                                                ? "bg-long/10 text-long"
+                                                                : "bg-short/10 text-short"
                                                                 }`}>
                                                                 {order.side}
                                                             </span>
                                                         </td>
-                                                        <td className="px-4 py-3 text-right">{formatNumber(order.size, 4)}</td>
-                                                        <td className="px-4 py-3 text-right">
+                                                        <td className="px-4 py-3 text-right numeric">{formatNumber(order.size, 4)}</td>
+                                                        <td className="px-4 py-3 text-right numeric">
                                                             {order.avg_fill_price ? formatCurrency(order.avg_fill_price) : "-"}
                                                         </td>
                                                         <td className="px-4 py-3">
                                                             <span className={`px-2 py-1 rounded text-xs ${order.status === "filled"
-                                                                ? "bg-green-500/10 text-green-600"
+                                                                ? "bg-long/10 text-long"
                                                                 : order.status === "cancelled"
-                                                                    ? "bg-gray-500/10 text-gray-600"
-                                                                    : "bg-blue-500/10 text-blue-600"
+                                                                    ? "bg-muted-foreground/10 text-muted-foreground"
+                                                                    : "bg-primary/10 text-primary"
                                                                 }`}>
                                                                 {order.status}
                                                             </span>

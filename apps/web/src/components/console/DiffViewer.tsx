@@ -109,8 +109,8 @@ export const DiffViewer: FC<DiffViewerProps> = ({ diffText, filename = "strategy
                             key={idx}
                             className={cn(
                                 "px-3 py-0.5 whitespace-pre flex items-center gap-3",
-                                line.type === "add" && "bg-green-500/10 text-green-600 dark:text-green-400",
-                                line.type === "remove" && "bg-red-500/10 text-red-600 dark:text-red-400",
+                                line.type === "add" && "bg-long/10 text-long dark:text-long",
+                                line.type === "remove" && "bg-short/10 text-short dark:text-short",
                                 line.type === "context" && "text-foreground/70",
                                 line.type === "header" && "bg-muted font-medium text-foreground",
                                 line.type === "hunk" && "bg-muted/50 text-primary font-medium"
@@ -125,10 +125,10 @@ export const DiffViewer: FC<DiffViewerProps> = ({ diffText, filename = "strategy
 
                             {/* Line type indicator */}
                             {line.type === "add" && (
-                                <span className="text-green-600 dark:text-green-400 w-4 flex-shrink-0">+</span>
+                                <span className="text-long dark:text-long w-4 flex-shrink-0">+</span>
                             )}
                             {line.type === "remove" && (
-                                <span className="text-red-600 dark:text-red-400 w-4 flex-shrink-0">-</span>
+                                <span className="text-short dark:text-short w-4 flex-shrink-0">-</span>
                             )}
                             {line.type === "context" && (
                                 <span className="text-muted-foreground w-4 flex-shrink-0"> </span>

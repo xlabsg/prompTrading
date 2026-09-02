@@ -33,31 +33,34 @@ interface LogsViewProps {
     strategy: Strategy;
 }
 
-const LogLevelIcon = ({ level }: { level: string }) => {
+// The same icon appears in the ink log stream and in the paper filter menu, so
+// the neutral levels need the grey that belongs to whichever ground they sit on.
+const LogLevelIcon = ({ level, onInk = false }: { level: string; onInk?: boolean }) => {
+    const neutral = onInk ? "text-ink-muted" : "text-muted-foreground";
     switch (level) {
         case "error":
-            return <AlertCircle className="w-4 h-4 text-red-500" />;
+            return <AlertCircle className="w-4 h-4 text-short" />;
         case "warning":
-            return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+            return <AlertTriangle className="w-4 h-4 text-warn" />;
         case "debug":
-            return <Bug className="w-4 h-4 text-gray-500" />;
+            return <Bug className={cn("w-4 h-4", neutral)} />;
         default:
-            return <Info className="w-4 h-4 text-blue-500" />;
+            return <Info className={cn("w-4 h-4", onInk ? "text-ink-foreground" : "text-primary")} />;
     }
 };
 
 const LogLevelBadge = ({ level }: { level: string }) => {
     const variants = {
-        error: "bg-red-500/10 text-red-600 border-red-500/20",
-        warning: "bg-yellow-500/10 text-yellow-600 border-yellow-500/20",
-        info: "bg-blue-500/10 text-blue-600 border-blue-500/20",
-        debug: "bg-gray-500/10 text-gray-600 border-gray-500/20",
+        error: "bg-short/10 text-short border-short/30/20",
+        warning: "bg-warn/10 text-warn border-warn/20",
+        info: "bg-primary/10 text-primary border-primary/20",
+        debug: "bg-muted-foreground/10 text-muted-foreground border-muted-foreground/20",
     };
 
     return (
         <Badge
             variant="outline"
-            className={cn("px-2 py-0.5 text-xs font-medium uppercase", variants[level as keyof typeof variants])}
+            className={cn("px-2 py-0.5 text-xs font-medium", variants[level as keyof typeof variants])}
         >
             {level}
         </Badge>
@@ -178,7 +181,7 @@ const LogsView = ({ strategy }: LogsViewProps) => {
     if (logs.length === 0) {
         return (
             <div className="h-full flex flex-col items-center justify-center p-8">
-                <div className="w-20 h-20 rounded-2xl bg-primary/10 flex items-center justify-center mb-6">
+                <div className="w-20 h-20 rounded-md bg-primary/10 flex items-center justify-center mb-6">
                     <FileText className="w-10 h-10 text-primary" />
                 </div>
                 <h2 className="text-2xl font-bold text-foreground mb-2">{t("logsView.emptyTitle")}</h2>
@@ -246,38 +249,34 @@ const LogsView = ({ strategy }: LogsViewProps) => {
             {/* Logs List */}
             <div
                 ref={logsContainerRef}
-                className="flex-1 overflow-auto p-4 space-y-1 bg-muted/20 font-mono text-sm"
+                className="ink-panel flex-1 overflow-auto p-3 font-mono text-[13px] leading-relaxed"
             >
                 {filteredLogs.length === 0 ? (
-                    <div className="text-center text-muted-foreground py-8">
-                        No logs match your filters
-                    </div>
+                    <div className="py-8 text-center text-ink-muted">{t("logsView.noMatches")}</div>
                 ) : (
                     filteredLogs.map((log) => (
                         <div
                             key={log.id}
                             className={cn(
-                                "flex items-start gap-3 p-2 rounded hover:bg-card/50 transition-colors",
-                                log.level === "error" && "bg-red-500/5",
-                                log.level === "warning" && "bg-yellow-500/5"
+                                "flex items-start gap-3 rounded-sm px-2 py-1 transition-colors hover:bg-ink-raised",
+                                log.level === "error" && "bg-short/15",
+                                log.level === "warning" && "bg-warn/15"
                             )}
                         >
-                            <span className="text-muted-foreground text-xs shrink-0 w-20">
+                            <span className="w-20 shrink-0 text-xs text-ink-muted">
                                 {formatTimestamp(log.created_at)}
                             </span>
                             <div className="shrink-0">
-                                <LogLevelIcon level={log.level} />
+                                <LogLevelIcon level={log.level} onInk />
                             </div>
                             <div className="flex-1 min-w-0">
-                                <div className="text-foreground break-words">
-                                    {log.message}
-                                </div>
+                                <div className="break-words text-ink-foreground">{log.message}</div>
                                 {log.log_metadata && Object.keys(log.log_metadata).length > 0 && (
-                                    <details className="mt-1 text-xs text-muted-foreground">
-                                        <summary className="cursor-pointer hover:text-foreground">
-                                            Metadata
+                                    <details className="mt-1 text-xs text-ink-muted">
+                                        <summary className="cursor-pointer hover:text-ink-foreground">
+                                            {t("logsView.metadata")}
                                         </summary>
-                                        <pre className="mt-1 p-2 bg-card/50 rounded overflow-x-auto">
+                                        <pre className="mt-1 overflow-x-auto rounded-sm bg-ink-raised p-2">
                                             {JSON.stringify(log.log_metadata, null, 2)}
                                         </pre>
                                     </details>
@@ -296,9 +295,9 @@ const LogsView = ({ strategy }: LogsViewProps) => {
                 <div className="flex items-center gap-4">
                     <div className="flex items-center space-x-2 border-r border-border pr-4 mr-2">
                         {isConnected ? (
-                            <Wifi className="w-3 h-3 text-green-500" />
+                            <Wifi className="w-3 h-3 text-long" />
                         ) : (
-                            <WifiOff className="w-3 h-3 text-red-500" />
+                            <WifiOff className="w-3 h-3 text-short" />
                         )}
                         <span>{isConnected ? "Real-time" : "Connecting..."}</span>
                     </div>

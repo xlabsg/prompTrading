@@ -1,91 +1,55 @@
-import { motion } from "framer-motion";
-import { MessageSquare, Code, LineChart, Rocket } from "lucide-react";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 
+/**
+ * The only numbered thing on the site, because this content genuinely is a
+ * sequence. The numbers sit on a rule that runs through the steps, so the rule
+ * carries the ordering rather than four repeated badges.
+ */
 const HowItWorks = () => {
     const { t } = useTranslation();
     const steps = useMemo(
         () => [
-            {
-                number: "01",
-                icon: MessageSquare,
-                title: t("landing.howItWorks.steps.step1Title"),
-                description: t("landing.howItWorks.steps.step1Desc"),
-            },
-            {
-                number: "02",
-                icon: Code,
-                title: t("landing.howItWorks.steps.step2Title"),
-                description: t("landing.howItWorks.steps.step2Desc"),
-            },
-            {
-                number: "03",
-                icon: LineChart,
-                title: t("landing.howItWorks.steps.step3Title"),
-                description: t("landing.howItWorks.steps.step3Desc"),
-            },
-            {
-                number: "04",
-                icon: Rocket,
-                title: t("landing.howItWorks.steps.step4Title"),
-                description: t("landing.howItWorks.steps.step4Desc"),
-            },
+            { number: "01", title: t("landing.howItWorks.steps.step1Title"), description: t("landing.howItWorks.steps.step1Desc") },
+            { number: "02", title: t("landing.howItWorks.steps.step2Title"), description: t("landing.howItWorks.steps.step2Desc") },
+            { number: "03", title: t("landing.howItWorks.steps.step3Title"), description: t("landing.howItWorks.steps.step3Desc") },
+            { number: "04", title: t("landing.howItWorks.steps.step4Title"), description: t("landing.howItWorks.steps.step4Desc") },
         ],
         [t],
     );
+
     return (
-        <section id="how-it-works" className="py-24">
-            <div className="container mx-auto px-6">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5 }}
-                    viewport={{ once: true }}
-                    className="text-center mb-16"
-                >
-                    <h2 className="font-display text-4xl sm:text-5xl font-bold text-foreground mb-4">
+        <section id="how-it-works" className="border-t border-border bg-card py-20 lg:py-28">
+            <div className="container">
+                <div className="max-w-2xl">
+                    <h2 className="max-w-[15em] text-display font-semibold text-foreground">
                         {t("landing.howItWorks.title")}
                     </h2>
-                    <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                    <p className="mt-4 max-w-[52ch] text-lg leading-relaxed text-muted-foreground">
                         {t("landing.howItWorks.subtitle")}
                     </p>
-                </motion.div>
-
-                <div className="relative">
-                    {/* Connection Line */}
-                    <div className="hidden lg:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-primary/20 via-primary to-primary/20 -translate-y-1/2" />
-
-                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-                        {steps.map((step, index) => (
-                            <motion.div
-                                key={index}
-                                initial={{ opacity: 0, y: 30 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                transition={{ duration: 0.5, delay: index * 0.15 }}
-                                viewport={{ once: true }}
-                                className="relative"
-                            >
-                                <div className="flex flex-col items-center text-center">
-                                    {/* Number Circle */}
-                                    <div className="relative z-10 w-20 h-20 rounded-full bg-primary flex items-center justify-center mb-6 shadow-glow">
-                                        <step.icon className="w-8 h-8 text-primary-foreground" />
-                                    </div>
-
-                                    {/* Step Number */}
-                                    <span className="text-sm font-semibold text-primary mb-2">
-                                        {t("landing.howItWorks.stepLabel", { number: step.number })}
-                                    </span>
-
-                                    <h3 className="text-xl font-semibold text-foreground mb-3">
-                                        {step.title}
-                                    </h3>
-                                    <p className="text-muted-foreground">{step.description}</p>
-                                </div>
-                            </motion.div>
-                        ))}
-                    </div>
                 </div>
+
+                <ol className="relative mt-14 grid gap-10 lg:grid-cols-4 lg:gap-8">
+                    {/* The rule the sequence runs along. */}
+                    <div className="absolute left-[7px] top-2 hidden h-full w-px bg-border sm:block lg:left-0 lg:top-[7px] lg:h-px lg:w-full" aria-hidden />
+
+                    {steps.map((step) => (
+                        <li key={step.number} className="relative sm:pl-8 lg:pl-0 lg:pt-8">
+                            <span
+                                className="absolute left-0 top-1.5 hidden h-3.5 w-3.5 rounded-full border-2 border-primary bg-card sm:block lg:top-0"
+                                aria-hidden
+                            />
+                            <span className="numeric text-sm text-muted-foreground">
+                                {t("landing.howItWorks.stepLabel", { number: step.number })}
+                            </span>
+                            <h3 className="mt-2 text-[17px] font-semibold text-foreground">{step.title}</h3>
+                            <p className="mt-2 max-w-[42ch] text-sm leading-relaxed text-muted-foreground">
+                                {step.description}
+                            </p>
+                        </li>
+                    ))}
+                </ol>
             </div>
         </section>
     );

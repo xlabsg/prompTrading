@@ -67,7 +67,7 @@ export function SubscriptionsPage() {
     const getStatusBadge = (status: string, isOutdated: boolean) => {
         if (status === "sync_error") {
             return (
-                <span className="flex items-center gap-1 text-xs text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 text-xs text-short bg-short/10 px-2 py-0.5 rounded-full">
                     <AlertCircle size={12} />
                     {t("subscriptions.status.syncError")}
                 </span>
@@ -75,14 +75,14 @@ export function SubscriptionsPage() {
         }
         if (isOutdated) {
             return (
-                <span className="flex items-center gap-1 text-xs text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                <span className="flex items-center gap-1 text-xs text-warn bg-warn/20 px-2 py-0.5 rounded-full">
                     <RefreshCw size={12} />
                     {t("subscriptions.status.updateAvailable")}
                 </span>
             );
         }
         return (
-            <span className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-long bg-long/10 px-2 py-0.5 rounded-full">
                 <CheckCircle2 size={12} />
                 {status === "paused" ? t("subscriptions.status.paused") : t("subscriptions.status.active")}
             </span>
@@ -104,7 +104,7 @@ export function SubscriptionsPage() {
                     {isLoading ? (
                         <div className="space-y-4">
                             {Array.from({ length: 3 }).map((_, i) => (
-                                <div key={i} className="bg-card border border-border rounded-xl p-5">
+                                <div key={i} className="bg-card border border-border rounded-md p-5">
                                     <div className="flex items-center justify-between">
                                         <div className="space-y-2">
                                             <Skeleton className="h-6 w-48" />
@@ -117,7 +117,7 @@ export function SubscriptionsPage() {
                         </div>
                     ) : error ? (
                         <div className="flex flex-col items-center justify-center h-64 text-center">
-                            <AlertCircle size={48} className="text-red-500 mb-4" />
+                            <AlertCircle size={48} className="text-short mb-4" />
                             <h3 className="text-lg font-medium mb-2">{t("subscriptions.loadFailed")}</h3>
                             <p className="text-muted-foreground">
                                 {error instanceof Error ? error.message : t("subscriptions.tryAgain")}
@@ -140,7 +140,7 @@ export function SubscriptionsPage() {
                             {subscriptions.map((sub) => (
                                 <div
                                     key={sub.id}
-                                    className="bg-card border border-border rounded-xl p-4 hover:border-primary/50 transition-colors sm:p-5"
+                                    className="bg-card border border-border rounded-md p-4 hover:border-primary/50 transition-colors sm:p-5"
                                 >
                                     <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                                         <div className="flex-1 min-w-0">

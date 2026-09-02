@@ -64,7 +64,7 @@ const AuthError = () => {
   return (
     <div className="flex items-center justify-center min-h-screen bg-background">
       <div className="max-w-md w-full mx-4">
-        <div className="bg-card border border-border rounded-xl p-8 text-center">
+        <div className="bg-card border border-border rounded-md p-8 text-center">
           {/* Error Icon */}
           <div className="flex justify-center mb-4">
             <div className="p-3 bg-destructive/10 rounded-full">

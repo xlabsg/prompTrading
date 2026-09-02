@@ -1,8 +1,6 @@
-import { motion } from "framer-motion";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { LanguageSwitcher } from "@/components/common/LanguageSwitcher";
@@ -11,141 +9,102 @@ interface HeaderProps {
     onOpenAuth?: (step?: "login" | "register") => void;
 }
 
+// Ink chrome, matching the app's rails: the marketing site and the console read
+// as one surface rather than two products.
 const Header = ({ onOpenAuth }: HeaderProps) => {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const { t } = useTranslation();
 
-    return (
-        <motion.header
-            initial={{ y: -100 }}
-            animate={{ y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-lg border-b border-border/50"
-        >
-            <div className="container mx-auto px-6">
-                <div className="flex items-center justify-between h-16">
-                    {/* Logo */}
-                    <Logo size="sm" />
+    const links = [
+        { href: "#features", label: t("landing.nav.features") },
+        { href: "#how-it-works", label: t("landing.nav.howItWorks") },
+        { href: "#pricing", label: t("landing.nav.pricing") },
+        { href: "#docs", label: t("landing.nav.docs") },
+    ];
 
-                    {/* Desktop Navigation */}
-                    <nav className="hidden md:flex items-center gap-8">
-                        <a
-                            href="#features"
-                            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            {t("landing.nav.features")}
-                        </a>
-                        <a
-                            href="#how-it-works"
-                            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            {t("landing.nav.howItWorks")}
-                        </a>
-                        <a
-                            href="#pricing"
-                            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            {t("landing.nav.pricing")}
-                        </a>
-                        <a
-                            href="#docs"
-                            className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            {t("landing.nav.docs")}
-                        </a>
+    return (
+        <header className="ink-panel fixed inset-x-0 top-0 z-50 border-b border-ink-line">
+            <div className="container">
+                <div className="flex h-16 items-center justify-between">
+                    <Logo size="sm" onInk />
+
+                    <nav className="hidden items-center gap-7 md:flex">
+                        {links.map((link) => (
+                            <a
+                                key={link.href}
+                                href={link.href}
+                                className="text-sm text-ink-muted transition-colors hover:text-ink-foreground"
+                            >
+                                {link.label}
+                            </a>
+                        ))}
                     </nav>
 
-                    {/* Log in / Sign up Buttons */}
-                    <div className="hidden md:flex items-center gap-3">
-                        <LanguageSwitcher />
+                    <div className="hidden items-center gap-2 md:flex">
+                        <LanguageSwitcher onInk />
                         <Button
                             variant="ghost"
                             size="sm"
+                            className="text-ink-muted hover:bg-ink-raised hover:text-ink-foreground"
                             onClick={() => onOpenAuth?.("login")}
                         >
                             {t("common.logIn")}
                         </Button>
-                        <Button
-                            size="sm"
-                            onClick={() => onOpenAuth?.("register")}
-                        >
+                        <Button size="sm" onClick={() => onOpenAuth?.("register")}>
                             {t("common.signUp")}
                         </Button>
                     </div>
 
-                    {/* Mobile Menu Button */}
                     <button
                         onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        className="md:hidden p-2 text-foreground"
+                        className="rounded-md p-2 text-ink-foreground md:hidden"
+                        aria-expanded={isMenuOpen}
+                        aria-label={t("landing.nav.menu")}
                     >
-                        {isMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                        {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
                     </button>
                 </div>
 
-                {/* Mobile Menu */}
                 {isMenuOpen && (
-                    <motion.div
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: "auto" }}
-                        exit={{ opacity: 0, height: 0 }}
-                        className="md:hidden py-4 border-t border-border"
-                    >
-                        <nav className="flex flex-col gap-4">
+                    <nav className="flex flex-col gap-1 border-t border-ink-line py-3 md:hidden">
+                        {links.map((link) => (
                             <a
-                                href="#features"
-                                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                key={link.href}
+                                href={link.href}
+                                onClick={() => setIsMenuOpen(false)}
+                                className="rounded-md px-2 py-2 text-sm text-ink-muted transition-colors hover:bg-ink-raised hover:text-ink-foreground"
                             >
-                                {t("landing.nav.features")}
+                                {link.label}
                             </a>
-                            <a
-                                href="#how-it-works"
-                                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                        ))}
+                        <div className="mt-2 flex items-center gap-2 border-t border-ink-line pt-3">
+                            <LanguageSwitcher onInk />
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="flex-1 text-ink-muted hover:bg-ink-raised hover:text-ink-foreground"
+                                onClick={() => {
+                                    onOpenAuth?.("login");
+                                    setIsMenuOpen(false);
+                                }}
                             >
-                                {t("landing.nav.howItWorks")}
-                            </a>
-                            <a
-                                href="#pricing"
-                                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                {t("common.logIn")}
+                            </Button>
+                            <Button
+                                size="sm"
+                                className="flex-1"
+                                onClick={() => {
+                                    onOpenAuth?.("register");
+                                    setIsMenuOpen(false);
+                                }}
                             >
-                                {t("landing.nav.pricing")}
-                            </a>
-                            <a
-                                href="#docs"
-                                className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                {t("landing.nav.docs")}
-                            </a>
-                            <div className="pt-2">
-                                <LanguageSwitcher />
-                            </div>
-                            <div className="flex flex-col gap-2 pt-4 border-t border-border">
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="w-full"
-                                    onClick={() => {
-                                        onOpenAuth?.("login");
-                                        setIsMenuOpen(false);
-                                    }}
-                                >
-                                    {t("common.logIn")}
-                                </Button>
-                                <Button
-                                    size="sm"
-                                    className="w-full"
-                                    onClick={() => {
-                                        onOpenAuth?.("register");
-                                        setIsMenuOpen(false);
-                                    }}
-                                >
-                                    {t("common.signUp")}
-                                </Button>
-                            </div>
-                        </nav>
-                    </motion.div>
+                                {t("common.signUp")}
+                            </Button>
+                        </div>
+                    </nav>
                 )}
             </div>
-        </motion.header>
+        </header>
     );
 };
 

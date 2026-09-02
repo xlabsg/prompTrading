@@ -573,13 +573,13 @@ const DashboardHome = ({
         switch (status) {
             case "generated":
             case "done":
-                return "bg-green-500";
+                return "bg-long";
             case "ready":
                 return "bg-primary";
             case "generating":
-                return "bg-blue-500 animate-pulse";
+                return "bg-primary animate-pulse";
             case "chatting":
-                return "bg-yellow-500";
+                return "bg-warn";
             default:
                 return "bg-muted-foreground";
         }
@@ -661,40 +661,18 @@ const DashboardHome = ({
 
 
     return (
-        <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-orange-50/50 via-background to-orange-100/30">
+        <div className="flex-1 flex flex-col overflow-hidden bg-background">
             <div className="flex-1 overflow-y-auto">
                 <div className="max-w-4xl mx-auto px-4 py-10 sm:px-8 sm:py-16">
-                    {/* Hero Section */}
-                    <div className="relative text-center mb-12">
-                        <div className="absolute -top-10 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-orange-200/50 blur-3xl" />
-                        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-orange-300/40 blur-2xl" />
-
-                        <motion.h1
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.1 }}
-                            className="text-3xl font-bold text-foreground mb-3 mt-12 sm:mt-16 sm:text-4xl"
-                        >
-                            {t.heroTitle}
-                        </motion.h1>
-
-                        <motion.p
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.2 }}
-                            className="text-muted-foreground text-base sm:text-lg"
-                        >
+                    <div className="mb-8 mt-4">
+                        <h1 className="text-title font-semibold text-foreground sm:text-display">{t.heroTitle}</h1>
+                        <p className="mt-3 max-w-[60ch] text-base leading-relaxed text-muted-foreground">
                             {t.heroSubtitle}
-                        </motion.p>
+                        </p>
                     </div>
 
                     {/* Creation Interface */}
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.3 }}
-                        className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden mb-12"
-                    >
+                    <div className="mb-10 overflow-hidden rounded-md border border-border bg-card">
                         {/* Initial Loading State - when creating strategy and waiting for first AI response */}
                         <AnimatePresence>
                             {(isCreating || (createdStrategy && chatHistory.length === 0 && chatMutation.isPending)) && (
@@ -708,14 +686,14 @@ const DashboardHome = ({
                                         {/* User's initial prompt */}
                                         {prompt && (
                                             <div className="flex justify-end">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                                <div className="max-w-[85%] rounded-md px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
                                                     <p className="whitespace-pre-wrap leading-relaxed">{prompt}</p>
                                                 </div>
                                             </div>
                                         )}
                                         {/* AI thinking indicator */}
                                         <div className="flex justify-start">
-                                            <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                            <div className="max-w-[85%] rounded-md px-4 py-3 text-sm bg-muted rounded-bl-md">
                                                 <div className="flex items-center gap-2">
                                                     <Loader2 className="w-4 h-4 animate-spin text-primary" />
                                                     <span className="text-sm text-muted-foreground">{t.thinking}</span>
@@ -753,7 +731,7 @@ const DashboardHome = ({
                                                     >
                                                         <div
                                                             className={cn(
-                                                                "max-w-[85%] rounded-2xl px-4 py-3 text-sm",
+                                                                "max-w-[85%] rounded-md px-4 py-3 text-sm",
                                                                 msg.role === "user"
                                                                     ? "bg-primary text-primary-foreground rounded-br-md"
                                                                     : "bg-muted rounded-bl-md"
@@ -771,7 +749,7 @@ const DashboardHome = ({
                                         {/* Pending user message while streaming */}
                                         {pendingUserMessage && !isReadyLikeStatus && (
                                             <div className="flex justify-end">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                                <div className="max-w-[85%] rounded-md px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
                                                     <p className="whitespace-pre-wrap break-words leading-relaxed">{pendingUserMessage}</p>
                                                 </div>
                                             </div>
@@ -780,7 +758,7 @@ const DashboardHome = ({
                                         {/* Streaming AI response with typing effect */}
                                         {isStreaming && !isReadyLikeStatus && (
                                             <div className="flex justify-start">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                                <div className="max-w-[85%] rounded-md px-4 py-3 text-sm bg-muted rounded-bl-md">
                                                     <div className="flex items-center gap-2">
                                                         <Loader2 className="w-4 h-4 animate-spin text-primary" />
                                                         <span className="text-sm text-muted-foreground">{t.thinking}</span>
@@ -813,7 +791,7 @@ const DashboardHome = ({
                                                             {/* Step indicator */}
                                                             <div className={cn(
                                                                 "flex items-center justify-center w-6 h-6 rounded-full transition-all",
-                                                                isCompleted && "bg-green-500 text-white",
+                                                                isCompleted && "bg-long text-white",
                                                                 isActive && "bg-primary text-primary-foreground",
                                                                 isPending && "bg-muted text-muted-foreground"
                                                             )}>
@@ -830,7 +808,7 @@ const DashboardHome = ({
                                                             <div className="flex-1 min-w-0">
                                                                 <div className={cn(
                                                                     "text-sm font-medium transition-colors",
-                                                                    isCompleted && "text-green-600",
+                                                                    isCompleted && "text-long",
                                                                     isActive && "text-foreground",
                                                                     isPending && "text-muted-foreground"
                                                                 )}>
@@ -839,7 +817,7 @@ const DashboardHome = ({
                                                                 {step.file ? (
                                                                     <div className={cn(
                                                                         "text-xs font-mono transition-colors",
-                                                                        isCompleted && "text-green-600/70",
+                                                                        isCompleted && "text-long/70",
                                                                         isActive && "text-muted-foreground animate-pulse",
                                                                         isPending && "text-muted-foreground/50"
                                                                     )}>
@@ -853,7 +831,7 @@ const DashboardHome = ({
                                                                 <motion.div
                                                                     initial={{ scale: 0 }}
                                                                     animate={{ scale: 1 }}
-                                                                    className="text-xs text-green-600 font-medium"
+                                                                    className="text-xs text-long font-medium"
                                                                 >
                                                                     Done
                                                                 </motion.div>
@@ -878,7 +856,7 @@ const DashboardHome = ({
                                             >
                                                 <Button
                                                     onClick={() => onGoToStrategy(createdStrategy.id)}
-                                                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+                                                    className="gap-2 bg-long hover:bg-long text-white"
                                                 >
                                                     <Check size={16} />
                                                     {t.viewDetails}
@@ -901,7 +879,7 @@ const DashboardHome = ({
                                         onChange={(e) => setChatInput(e.target.value)}
                                         onKeyDown={handleChatKeyDown}
                                         placeholder={t.chatPlaceholder}
-                                        className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
+                                        className="resize-none border-0 bg-transparent px-0 text-base leading-relaxed focus-visible:ring-0"
                                         style={{ minHeight: `${chatMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
                                         disabled={chatMutation.isPending}
                                     />
@@ -947,14 +925,14 @@ const DashboardHome = ({
                                             animate={{ opacity: 1, y: 0 }}
                                             className="mt-4 mb-2 text-left"
                                         >
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                            <div className="rounded-md border border-warn/30 bg-warn/10 p-4">
                                                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                                                    <FileText size={16} className="text-amber-700" />
+                                                    <FileText size={16} className="text-warn" />
                                                     {t.strategyConfigTitle}
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                                     {Object.entries(createdStrategy.chat_config).map(([key, value]) => (
-                                                        <div key={key} className="rounded-lg bg-white p-2">
+                                                        <div key={key} className="rounded-lg bg-card p-2">
                                                             <div className="text-xs text-muted-foreground capitalize">
                                                                 {formatConfigLabel(key)}
                                                             </div>
@@ -967,7 +945,7 @@ const DashboardHome = ({
                                                 <Button
                                                     onClick={() => generateMutation.mutate()}
                                                     disabled={generateMutation.isPending}
-                                                    className="mt-4 w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
+                                                    className="mt-4 w-full gap-2 bg-long hover:bg-long text-white"
                                                 >
                                                     {generateMutation.isPending ? (
                                                         <>
@@ -994,7 +972,7 @@ const DashboardHome = ({
                                         onChange={(e) => setPrompt(e.target.value)}
                                         onKeyDown={handleKeyDown}
                                         placeholder={t.inputPlaceholder}
-                                        className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
+                                        className="resize-none border-0 bg-transparent px-0 text-base leading-relaxed focus-visible:ring-0"
                                         style={{ minHeight: `${promptMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
                                         disabled={isCreating}
                                     />
@@ -1037,23 +1015,17 @@ const DashboardHome = ({
                                 </form>
                             )}
                         </div>
-                    </motion.div>
+                    </div>
 
                     {/* Template & Subscription Quick Access */}
-                    <motion.div
-                        initial={{ y: 20, opacity: 0 }}
-                        animate={{ y: 0, opacity: 1 }}
-                        transition={{ delay: 0.35 }}
-                        className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"
-                    >
+                    <div className="mb-10 grid grid-cols-1 gap-4 md:grid-cols-2">
                         <button
                             onClick={() => navigate("/templates")}
-                            whileHover={{ y: -2 }}
-                            className="bg-card rounded-xl p-5 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
+                            className="group rounded-md border border-border bg-card p-5 text-left transition-colors hover:border-primary/40"
                         >
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-orange-100 text-orange-600">
+                                    <div className="p-2 rounded-lg bg-primary/10 text-primary">
                                         <Library size={20} />
                                     </div>
                                     <div>
@@ -1075,12 +1047,11 @@ const DashboardHome = ({
 
                         <button
                             onClick={() => navigate("/subscriptions")}
-                            whileHover={{ y: -2 }}
-                            className="bg-card rounded-xl p-5 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
+                            className="group rounded-md border border-border bg-card p-5 text-left transition-colors hover:border-primary/40"
                         >
                             <div className="flex items-start justify-between mb-3">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded-lg bg-green-100 text-green-600">
+                                    <div className="p-2 rounded-lg bg-muted text-foreground">
                                         <Star size={20} />
                                     </div>
                                     <div>
@@ -1099,17 +1070,13 @@ const DashboardHome = ({
                                 <span>{t.actions.subscriptionsHint}</span>
                             </div>
                         </button>
-                    </motion.div>
+                    </div>
 
                     {/* Recent Strategies */}
                     {!createdStrategy && (
-                        <motion.div
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.4 }}
-                        >
+                        <div>
                             <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
-                                <TabsList className="bg-muted/50">
+                                <TabsList>
                                     <TabsTrigger value="recent">{t.tabs.recent}</TabsTrigger>
                                     <TabsTrigger value="my">{t.tabs.my}</TabsTrigger>
                                     <TabsTrigger value="templates">{t.tabs.templates}</TabsTrigger>
@@ -1138,8 +1105,7 @@ const DashboardHome = ({
                                                 setPrompt(template.prompt);
                                                 window.scrollTo({ top: 0, behavior: "smooth" });
                                             }}
-                                            whileHover={{ y: -2 }}
-                                            className="bg-card rounded-xl p-5 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
+                                                            className="group rounded-md border border-border bg-card p-5 text-left transition-colors hover:border-primary/40"
                                         >
                                             <div className="flex items-start justify-between mb-2">
                                                 <div>
@@ -1168,8 +1134,7 @@ const DashboardHome = ({
                                         <motion.button
                                             key={strategy.id}
                                             onClick={() => onSelectStrategy(strategy)}
-                                            whileHover={{ y: -2 }}
-                                            className="bg-card rounded-xl p-4 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
+                                                            className="bg-card rounded-md p-4 border border-border text-left transition-colors hover:border-primary/40 group"
                                         >
                                             <div className="flex items-start justify-between mb-2">
                                                 <h3 className="font-medium text-foreground group-hover:text-primary transition-colors truncate pr-2">
@@ -1190,7 +1155,7 @@ const DashboardHome = ({
                                     ))}
                                 </div>
                             )}
-                        </motion.div>
+                        </div>
                     )}
                 </div>
             </div>
@@ -1202,10 +1167,10 @@ const DashboardHome = ({
                     if (!open) resetImportState();
                 }}
             >
-                <DialogContent className="max-w-3xl border-orange-100 bg-white/95 p-0">
-                    <div className="border-b border-orange-100 px-4 py-5 sm:px-8 sm:py-6">
+                <DialogContent className="max-w-3xl border-border bg-popover p-0">
+                    <div className="border-b border-border px-4 py-5 sm:px-8 sm:py-6">
                         <div className="flex items-center gap-3">
-                            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-orange-600">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-md bg-primary/5 text-primary">
                                 <Github className="h-6 w-6" />
                             </div>
                             <div>
@@ -1219,7 +1184,7 @@ const DashboardHome = ({
                         {importStage === "connect" && (
                             <div className="grid gap-6">
                                 <div className="grid gap-4 text-center">
-                                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-orange-500 to-orange-400 text-white shadow-lg">
+                                    <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-lg bg-primary text-white">
                                         <Github className="h-9 w-9" />
                                     </div>
                                     <div>
@@ -1233,8 +1198,8 @@ const DashboardHome = ({
                                 </div>
                                 <div className="mx-auto grid w-full max-w-md gap-3 text-sm text-muted-foreground">
                                     {t.import.connectBenefits.map((benefit) => (
-                                        <div key={benefit} className="flex items-center gap-3 rounded-xl bg-orange-50/60 px-4 py-3">
-                                            <ShieldCheck className="h-4 w-4 text-orange-500" />
+                                        <div key={benefit} className="flex items-center gap-3 rounded-md bg-primary/5 px-4 py-3">
+                                            <ShieldCheck className="h-4 w-4 text-primary" />
                                             <span>{benefit}</span>
                                         </div>
                                     ))}
@@ -1286,7 +1251,7 @@ const DashboardHome = ({
                                 )}
                                 {installationsQuery.isError && (
                                     <div className="text-center py-8">
-                                        <p className="text-red-500 mb-4">
+                                        <p className="text-short mb-4">
                                             {t.import.loadInstallationsFailed}
                                         </p>
                                         <p className="text-sm text-muted-foreground mb-4">
@@ -1335,7 +1300,7 @@ const DashboardHome = ({
                                     </div>
                                 )}
                                 {reposQuery.isError && (
-                                    <div className="text-center py-8 text-red-500">
+                                    <div className="text-center py-8 text-short">
                                         {t.import.loadReposFailed}
                                     </div>
                                 )}
@@ -1353,26 +1318,26 @@ const DashboardHome = ({
                                                 type="button"
                                                 onClick={() => setSelectedGitHubRepo(repo)}
                                                 className={cn(
-                                                    "rounded-2xl border p-4 text-left transition",
+                                                    "rounded-md border p-4 text-left transition",
                                                     isSelected
-                                                        ? "border-orange-400 bg-orange-50 shadow-sm"
-                                                        : "border-orange-100 hover:border-orange-200"
+                                                        ? "border-primary bg-primary/5"
+                                                        : "border-border hover:border-border"
                                                 )}
                                             >
                                                 <div className="flex items-start justify-between">
                                                     <div className="flex items-center gap-2">
-                                                        <Folder className="h-5 w-5 text-orange-500" />
+                                                        <Folder className="h-5 w-5 text-primary" />
                                                         <div className="flex items-center gap-2">
                                                             <span className="font-semibold text-foreground">{repo.name}</span>
                                                             {repo.private && (
-                                                                <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-700">
+                                                                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
                                                                     <Lock className="h-3 w-3" />
                                                                     {t.metadata.private}
                                                                 </span>
                                                             )}
                                                         </div>
                                                     </div>
-                                                    {isSelected && <CheckCircle2 className="h-5 w-5 text-orange-500" />}
+                                                    {isSelected && <CheckCircle2 className="h-5 w-5 text-primary" />}
                                                 </div>
                                                 {repo.full_name && (
                                                     <p className="mt-2 text-sm text-muted-foreground">{repo.full_name}</p>
@@ -1420,7 +1385,7 @@ const DashboardHome = ({
                                     <Button variant="ghost" size="sm" onClick={() => setImportStage("select")}>
                                         {t.import.back}
                                     </Button>
-                                    <span className="inline-flex items-center gap-2 rounded-full bg-orange-50 px-4 py-1 text-sm text-orange-600">
+                                    <span className="inline-flex items-center gap-2 rounded-full bg-primary/5 px-4 py-1 text-sm text-primary">
                                         <Folder className="h-4 w-4" />
                                         {selectedGitHubRepo.full_name || selectedGitHubRepo.name}
                                     </span>
@@ -1436,7 +1401,7 @@ const DashboardHome = ({
                                     </div>
                                     <div className="h-2 w-full rounded-full bg-muted">
                                         <div
-                                            className="h-2 rounded-full bg-gradient-to-r from-orange-400 to-orange-500 transition-all"
+                                            className="h-2 rounded-full bg-primary transition-all"
                                             style={{ width: `${importProgress}%` }}
                                         />
                                     </div>
@@ -1449,17 +1414,17 @@ const DashboardHome = ({
                                             <div
                                                 key={step.label}
                                                 className={cn(
-                                                    "flex items-center gap-4 rounded-2xl border px-4 py-3",
+                                                    "flex items-center gap-4 rounded-md border px-4 py-3",
                                                     isActive
-                                                        ? "border-orange-300 bg-orange-50"
-                                                        : "border-orange-100 bg-white"
+                                                        ? "border-primary bg-primary/5"
+                                                        : "border-border bg-card"
                                                 )}
                                             >
                                                 <div
                                                     className={cn(
                                                         "flex h-10 w-10 items-center justify-center rounded-full",
-                                                        isCompleted && "bg-green-500 text-white",
-                                                        isActive && "bg-orange-500 text-white",
+                                                        isCompleted && "bg-long text-white",
+                                                        isActive && "bg-primary text-white",
                                                         !isCompleted && !isActive && "bg-muted text-muted-foreground"
                                                     )}
                                                 >
@@ -1490,7 +1455,7 @@ const DashboardHome = ({
 
                         {importStage === "done" && (
                             <div className="grid gap-6 text-center">
-                                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-500 text-white shadow-lg">
+                                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-long text-white">
                                     <Check className="h-9 w-9" />
                                 </div>
                                 <div>
@@ -1498,18 +1463,18 @@ const DashboardHome = ({
                                     <p className="mt-2 text-sm text-muted-foreground">{t.import.doneSubtitle}</p>
                                 </div>
                                 <div className="mx-auto grid w-full max-w-md grid-cols-3 gap-3">
-                                    <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-4">
-                                        <FileText className="mx-auto mb-2 h-5 w-5 text-orange-500" />
+                                    <div className="rounded-md border border-border bg-primary/5 px-4 py-4">
+                                        <FileText className="mx-auto mb-2 h-5 w-5 text-primary" />
                                         <div className="text-lg font-semibold text-foreground">12</div>
                                         <div className="text-xs text-muted-foreground">{t.import.stats.files}</div>
                                     </div>
-                                    <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-4">
-                                        <FileCode className="mx-auto mb-2 h-5 w-5 text-orange-500" />
+                                    <div className="rounded-md border border-border bg-primary/5 px-4 py-4">
+                                        <FileCode className="mx-auto mb-2 h-5 w-5 text-primary" />
                                         <div className="text-lg font-semibold text-foreground">2.4k</div>
                                         <div className="text-xs text-muted-foreground">{t.import.stats.lines}</div>
                                     </div>
-                                    <div className="rounded-2xl border border-orange-100 bg-orange-50/60 px-4 py-4">
-                                        <Database className="mx-auto mb-2 h-5 w-5 text-orange-500" />
+                                    <div className="rounded-md border border-border bg-primary/5 px-4 py-4">
+                                        <Database className="mx-auto mb-2 h-5 w-5 text-primary" />
                                         <div className="text-lg font-semibold text-foreground">{t.import.stats.ready}</div>
                                         <div className="text-xs text-muted-foreground">{t.import.stats.kb}</div>
                                     </div>

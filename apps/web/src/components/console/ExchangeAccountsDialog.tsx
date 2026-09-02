@@ -103,7 +103,7 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
                 key={account.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center justify-between p-4 rounded-xl bg-muted/50 border border-border"
+                className="flex items-center justify-between p-4 rounded-md bg-muted/50 border border-border"
             >
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-background border border-border flex items-center justify-center text-lg">
@@ -113,7 +113,7 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
                         <div className="font-medium text-foreground flex items-center gap-2">
                             {account.name}
                             {account.is_connected && (
-                                <span className="w-2 h-2 rounded-full bg-green-500" />
+                                <span className="w-2 h-2 rounded-full bg-long" />
                             )}
                         </div>
                         <div className="text-sm text-muted-foreground">
@@ -167,7 +167,7 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
                         <motion.div
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: "auto" }}
-                            className="p-4 rounded-xl border border-primary/50 bg-primary/5 space-y-4"
+                            className="p-4 rounded-md border border-primary/50 bg-primary/5 space-y-4"
                         >
                             <div className="flex items-center justify-between">
                                 <h3 className="font-medium text-foreground">{t("exchangeAccounts.addTitle")}</h3>
@@ -273,7 +273,7 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
 
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                    <CheckCircle2 size={14} className={cn(createMutation.isPending ? "text-muted-foreground" : "text-green-500")} />
+                                    <CheckCircle2 size={14} className={cn(createMutation.isPending ? "text-muted-foreground" : "text-long")} />
                                     {t("exchangeAccounts.secureNotice")}
                                 </div>
                                 <Button onClick={handleAddAccount} disabled={createMutation.isPending}>

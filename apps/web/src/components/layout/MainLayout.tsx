@@ -103,7 +103,6 @@ export const MainLayout = ({
     const pageConfig = pageConfigs[currentPage];
     const displayTitle = title || pageConfig.title;
     const displayDescription = description || pageConfig.description;
-    const Icon = pageConfig.icon;
 
     const handleStrategySelect = (strategy: Strategy) => {
         if (onStrategySelect) {
@@ -129,22 +128,15 @@ export const MainLayout = ({
                 </div>
 
                 <div className="flex-1 flex flex-col overflow-hidden">
-                    <header className="border-b border-border px-4 py-4 sm:p-6">
+                    <header className="border-b border-border bg-card px-4 py-4 sm:px-6">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-lg">
-                                    <Icon className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
-                                </div>
-                                <div>
-                                    <h1 className="text-xl font-bold sm:text-2xl">{displayTitle}</h1>
-                                    <p className="text-sm text-muted-foreground sm:text-base sm:mt-0.5">
-                                        {displayDescription}
-                                    </p>
-                                </div>
+                            <div className="min-w-0">
+                                <h1 className="text-title font-semibold text-foreground">{displayTitle}</h1>
+                                <p className="mt-1 text-sm text-muted-foreground">{displayDescription}</p>
                             </div>
-                            <div className="flex items-center justify-between gap-2 sm:justify-end sm:gap-3">
+                            <div className="flex items-center gap-2 sm:justify-end">
                                 <LanguageSwitcher />
-                                {headerActions && <div>{headerActions}</div>}
+                                {headerActions}
                             </div>
                         </div>
                     </header>

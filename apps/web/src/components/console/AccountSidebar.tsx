@@ -128,8 +128,8 @@ const AccountSidebar = ({
             className={cn(
               "w-2 h-2",
               connectedCount > 0
-                ? "fill-green-500 text-green-500"
-                : "fill-red-500 text-red-500"
+                ? "fill-long text-long"
+                : "fill-short text-short"
             )}
           />
           <span className="text-muted-foreground">
@@ -149,7 +149,7 @@ const AccountSidebar = ({
           <span
             className={cn(
               "text-xs font-medium",
-              unrealizedPnl >= 0 ? "text-green-500" : "text-red-500"
+              unrealizedPnl >= 0 ? "text-long" : "text-short"
             )}
           >
             {unrealizedPnl >= 0 ? "+" : ""}
@@ -255,8 +255,8 @@ const AccountSidebar = ({
                       className={cn(
                         "w-1.5 h-1.5",
                         acc.is_connected
-                          ? "fill-green-500 text-green-500"
-                          : "fill-red-500 text-red-500"
+                          ? "fill-long text-long"
+                          : "fill-short text-short"
                       )}
                     />
                     <span>{formatCurrency(balance)}</span>

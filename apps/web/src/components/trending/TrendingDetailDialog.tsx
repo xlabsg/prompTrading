@@ -61,11 +61,11 @@ export const TrendingDetailDialog = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-500";
+        return "bg-long";
       case "running":
-        return "bg-blue-500 animate-pulse";
+        return "bg-primary animate-pulse";
       case "failed":
-        return "bg-red-500";
+        return "bg-short";
       default:
         return "bg-muted-foreground";
     }
@@ -179,13 +179,13 @@ export const TrendingDetailDialog = ({
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                       <div>
                         <div className="text-xs text-muted-foreground">{t("trending.metrics.return")}</div>
-                        <div className={`font-semibold ${result.total_return >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        <div className={`font-semibold ${result.total_return >= 0 ? "text-long" : "text-short"}`}>
                           {result.total_return.toFixed(2)}%
                         </div>
                       </div>
                       <div>
                         <div className="text-xs text-muted-foreground">{t("trending.metrics.drawdown")}</div>
-                        <div className="font-semibold text-red-600">
+                        <div className="font-semibold text-short">
                           {result.max_drawdown.toFixed(2)}%
                         </div>
                       </div>
@@ -206,9 +206,9 @@ export const TrendingDetailDialog = ({
 
           {/* Backtest Error */}
           {strategy.backtest_status === "failed" && strategy.backtest_error && (
-            <div className="border border-red-200 bg-red-50 rounded-lg p-3">
-              <h3 className="text-sm font-semibold text-red-800 mb-1">{t("trending.backtestErrorTitle")}</h3>
-              <p className="text-sm text-red-600">{strategy.backtest_error}</p>
+            <div className="border border-short/30 bg-short-soft rounded-lg p-3">
+              <h3 className="text-sm font-semibold text-short mb-1">{t("trending.backtestErrorTitle")}</h3>
+              <p className="text-sm text-short">{strategy.backtest_error}</p>
             </div>
           )}
 

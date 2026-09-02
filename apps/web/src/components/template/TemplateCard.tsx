@@ -11,9 +11,9 @@ interface TemplateCardProps {
 }
 
 const templateTypeColors: Record<string, string> = {
-    builtin: "bg-blue-500/10 text-blue-500",
-    tradingview: "bg-purple-500/10 text-purple-500",
-    community: "bg-green-500/10 text-green-500",
+    builtin: "bg-primary/10 text-primary",
+    tradingview: "bg-muted-foreground/10 text-muted-foreground",
+    community: "bg-long/10 text-long",
 };
 
 export function TemplateCard({ template, onOpenDetail, onSubscribeSignal, onViewPerformance }: TemplateCardProps) {
@@ -34,19 +34,19 @@ export function TemplateCard({ template, onOpenDetail, onSubscribeSignal, onView
                     onOpenDetail(template.id);
                 }
             }}
-            className="group bg-card border border-border rounded-xl p-4 transition-all duration-200 cursor-pointer hover:border-primary/40 sm:p-5"
+            className="group bg-card border border-border rounded-md p-4 transition-all duration-200 cursor-pointer hover:border-primary/40 sm:p-5"
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
                         <span className={cn(
                             "text-xs font-medium px-2 py-0.5 rounded-full",
-                            templateTypeColors[template.template_type] || "bg-gray-500/10 text-gray-500"
+                            templateTypeColors[template.template_type] || "bg-muted-foreground/10 text-muted-foreground"
                         )}>
                             {templateTypeLabels[template.template_type] || template.template_type}
                         </span>
                         {template.is_featured && (
-                            <span className="flex items-center gap-1 text-xs text-amber-500">
+                            <span className="flex items-center gap-1 text-xs text-warn">
                                 <Star size={12} fill="currentColor" />
                                 {t("templates.featured")}
                             </span>

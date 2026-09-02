@@ -7,15 +7,36 @@ export default {
     theme: {
         container: {
             center: true,
-            padding: "2rem",
+            padding: "1.5rem",
             screens: {
-                "2xl": "1400px",
+                "2xl": "1320px",
             },
         },
         extend: {
             fontFamily: {
-                sans: ['Inter', 'system-ui', 'sans-serif'],
-                display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+                // One superfamily: sans and mono share metrics, so a number set in
+                // mono can sit inline in a sentence without breaking the rhythm.
+                sans: [
+                    "IBM Plex Sans",
+                    "PingFang SC",
+                    "Hiragino Sans GB",
+                    "Microsoft YaHei",
+                    "system-ui",
+                    "sans-serif",
+                ],
+                mono: [
+                    "IBM Plex Mono",
+                    "ui-monospace",
+                    "SFMono-Regular",
+                    "Menlo",
+                    "monospace",
+                ],
+            },
+            fontSize: {
+                // Elements-of-Typographic-Style scale, ~1.25 ratio, tightening as it grows.
+                "display-lg": ["clamp(2.75rem, 6vw, 4.5rem)", { lineHeight: "1.02", letterSpacing: "-0.035em" }],
+                "display": ["clamp(2rem, 4vw, 3rem)", { lineHeight: "1.08", letterSpacing: "-0.028em" }],
+                "title": ["1.5rem", { lineHeight: "1.2", letterSpacing: "-0.018em" }],
             },
             colors: {
                 border: "hsl(var(--border))",
@@ -51,11 +72,37 @@ export default {
                     DEFAULT: "hsl(var(--card))",
                     foreground: "hsl(var(--card-foreground))",
                 },
+                // Market semantics. Reserved for data — never for buttons or chrome.
+                long: {
+                    DEFAULT: "hsl(var(--long))",
+                    soft: "hsl(var(--long-soft))",
+                },
+                short: {
+                    DEFAULT: "hsl(var(--short))",
+                    soft: "hsl(var(--short-soft))",
+                },
+                warn: "hsl(var(--warn))",
+                // Syntax highlighting, kept apart from the market semantics so a
+                // code comment can never be mistaken for a long position.
+                code: {
+                    comment: "hsl(var(--code-comment))",
+                    keyword: "hsl(var(--code-keyword))",
+                    string: "hsl(var(--code-string))",
+                    meta: "hsl(var(--code-meta))",
+                },
+                // Ink chrome. Fixed in both themes so rails read the same everywhere.
+                ink: {
+                    DEFAULT: "hsl(var(--ink))",
+                    raised: "hsl(var(--ink-raised))",
+                    line: "hsl(var(--ink-line))",
+                    foreground: "hsl(var(--ink-foreground))",
+                    muted: "hsl(var(--ink-muted))",
+                },
             },
             borderRadius: {
                 lg: "var(--radius)",
                 md: "calc(var(--radius) - 2px)",
-                sm: "calc(var(--radius) - 4px)",
+                sm: "calc(var(--radius) - 3px)",
             },
             keyframes: {
                 "accordion-down": {
@@ -66,25 +113,21 @@ export default {
                     from: { height: "var(--radix-accordion-content-height)" },
                     to: { height: "0" },
                 },
-                "float": {
-                    "0%, 100%": { transform: "translateY(0px)" },
-                    "50%": { transform: "translateY(-20px)" },
-                },
-                "pulse-glow": {
-                    "0%, 100%": { opacity: "0.4" },
-                    "50%": { opacity: "0.8" },
-                },
-                "slide-up": {
-                    from: { opacity: "0", transform: "translateY(30px)" },
+                // The one page-load orchestration, used only on the landing hero.
+                "settle": {
+                    from: { opacity: "0", transform: "translateY(8px)" },
                     to: { opacity: "1", transform: "translateY(0)" },
+                },
+                "blink": {
+                    "0%, 45%": { opacity: "1" },
+                    "50%, 95%": { opacity: "0" },
                 },
             },
             animation: {
-                "accordion-down": "accordion-down 0.2s ease-out",
-                "accordion-up": "accordion-up 0.2s ease-out",
-                "float": "float 6s ease-in-out infinite",
-                "pulse-glow": "pulse-glow 3s ease-in-out infinite",
-                "slide-up": "slide-up 0.6s ease-out",
+                "accordion-down": "accordion-down 0.18s ease-out",
+                "accordion-up": "accordion-up 0.18s ease-out",
+                "settle": "settle 0.5s cubic-bezier(0.2, 0.7, 0.3, 1) both",
+                "blink": "blink 1.1s steps(1) infinite",
             },
         },
     },

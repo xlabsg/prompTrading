@@ -270,7 +270,7 @@ export function TelegramStatusBadge({ status }: { status: TelegramStatus | null 
 
     if (status.error) {
         return (
-            <span className="flex items-center gap-1 text-xs text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full">
+            <span className="flex items-center gap-1 text-xs text-short bg-short/10 px-2 py-0.5 rounded-full">
                 <X size={12} />
                 {t("telegramConfig.status.error", { message: status.error.slice(0, 30) })}
             </span>
@@ -278,7 +278,7 @@ export function TelegramStatusBadge({ status }: { status: TelegramStatus | null 
     }
 
     return (
-        <span className="flex items-center gap-1 text-xs text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">
+        <span className="flex items-center gap-1 text-xs text-long bg-long/10 px-2 py-0.5 rounded-full">
             <Check size={12} />
             {status.is_enabled ? t("telegramConfig.status.active") : t("telegramConfig.status.paused")}
         </span>

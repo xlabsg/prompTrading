@@ -47,8 +47,8 @@ export const MobileBottomNav = () => {
     ];
 
     return (
-        <nav className="fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background/95 backdrop-blur md:hidden">
-            <div className="flex items-center justify-between px-2 pb-[env(safe-area-inset-bottom)]">
+        <nav className="ink-panel fixed inset-x-0 bottom-0 z-40 border-t border-ink-line md:hidden">
+            <div className="flex items-stretch pb-[env(safe-area-inset-bottom)]">
                 {items.map((item) => {
                     const active = item.isActive(pathname);
                     const Icon = item.icon;
@@ -57,16 +57,15 @@ export const MobileBottomNav = () => {
                             key={item.path}
                             onClick={() => navigate(item.path)}
                             className={cn(
-                                "flex flex-1 flex-col items-center gap-1 px-2 py-2 text-xs font-medium transition-colors",
-                                active ? "text-primary" : "text-muted-foreground"
+                                "relative flex flex-1 flex-col items-center gap-1 py-2.5 text-xs transition-colors",
+                                active ? "text-ink-foreground" : "text-ink-muted"
                             )}
                         >
-                            <span className={cn(
-                                "flex h-8 w-8 items-center justify-center rounded-xl",
-                                active ? "bg-primary/10" : "bg-transparent"
-                            )}>
-                                <Icon size={18} />
-                            </span>
+                            {/* Same active marker as the desktop rail, rotated to the top edge. */}
+                            {active && (
+                                <span className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-primary" aria-hidden />
+                            )}
+                            <Icon size={18} strokeWidth={1.75} />
                             <span className="leading-none">{item.label}</span>
                         </button>
                     );

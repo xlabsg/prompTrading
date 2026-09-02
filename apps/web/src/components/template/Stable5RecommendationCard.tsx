@@ -11,9 +11,9 @@ interface Stable5RecommendationCardProps {
 }
 
 const templateTypeColors: Record<string, string> = {
-    builtin: "bg-blue-500/10 text-blue-500",
-    tradingview: "bg-purple-500/10 text-purple-500",
-    community: "bg-green-500/10 text-green-500",
+    builtin: "bg-primary/10 text-primary",
+    tradingview: "bg-muted-foreground/10 text-muted-foreground",
+    community: "bg-long/10 text-long",
 };
 
 function toNumber(value: unknown): number | null {
@@ -50,7 +50,7 @@ export function Stable5RecommendationCard({ item, onOpenDetail, onSubscribeSigna
                     onOpenDetail(item.id);
                 }
             }}
-            className="group bg-card border border-border rounded-xl p-5 transition-all duration-200 cursor-pointer hover:border-primary/40"
+            className="group bg-card border border-border rounded-md p-5 transition-all duration-200 cursor-pointer hover:border-primary/40"
         >
             <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
@@ -58,23 +58,23 @@ export function Stable5RecommendationCard({ item, onOpenDetail, onSubscribeSigna
                         <span
                             className={cn(
                                 "text-xs font-medium px-2 py-0.5 rounded-full",
-                                templateTypeColors[item.template_type] || "bg-gray-500/10 text-gray-500"
+                                templateTypeColors[item.template_type] || "bg-muted-foreground/10 text-muted-foreground"
                             )}
                         >
                             {templateTypeLabels[item.template_type] || item.template_type}
                         </span>
                         {item.is_featured && (
-                            <span className="flex items-center gap-1 text-xs text-amber-500">
+                            <span className="flex items-center gap-1 text-xs text-warn">
                                 <Star size={12} fill="currentColor" />
                                 {t("templates.featured")}
                             </span>
                         )}
                         {qualifies ? (
-                            <span className="ml-auto text-xs font-medium text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                            <span className="ml-auto text-xs font-medium text-long bg-long/10 px-2 py-0.5 rounded-full">
                                 Stable5
                             </span>
                         ) : (
-                            <span className="ml-auto text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-0.5 rounded-full">
+                            <span className="ml-auto text-xs font-medium text-warn bg-warn/20 px-2 py-0.5 rounded-full">
                                 {t("templates.candidate")}
                             </span>
                         )}

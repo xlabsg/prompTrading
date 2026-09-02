@@ -94,7 +94,7 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
             <div className="shrink-0 p-4 border-b border-border bg-card/50">
                 <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-md bg-primary/10 flex items-center justify-center">
                             <Radio className="w-5 h-5 text-primary" />
                         </div>
                         <div>
@@ -116,7 +116,7 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                 </div>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="bg-muted/50">
+                    <TabsList>
                         <TabsTrigger value="signals" className="gap-2">
                             <Radio size={14} />
                             {t("signalsView.tabs.signals")}
@@ -169,18 +169,18 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ delay: index * 0.05 }}
-                                        className="p-4 rounded-xl bg-card border border-border hover:shadow-md transition-shadow"
+                                        className="p-4 rounded-md bg-card border border-border transition-colors hover:border-primary/40"
                                     >
                                         <div className="flex items-start justify-between">
                                             <div className="flex items-center gap-4">
                                                 <div className={cn(
                                                     "w-10 h-10 rounded-lg flex items-center justify-center",
-                                                    signal.side === "buy" ? "bg-green-500/10" : "bg-red-500/10"
+                                                    signal.side === "buy" ? "bg-long/10" : "bg-short/10"
                                                 )}>
                                                     {signal.side === "buy" ? (
-                                                        <ArrowUpRight className="w-5 h-5 text-green-500" />
+                                                        <ArrowUpRight className="w-5 h-5 text-long" />
                                                     ) : (
-                                                        <ArrowDownRight className="w-5 h-5 text-red-500" />
+                                                        <ArrowDownRight className="w-5 h-5 text-short" />
                                                     )}
                                                 </div>
                                                 <div>
@@ -191,7 +191,7 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                                                 {signal.interval}
                                                             </Badge>
                                                         )}
-                                                        <Badge variant={signal.side === "buy" ? "default" : "destructive"} className="uppercase text-xs">
+                                                        <Badge variant={signal.side === "buy" ? "long" : "short"} className="uppercase text-xs">
                                                             {signal.side}
                                                         </Badge>
                                                     </div>
@@ -204,8 +204,8 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                             <div className="text-right">
                                                 <div className={cn(
                                                     "inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium",
-                                                    signal.status === "pending" && "bg-yellow-500/10 text-yellow-600",
-                                                    signal.status === "executed" && "bg-green-500/10 text-green-600",
+                                                    signal.status === "pending" && "bg-warn/10 text-warn",
+                                                    signal.status === "executed" && "bg-long/10 text-long",
                                                     signal.status === "cancelled" && "bg-muted text-muted-foreground",
                                                     signal.status === "expired" && "bg-muted text-muted-foreground"
                                                 )}>
@@ -243,8 +243,8 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                                         <div
                                                             className={cn(
                                                                 "h-full rounded-full",
-                                                                signal.confidence >= 0.8 ? "bg-green-500" :
-                                                                    signal.confidence >= 0.6 ? "bg-yellow-500" : "bg-red-500"
+                                                                signal.confidence >= 0.8 ? "bg-long" :
+                                                                    signal.confidence >= 0.6 ? "bg-warn" : "bg-short"
                                                             )}
                                                             style={{ width: `${Math.min(100, Math.max(0, signal.confidence * 100))}%` }}
                                                         />
@@ -264,18 +264,18 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                             <div className="grid grid-cols-4 gap-4">
                                 {[
                                     { label: t("signalsView.stats.totalTrades"), value: stats.totalTrades, color: "text-foreground" },
-                                    { label: t("signalsView.stats.openPositions"), value: stats.openPositions, color: "text-blue-500" },
-                                    { label: t("signalsView.stats.totalPnl"), value: `${stats.totalPnl >= 0 ? "+" : "-"}$${Math.abs(stats.totalPnl).toFixed(2)}`, color: stats.totalPnl >= 0 ? "text-green-500" : "text-red-500" },
+                                    { label: t("signalsView.stats.openPositions"), value: stats.openPositions, color: "text-primary" },
+                                    { label: t("signalsView.stats.totalPnl"), value: `${stats.totalPnl >= 0 ? "+" : "-"}$${Math.abs(stats.totalPnl).toFixed(2)}`, color: stats.totalPnl >= 0 ? "text-long" : "text-short" },
                                     { label: t("signalsView.stats.winRate"), value: `${stats.winRate.toFixed(0)}%`, color: "text-primary" },
                                 ].map((stat) => (
-                                    <div key={stat.label} className="p-4 rounded-xl bg-card border border-border">
+                                    <div key={stat.label} className="p-4 rounded-md bg-card border border-border">
                                         <div className="text-sm text-muted-foreground">{stat.label}</div>
                                         <div className={cn("text-2xl font-bold", stat.color)}>{stat.value}</div>
                                     </div>
                                 ))}
                             </div>
 
-                            <div className="rounded-xl border border-border overflow-hidden">
+                            <div className="rounded-md border border-border overflow-hidden">
                                 <table className="w-full">
                                     <thead className="bg-muted/50">
                                         <tr>
@@ -297,19 +297,19 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                                 </td>
                                                 <td className="p-3 font-medium">{trade.symbol}</td>
                                                 <td className="p-3">
-                                                    <Badge variant={trade.side === "buy" ? "default" : "destructive"} className="uppercase text-xs">
+                                                    <Badge variant={trade.side === "buy" ? "long" : "short"} className="uppercase text-xs">
                                                         {trade.side}
                                                     </Badge>
                                                 </td>
-                                                <td className="p-3 text-right font-mono">${trade.entry_price.toLocaleString()}</td>
-                                                <td className="p-3 text-right font-mono text-muted-foreground">
+                                                <td className="p-3 text-right numeric font-mono">${trade.entry_price.toLocaleString()}</td>
+                                                <td className="p-3 text-right numeric font-mono text-muted-foreground">
                                                     {trade.exit_price ? `$${trade.exit_price.toLocaleString()}` : "-"}
                                                 </td>
-                                                <td className="p-3 text-right">{trade.quantity}</td>
+                                                <td className="p-3 text-right numeric">{trade.quantity}</td>
                                                 <td className={cn(
                                                     "p-3 text-right font-medium",
                                                     trade.pnl === undefined ? "text-muted-foreground" :
-                                                        trade.pnl >= 0 ? "text-green-500" : "text-red-500"
+                                                        trade.pnl >= 0 ? "text-long" : "text-short"
                                                 )}>
                                                     {trade.pnl !== undefined ? (
                                                         trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`
@@ -318,9 +318,9 @@ const SignalsView = ({ strategy }: SignalsViewProps) => {
                                                 <td className="p-3 text-center">
                                                     <span className={cn(
                                                         "inline-flex px-2 py-0.5 rounded-full text-xs font-medium",
-                                                        trade.status === "open" && "bg-blue-500/10 text-blue-600",
+                                                        trade.status === "open" && "bg-primary/10 text-primary",
                                                         trade.status === "closed" && "bg-muted text-muted-foreground",
-                                                        trade.status === "partial" && "bg-yellow-500/10 text-yellow-600"
+                                                        trade.status === "partial" && "bg-warn/10 text-warn"
                                                     )}>
                                                         {t(`signalsView.tradeStatus.${trade.status}`, { defaultValue: trade.status })}
                                                     </span>

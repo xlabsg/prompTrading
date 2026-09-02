@@ -121,7 +121,7 @@ export function SignalSubscribeDialog({ template, open, onOpenChange }: SignalSu
 
                         <div className="space-y-2">
                             <Label htmlFor="tg_bot_token">
-                                {t("signalSubscribe.telegram.botToken")} <span className="text-red-500">*</span>
+                                {t("signalSubscribe.telegram.botToken")} <span className="text-short">*</span>
                             </Label>
                             <Input
                                 id="tg_bot_token"
@@ -137,7 +137,7 @@ export function SignalSubscribeDialog({ template, open, onOpenChange }: SignalSu
 
                         <div className="space-y-2">
                             <Label htmlFor="tg_chat_id">
-                                {t("signalSubscribe.telegram.chatId")} <span className="text-red-500">*</span>
+                                {t("signalSubscribe.telegram.chatId")} <span className="text-short">*</span>
                             </Label>
                             <Input
                                 id="tg_chat_id"
@@ -161,7 +161,7 @@ export function SignalSubscribeDialog({ template, open, onOpenChange }: SignalSu
                             />
                         </div>
 
-                        <div className="text-xs text-muted-foreground p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        <div className="text-xs text-muted-foreground p-3 bg-muted rounded-md">
                             {t("signalSubscribe.telegram.notice")}
                         </div>
                     </div>

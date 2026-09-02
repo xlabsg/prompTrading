@@ -6,10 +6,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Activity, GitBranch, Loader2, Pause, Play, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { Activity, GitBranch, Loader2, Pause, Play, Sparkles } from "lucide-react";
 import { backtestsApi, strategiesApi } from "@/lib/api";
 import type { BacktestCandle, BacktestSignalEvent, BacktestTrade, BacktestSignalsPayload, Strategy } from "@/lib/types";
 import TradingViewChart from "@/components/charts/TradingViewChart";
+import { Readout } from "@/components/console/Readout";
 import StrategyWorkflowGraph, { type WorkflowGraphData } from "@/components/strategy/StrategyWorkflowGraph";
 
 interface StrategyOverviewViewProps {
@@ -81,7 +82,7 @@ const MermaidBlock: React.FC<{ chart: string }> = ({ chart }) => {
 
   if (!svg) {
     return (
-      <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
+      <div className="rounded-md border border-border bg-muted p-3 text-xs text-muted-foreground">
         Rendering workflow diagram...
       </div>
     );
@@ -803,7 +804,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
             </TabsList>
 
             <TabsContent value="narrative" className="flex-1 min-h-0 mt-0">
-              <ScrollArea className="h-full rounded-md border p-4 bg-muted/10">
+              <ScrollArea className="h-full rounded-md border p-4 bg-muted">
                 {hasOverview ? (
                   <div className="prose prose-sm dark:prose-invert max-w-none">
                     <ReactMarkdown
@@ -828,7 +829,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                     <span>Generating overview automatically...</span>
                   </div>
                 ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-4 bg-muted/10">
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-4 bg-muted">
                     <p>No overview markdown available. Auto-generation will run by default.</p>
                     {overviewGenerateError ? (
                       <p className="text-xs text-destructive max-w-xl text-center px-4">{overviewGenerateError}</p>
@@ -850,37 +851,20 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                 </TabsList>
 
                 <TabsContent value="board" className="flex-1 min-h-0 mt-0">
-                  <ScrollArea className="h-full rounded-md border p-4 bg-muted/10">
+                  <ScrollArea className="h-full rounded-md border p-4 bg-muted">
                     <div className="space-y-4">
-                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                        <Card>
-                          <CardContent className="pt-4">
-                            <div className="text-xs text-muted-foreground">Final Equity</div>
-                            <div className="text-lg font-semibold">{formatCurrency(boardStats.finalEquity)}</div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-4">
-                            <div className="text-xs text-muted-foreground">Net PnL</div>
-                            <div className={`text-lg font-semibold ${boardStats.netPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                              {boardStats.netPnl >= 0 ? <TrendingUp className="inline mr-1 h-4 w-4" /> : <TrendingDown className="inline mr-1 h-4 w-4" />}
-                              {formatCurrency(boardStats.netPnl)} ({formatPercent(boardStats.netPnlPct)})
-                            </div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-4">
-                            <div className="text-xs text-muted-foreground">Max Drawdown</div>
-                            <div className="text-lg font-semibold text-red-600">{formatPercent(boardStats.maxDrawdownPct)}</div>
-                          </CardContent>
-                        </Card>
-                        <Card>
-                          <CardContent className="pt-4">
-                            <div className="text-xs text-muted-foreground">Signal Events</div>
-                            <div className="text-lg font-semibold">{boardStats.signalCount}</div>
-                          </CardContent>
-                        </Card>
-                      </div>
+                      <Readout
+                        items={[
+                          { label: "Final equity", value: formatCurrency(boardStats.finalEquity) },
+                          {
+                            label: "Net P&L",
+                            value: `${formatCurrency(boardStats.netPnl)} (${formatPercent(boardStats.netPnlPct)})`,
+                            tone: boardStats.netPnl >= 0 ? "long" : "short",
+                          },
+                          { label: "Max drawdown", value: formatPercent(boardStats.maxDrawdownPct), tone: "short" },
+                          { label: "Signal events", value: String(boardStats.signalCount) },
+                        ]}
+                      />
 
                       <Card>
                         <CardHeader className="pb-2">
@@ -930,7 +914,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                           <CardHeader className="pb-2">
                             <CardTitle className="text-base">Long Side PnL</CardTitle>
                           </CardHeader>
-                          <CardContent className={`text-lg font-semibold ${boardStats.longPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          <CardContent className={`text-lg font-semibold ${boardStats.longPnl >= 0 ? "text-long" : "text-short"}`}>
                             {formatCurrency(boardStats.longPnl)}
                           </CardContent>
                         </Card>
@@ -938,7 +922,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                           <CardHeader className="pb-2">
                             <CardTitle className="text-base">Short Side PnL</CardTitle>
                           </CardHeader>
-                          <CardContent className={`text-lg font-semibold ${boardStats.shortPnl >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          <CardContent className={`text-lg font-semibold ${boardStats.shortPnl >= 0 ? "text-long" : "text-short"}`}>
                             {formatCurrency(boardStats.shortPnl)}
                           </CardContent>
                         </Card>
@@ -971,7 +955,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                 </TabsContent>
 
                 <TabsContent value="flow" className="flex-1 min-h-0 mt-0">
-                  <ScrollArea className="h-full rounded-md border p-4 bg-muted/10">
+                  <ScrollArea className="h-full rounded-md border p-4 bg-muted">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-muted-foreground">
