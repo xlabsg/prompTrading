@@ -1,21 +1,14 @@
-"""
-Enhanced runner with new prompt system and observability.
+"""Container entry point for strategy generation and refinement.
 
-This module demonstrates the refactored approach using:
-- PromptBuilder for unified prompt construction
-- LLMMiddleware for rule-based decisions (reducing LLM calls)
-- SessionMetrics for tracking costs and usage
-- Langfuse integration for observability
+Drives the AutonomousAgent (the single coding agent) inside the version
+workspace: the agent reads existing code, edits files with fuzzy-matching tools,
+backtests against real cached market data under a bounded run budget, and
+finishes by calling task_done.
 
 Usage:
-    # Set environment variables:
-    # LANGFUSE_ENABLED=true
-    # LANGFUSE_PUBLIC_KEY=pk-xxx
-    # LANGFUSE_SECRET_KEY=sk-xxx
     # STRATEGY_ID=strategy_123
     # VERSION_ID=version_456
     # PROMPT="Create a moving average crossover strategy"
-
     python -m agent.runner_v2
 """
 
@@ -29,18 +22,12 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from agent.llm_openai_compat import (
-    ChatCompletionRequest,
-    ChatMessage,
-    _strip_code_fences,
-    chat_completion,
-)
-from agent.middleware import LLMMiddleware
+from agent.autonomous import AutonomousAgent
+from agent.backtest_tool import BacktestBudget, BacktestDataset, budget_summary
+from agent.config import AgentConfig
 from agent.observability.langfuse_client import get_langfuse
 from agent.observability.metrics import SessionMetrics
-from agent.pipeline.base import PipelineConfig
-from agent.pipeline.enhanced import EnhancedPipeline
-from agent.prompt.builder import PromptBuilder
+from agent.protocol import OVERVIEW_FILE, STRATEGY_FILE
 from agent.templates import (
     DEFAULT_STRATEGY_PROTOCOL,
     DEFAULT_STRATEGY_SPEC_YAML,
@@ -121,22 +108,6 @@ def _read_json(path: str) -> dict[str, Any] | None:
         return None
 
 
-def _default_params_from_schema(params_schema: dict[str, Any] | None) -> dict[str, Any]:
-    """Extract default params from schema."""
-    params: dict[str, Any] = {}
-    if not params_schema:
-        return params
-    for item in params_schema.get("params") or []:
-        if not isinstance(item, dict):
-            continue
-        name = item.get("name")
-        if not name:
-            continue
-        if "default" in item:
-            params[str(name)] = item.get("default")
-    return params
-
-
 def _platform_capabilities() -> dict[str, Any]:
     """Get platform capabilities."""
     indicators: list[str] = []
@@ -191,19 +162,6 @@ def _validate_strategy_code(code: str) -> None:
     )
     if not has_fn:
         raise ValueError("generated_code_missing_generate_signals")
-
-
-def _strip_outer_markdown_fence(text: str) -> str:
-    """Strip a single outer markdown fence wrapper while preserving inner code blocks."""
-    value = (text or "").strip()
-    if not value.startswith("```"):
-        return value
-    lines = value.splitlines()
-    if len(lines) < 3:
-        return value
-    if lines[-1].strip() != "```":
-        return value
-    return "\n".join(lines[1:-1]).strip()
 
 
 def _default_overview_markdown(summary: str) -> str:
@@ -271,59 +229,6 @@ def _ensure_overview_sections(markdown: str, summary: str) -> str:
     return value.strip() + "\n"
 
 
-def _generate_overview_markdown(
-    *,
-    llm: LLMConfig,
-    summary: str,
-    strategy_code: str,
-) -> tuple[str, str]:
-    """Generate overview markdown via LLM, with deterministic fallback."""
-    fallback = _default_overview_markdown(summary)
-    if not llm.api_key:
-        print("[agent] overview generation skipped: missing API key, using default")
-        return fallback, "fallback_missing_api_key"
-
-    code_excerpt = (strategy_code or "").strip()
-    if len(code_excerpt) > 12000:
-        code_excerpt = code_excerpt[:12000] + "\n# ... code truncated ..."
-
-    system_prompt = (
-        "You are a quantitative strategy documentation assistant. "
-        "Output concise markdown only. Do not include prose outside markdown."
-    )
-    user_prompt = (
-        "Generate `overview.md` for this strategy.\n\n"
-        "Required structure:\n"
-        "1. `# Summary`\n"
-        "2. `# Trading Board`\n"
-        "3. `# Flow Animation` with a `mermaid` flowchart code block.\n"
-        "4. Optional: add one `g6` JSON block for state transitions.\n\n"
-        "Keep the document concise and practical for dashboard users.\n\n"
-        f"Strategy summary:\n{summary.strip() or 'Strategy'}\n\n"
-        "Strategy code:\n"
-        f"```python\n{code_excerpt}\n```"
-    )
-
-    try:
-        req = ChatCompletionRequest(
-            api_key=llm.api_key,
-            base_url=llm.base_url,
-            model=llm.model,
-            messages=[
-                ChatMessage(role="system", content=system_prompt),
-                ChatMessage(role="user", content=user_prompt),
-            ],
-            temperature=min(float(llm.temperature), 0.2),
-            timeout_s=180,
-        )
-        raw = str(chat_completion(req) or "")
-        markdown = _strip_outer_markdown_fence(raw)
-        return _ensure_overview_sections(markdown, summary), "llm"
-    except Exception as exc:
-        print(f"[agent] overview generation failed: {exc}")
-        return fallback, "fallback_on_error"
-
-
 def _llm_config() -> LLMConfig:
     """Load LLM config from environment."""
     provider = (_maybe_env("LLM_PROVIDER") or "").strip().lower()
@@ -387,9 +292,111 @@ def _git_commit(strategy_dir: str, message: str) -> None:
 
 # ============== Main Runner ==============
 
+AGENT_TASK_TEMPLATE = """{intent}
+
+## Request
+{prompt}
+
+## Workspace
+You are working inside the strategy version workspace. Files present: {files}
+
+## Deliverables (both required before `task_done`)
+1. `{strategy_file}` exposing `generate_signals(data, params) -> dict`.
+2. `{overview_file}` containing a `# Summary` section and a ```mermaid diagram.
+
+## Contract for `generate_signals`
+- `data` is a pandas DataFrame with columns: timestamp, open, high, low, close, volume.
+- Return a dict containing:
+  - `target_weights`: float array of length n, each in [-1, 1]
+  - `weight_reason`: list of n short strings (e.g. 'regime_long', 'reduce_risk')
+  - 2-6 bar-aligned debug arrays (indicator or condition values)
+- Use `.to_numpy()` on pandas Series, never pass raw Series.
+- No network access, no file I/O, deterministic only.
+
+## Platform capabilities
+{capabilities}
+
+## How to work
+- Read before you edit. Use `ls` and `read_file` first.
+- After writing `{strategy_file}`, call `skill_backtest` to evaluate it on real
+  market data, then use the reported metrics to improve the strategy.
+- You have at most {max_runs} backtest runs. Spend them deliberately: change
+  something specific each time and check whether {score_key} improves.
+- Stop tuning when the budget is spent or the metrics stop improving, then
+  write `{overview_file}` and call `task_done`.
+"""
+
+
+def _seed_workspace(version_dir: str, strategy_dir: str) -> list[str]:
+    """Copy the current strategy into the version workspace the agent edits.
+
+    The agent works on the version directory so a run is reproducible and never
+    corrupts the live strategy; `strategy_dir` is only updated after success.
+    """
+    seeded: list[str] = []
+    for name in (
+        "strategy.py",
+        "strategy_spec.yaml",
+        "strategy_protocol.json",
+        "params_schema.json",
+        "strategy_meta.json",
+        "overview.md",
+    ):
+        src = os.path.join(strategy_dir, name)
+        dst = os.path.join(version_dir, name)
+        if os.path.isfile(src) and not os.path.exists(dst):
+            try:
+                with open(src, "rb") as fsrc, open(dst, "wb") as fdst:
+                    fdst.write(fsrc.read())
+                seeded.append(name)
+            except OSError:
+                continue
+    return seeded
+
+
+def _build_agent_task(
+    *,
+    prompt: str,
+    is_first_generation: bool,
+    files: list[str],
+    capabilities: dict[str, Any],
+    budget: BacktestBudget,
+) -> str:
+    intent = (
+        "Create a new trading strategy from scratch."
+        if is_first_generation
+        else "Modify the existing trading strategy in this workspace."
+    )
+    return AGENT_TASK_TEMPLATE.format(
+        intent=intent,
+        prompt=prompt.strip() or "Improve the strategy.",
+        files=", ".join(sorted(files)) or "(empty workspace)",
+        strategy_file=STRATEGY_FILE,
+        overview_file=OVERVIEW_FILE,
+        capabilities=json.dumps(capabilities, ensure_ascii=False, indent=2),
+        max_runs=budget.max_runs,
+        score_key=budget.score_key,
+    )
+
+
+def _agent_config() -> AgentConfig:
+    cfg = AgentConfig()
+    for env_name, attr in (
+        ("AGENT_MAX_STEPS", "max_steps"),
+        ("AGENT_MAX_TOKENS", "max_tokens"),
+        ("AGENT_IDLE_THRESHOLD", "idle_threshold"),
+    ):
+        raw = (os.getenv(env_name) or "").strip()
+        if raw:
+            try:
+                setattr(cfg, attr, int(raw))
+            except ValueError:
+                pass
+    return cfg
+
+
 def main() -> int:
-    """Main entry point."""
-    # 1. Initialize
+    """Run the coding agent for one generate/refine job."""
     llm = _llm_config()
     strategy_id = _env("STRATEGY_ID")
     version_id = _env("VERSION_ID")
@@ -401,91 +408,78 @@ def main() -> int:
     _ensure_dir(version_dir)
     _ensure_dir(strategy_dir)
 
-    # 2. Load current code
+    # Load current code to decide between first generation and refinement.
     current_code = ""
-    try:
-        current_path = os.path.join(strategy_dir, "strategy.py")
-        if os.path.isfile(current_path):
-            with open(current_path, "r", encoding="utf-8") as f:
-                current_code = f.read()
-    except Exception:
-        current_code = ""
+    current_path = os.path.join(strategy_dir, "strategy.py")
+    if os.path.isfile(current_path):
+        try:
+            current_code = _read_text(current_path)
+        except OSError:
+            current_code = ""
     is_first_generation = not bool(current_code.strip())
 
-    # 3. Initialize session metrics
+    seeded = _seed_workspace(version_dir, strategy_dir)
+    print(f"[agent] seeded workspace with: {seeded or '(nothing)'}")
+
     session_metrics = SessionMetrics(session_id=strategy_id)
-
-    # 4. Build prompt and platform info
     platform_caps = _platform_capabilities()
-    prompt_builder = PromptBuilder(
-        default_language=LLMMiddleware.detect_language(prompt),
-        max_code_length=8000,
+
+    dataset = BacktestDataset.from_env()
+    budget = BacktestBudget.from_env()
+    print(f"[agent] backtest dataset={dataset.describe()} budget={budget.max_runs}")
+
+    agent = AutonomousAgent(
+        workspace_root=version_dir,
+        llm_config=llm,
+        config=_agent_config(),
+        backtest_dataset=dataset,
+        backtest_budget=budget,
     )
 
-    # 5. Configure pipeline
-    pipeline_config = PipelineConfig(
-        api_key=llm.api_key,
-        base_url=llm.base_url,
-        model=llm.model,
-        temperature=llm.temperature,
-        provider=llm.provider,
+    task = _build_agent_task(
+        prompt=prompt,
+        is_first_generation=is_first_generation,
+        files=seeded,
+        capabilities=platform_caps,
+        budget=budget,
     )
 
-    pipeline = EnhancedPipeline(
-        config=pipeline_config,
-        prompt_builder=prompt_builder,
-        session_metrics=session_metrics,
-    )
-
-    # 6. Generate strategy
+    used_llm = True
+    agent_summary = ""
+    stop_reason = "task_done"
     try:
-        result = pipeline.run(
-            prompt=prompt,
-            current_code=current_code,
-            platform_capabilities=platform_caps,
-        )
-        code = result.code
-        used_llm = True
+        result = agent.run(task)
+        agent_summary = result.summary
+        stop_reason = result.stop_reason.value
+        if not result.success:
+            raise RuntimeError(f"agent_failed: {result.summary}")
+        code = _read_text(os.path.join(version_dir, "strategy.py"))
+        _validate_strategy_code(code)
     except Exception as exc:
-        print(f"[agent] pipeline_failed: {exc}", file=sys.stderr)
+        print(f"[agent] agent_failed: {exc}", file=sys.stderr)
         fallback_on_error = (
             (os.getenv("LLM_FALLBACK_ON_ERROR") or "").strip().lower()
             in ("1", "true", "yes")
         )
-        if fallback_on_error:
-            code = fallback_strategy_py(prompt)
-            used_llm = False
-        else:
+        if not fallback_on_error:
             raise
+        code = fallback_strategy_py(prompt)
+        used_llm = False
+        stop_reason = "fallback"
+        _write_text(os.path.join(version_dir, "strategy.py"), code)
 
-    # 7. Write artifacts
-    _write_text(os.path.join(version_dir, "strategy.py"), code)
-    _write_text(
-        os.path.join(version_dir, "strategy_spec.yaml"),
-        DEFAULT_STRATEGY_SPEC_YAML,
-    )
-    _write_json(
-        os.path.join(version_dir, "strategy_protocol.json"),
-        DEFAULT_STRATEGY_PROTOCOL,
-    )
+    # Spec and protocol are platform-owned; write them if the agent did not.
+    for name, payload, writer in (
+        ("strategy_spec.yaml", DEFAULT_STRATEGY_SPEC_YAML, _write_text),
+        ("strategy_protocol.json", DEFAULT_STRATEGY_PROTOCOL, _write_json),
+    ):
+        target = os.path.join(version_dir, name)
+        if not os.path.isfile(target):
+            writer(target, payload)
 
-    # 8. Also update current strategy
-    _write_text(os.path.join(strategy_dir, "strategy.py"), code)
-    _write_text(
-        os.path.join(strategy_dir, "strategy_spec.yaml"),
-        DEFAULT_STRATEGY_SPEC_YAML,
-    )
-    _write_json(
-        os.path.join(strategy_dir, "strategy_protocol.json"),
-        DEFAULT_STRATEGY_PROTOCOL,
-    )
-
-    # 9. Build params schema
     params_schema = _build_params_schema(code)
     _write_json(os.path.join(version_dir, "params_schema.json"), params_schema)
-    _write_json(os.path.join(strategy_dir, "params_schema.json"), params_schema)
 
-    # 10. Build metadata
     summary = prompt.strip().splitlines()[0][:80] if prompt else "Strategy"
     meta_payload = {
         "version": 1,
@@ -494,54 +488,59 @@ def main() -> int:
         "signal_mode": DEFAULT_STRATEGY_PROTOCOL.get("signal_mode", "target_weights"),
     }
     _write_json(os.path.join(version_dir, "strategy_meta.json"), meta_payload)
-    _write_json(os.path.join(strategy_dir, "strategy_meta.json"), meta_payload)
 
-    # 11. Generate overview markdown as a delivery artifact.
-    # Only trigger LLM overview generation on first strategy creation.
-    overview_status = "reused_existing"
-    if is_first_generation:
-        overview_md, overview_status = _generate_overview_markdown(
-            llm=llm,
-            summary=summary,
-            strategy_code=code,
-        )
+    # The agent is required to produce overview.md; fall back only if it did not.
+    overview_path = os.path.join(version_dir, OVERVIEW_FILE)
+    if os.path.isfile(overview_path):
+        overview_md = _read_text(overview_path)
+        overview_status = "agent_generated"
     else:
-        overview_path = os.path.join(strategy_dir, "overview.md")
-        if os.path.isfile(overview_path):
-            overview_md = _read_text(overview_path)
-        else:
-            overview_md = _default_overview_markdown(summary)
-            overview_status = "fallback_non_first_generation"
+        overview_md = _default_overview_markdown(summary)
+        overview_status = "fallback_missing"
     overview_md = _ensure_overview_sections(overview_md, summary)
-    _write_text(os.path.join(version_dir, "overview.md"), overview_md)
-    _write_text(os.path.join(strategy_dir, "overview.md"), overview_md)
+    _write_text(overview_path, overview_md)
 
-    # 12. Write LLM metadata
+    iteration = budget_summary(budget, dataset)
+    _write_json(os.path.join(version_dir, "backtest_iterations.json"), iteration)
+
     llm_meta_payload = {
         "used_llm": used_llm,
         "model": llm.model if used_llm else None,
         "base_url": llm.base_url if used_llm else None,
         "temperature": llm.temperature if used_llm else None,
-        "pipeline": "enhanced_v2",
+        "pipeline": "autonomous_agent",
         "summary": summary,
         "params_schema": params_schema,
         "signal_mode": DEFAULT_STRATEGY_PROTOCOL.get("signal_mode", "target_weights"),
         "overview_status": overview_status,
+        "agent_summary": agent_summary,
+        "stop_reason": stop_reason,
+        "backtest_iterations": iteration,
     }
     _write_json(os.path.join(version_dir, "llm_meta.json"), llm_meta_payload)
 
-    # 13. Git commit
+    # Publish to the live strategy dir only once the version is complete.
+    for name in (
+        "strategy.py",
+        "strategy_spec.yaml",
+        "strategy_protocol.json",
+        "params_schema.json",
+        "strategy_meta.json",
+        OVERVIEW_FILE,
+    ):
+        src = os.path.join(version_dir, name)
+        if os.path.isfile(src):
+            _write_text(os.path.join(strategy_dir, name), _read_text(src))
+
     commit_msg = f"AI: {prompt[:80]}" if prompt else "AI: strategy update"
     _git_commit(strategy_dir, commit_msg)
 
-    # 14. Print session summary
     print("\n=== Session Summary ===")
     print(json.dumps(session_metrics.summary(), indent=2))
-
-    # 15. Flush Langfuse
+    print(json.dumps({"backtest_iterations": iteration}, indent=2))
     get_langfuse().flush()
 
-    print("[agent] wrote strategy.py, strategy_spec.yaml and overview.md")
+    print(f"[agent] wrote {STRATEGY_FILE}, strategy_spec.yaml and {OVERVIEW_FILE}")
     return 0
 
 

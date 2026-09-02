@@ -16,6 +16,7 @@ from control_plane.enums import (
     BacktestStatus, ChatStatus, JobStatus, JobType,
     StrategyRole, TrendingBacktestStatus
 )
+from control_plane.versions import create_strategy_version
 from control_plane.models import (
     BacktestRun, Dataset, Job, Strategy,
     StrategyMember, StrategyVersion, TradingViewTrendingStrategy
@@ -149,31 +150,26 @@ def create_temporary_strategy_from_tradingview(
     db.flush()
     print(f"[DEBUG] Database flush successful")
 
-    from control_plane.workspaces import init_strategy_workspace, snapshot_current_strategy_to_version
+    from control_plane.workspaces import init_strategy_workspace
     print(f"[DEBUG] About to call init_strategy_workspace")
     init_strategy_workspace("/workspaces", strategy.id)
     print(f"[DEBUG] Workspace initialized")
 
     print(f"[DEBUG] Creating StrategyVersion...")
-    version = StrategyVersion(
+    version = create_strategy_version(
+        db,
         strategy_id=strategy.id,
         version=1,
-        workspace_path="",
         prompt=f"Auto-imported from TradingView trending: {tv_strategy.url}",
         llm_meta={
             "source": "trending_backtest",
             "tradingview_url": tv_strategy.url,
             "original_title": tv_strategy.title,
-        }
+        },
+        snapshot=True,
+        workspaces_dir="/workspaces",
     )
-    db.add(version)
-    db.flush()
-    print(f"[DEBUG] StrategyVersion created, snapshotting...")
-
-    version.workspace_path = snapshot_current_strategy_to_version(
-        "/workspaces", strategy.id, version.id
-    )
-    print(f"[DEBUG] Snapshot complete")
+    print(f"[DEBUG] StrategyVersion created and snapshotted")
 
     # Commit so strategy is visible to subsequent queries
     db.commit()

@@ -1,27 +1,19 @@
 """Tests for enhanced AutonomousAgent capabilities."""
 
-import pytest
-from unittest.mock import MagicMock, patch
-import json
+from unittest.mock import MagicMock
 
 from agent.config import (
     AgentConfig,
     RetryConfig,
     ContextConfig,
-    LoopDetector,
     TokenEstimator,
-    StopReason,
-    SubAgentType,
-    SUBAGENT_CONFIGS,
 )
 from agent.context_manager import ContextManager
 from agent.skills import (
     SkillRegistry,
     SkillContext,
-    SkillResult,
     BacktestSkill,
     AnalyzeSkill,
-    HelpSkill,
     create_default_registry,
 )
 
@@ -42,40 +34,6 @@ class TestRetryConfig:
         assert config.is_retryable("503 Service Unavailable")
         assert not config.is_retryable("File not found")
         assert not config.is_retryable("Syntax error in code")
-
-
-class TestLoopDetector:
-    """Tests for LoopDetector."""
-
-    def test_no_loop_with_varied_calls(self):
-        detector = LoopDetector(window_size=6)
-        detector.record_call("read_file", {"path": "a.py"})
-        detector.record_call("edit_file", {"path": "a.py"})
-        detector.record_call("read_file", {"path": "b.py"})
-        assert not detector.detect_loop()
-
-    def test_detects_repeated_calls(self):
-        detector = LoopDetector(window_size=6)
-        # Same call 3 times in a row
-        for _ in range(3):
-            detector.record_call("read_file", {"path": "a.py"})
-        assert detector.detect_loop()
-
-    def test_detects_alternating_pattern(self):
-        detector = LoopDetector(window_size=6)
-        # A-B-A-B pattern
-        for _ in range(2):
-            detector.record_call("read_file", {"path": "a.py"})
-            detector.record_call("edit_file", {"path": "a.py"})
-        assert detector.detect_loop()
-
-    def test_reset_clears_history(self):
-        detector = LoopDetector(window_size=6)
-        for _ in range(3):
-            detector.record_call("read_file", {"path": "a.py"})
-        assert detector.detect_loop()
-        detector.reset()
-        assert not detector.detect_loop()
 
 
 class TestTokenEstimator:
@@ -169,7 +127,7 @@ class TestSkillRegistry:
         registry = create_default_registry()
         skills = registry.list_skills()
 
-        assert len(skills) >= 4  # backtest, analyze, ls, search, help
+        assert len(skills) == 2  # backtest, analyze
         names = [s["name"] for s in skills]
         assert "backtest" in names
         assert "analyze" in names
@@ -215,19 +173,6 @@ class TestSkills:
         result = skill.execute("", context)
         assert "import pandas" in result.output.lower() or "pd" in result.output
 
-    def test_help_skill_lists_skills(self):
-        registry = create_default_registry()
-        skill = registry.get("help")
-
-        mock_tools = MagicMock()
-        context = SkillContext(tools=mock_tools, workspace_root="/tmp")
-
-        result = skill.execute("", context)
-        assert result.success
-        assert "backtest" in result.output.lower()
-        assert "analyze" in result.output.lower()
-
-
 class TestAgentConfig:
     """Tests for AgentConfig."""
 
@@ -236,7 +181,6 @@ class TestAgentConfig:
         assert config.max_steps == 50
         assert config.max_tokens == 100_000
         assert config.idle_threshold == 3
-        assert config.loop_detection is True
 
     def test_custom_config(self):
         config = AgentConfig(
@@ -249,31 +193,3 @@ class TestAgentConfig:
         assert config.allowed_tools == ["read_file", "ls"]
 
 
-class TestSubAgentConfig:
-    """Tests for SubAgentConfig."""
-
-    def test_all_types_have_config(self):
-        for agent_type in SubAgentType:
-            assert agent_type in SUBAGENT_CONFIGS
-            config = SUBAGENT_CONFIGS[agent_type]
-            assert config.max_steps > 0
-            assert len(config.tools) > 0
-            assert config.system_prompt
-
-    def test_explore_agent_has_read_only_tools(self):
-        config = SUBAGENT_CONFIGS[SubAgentType.EXPLORE]
-        # Explore should not have write tools
-        assert "write_file" not in config.tools
-        assert "edit_file" not in config.tools
-        # But should have read tools
-        assert "read_file" in config.tools
-        assert "ls" in config.tools
-
-    def test_code_agent_has_write_tools(self):
-        config = SUBAGENT_CONFIGS[SubAgentType.CODE]
-        assert "write_file" in config.tools
-        assert "edit_file" in config.tools
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

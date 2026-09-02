@@ -145,6 +145,11 @@ services:
       US_STOCK_CACHE_TTL_DAYS: ${US_STOCK_CACHE_TTL_DAYS:-}
       US_STOCK_MAX_RETRIES: ${US_STOCK_MAX_RETRIES:-}
       US_STOCK_RATE_LIMIT_SLEEP_S: ${US_STOCK_RATE_LIMIT_SLEEP_S:-}
+      # Market data cache (shared by agent + backtest containers via /workspaces).
+      # Defaults to /workspaces/market_data_cache; set ENABLED=0 to bypass.
+      MARKET_DATA_CACHE_DIR: ${MARKET_DATA_CACHE_DIR:-}
+      MARKET_DATA_CACHE_ENABLED: ${MARKET_DATA_CACHE_ENABLED:-}
+      MARKET_DATA_CACHE_TTL_S: ${MARKET_DATA_CACHE_TTL_S:-}
       # Langfuse observability (read from .env, passed to agent containers)
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}

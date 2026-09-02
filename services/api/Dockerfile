@@ -14,10 +14,11 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Install dependencies
-COPY services/api/requirements.txt /app/requirements.txt
+# Third-party dependencies are declared in pyproject.toml. Copied on its own so
+# this layer is cached until the dependency list itself changes.
+COPY services/api/pyproject.toml /tmp/api/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r /app/requirements.txt
+    pip install --no-cache-dir "/tmp/api[test]" && rm -rf /tmp/api
 
 # Copy and install OKX SDK package (keep isolated for better cache reuse)
 COPY packages/okx_sdk /tmp/okx_sdk

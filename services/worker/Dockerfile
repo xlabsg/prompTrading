@@ -10,14 +10,21 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-COPY services/worker/requirements.txt /app/requirements.txt
+# Third-party dependencies are declared in pyproject.toml. Copied on its own so
+# this layer is cached until the dependency list itself changes.
+COPY services/worker/pyproject.toml /tmp/worker/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r /app/requirements.txt
+    pip install --no-cache-dir /tmp/worker && rm -rf /tmp/worker
 
 # Copy trending_scraper package (for TradingView trending strategies)
 COPY packages/trending_scraper /tmp/trending_scraper
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir /tmp/trending_scraper && rm -rf /tmp/trending_scraper
+
+# Copy and install code_editor (fuzzy matching behind agent.editor)
+COPY packages/code_editor /tmp/code_editor
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir /tmp/code_editor && rm -rf /tmp/code_editor
 
 # Copy tradingview_scraper package (for scraping individual TradingView scripts)
 COPY packages/tradingview_scraper /tmp/tradingview_scraper
@@ -26,7 +33,6 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY packages/control_plane/control_plane /app/control_plane
 COPY packages/backtest/backtest /app/backtest
-COPY packages/code_editor /app/code_editor
 COPY packages/data/data /app/data
 COPY packages/agent/agent /app/agent
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
