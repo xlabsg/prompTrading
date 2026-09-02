@@ -32,6 +32,10 @@ class SkillContext:
     tools: "FileSystemTools"
     workspace_root: str
     history: list[dict[str, Any]] = field(default_factory=list)
+    # Session-scoped backtest dataset and run budget. Shared across every
+    # BacktestSkill call so the edit->backtest loop stays bounded.
+    backtest_dataset: Any = None
+    backtest_budget: Any = None
 
 
 class Skill(ABC):
@@ -141,7 +145,12 @@ class BacktestSkill(Skill):
         interval = tool_args.get("interval", "1h")
         data_path = tool_args.get("data_path")
 
-        result = context.tools.run_backtest(interval=interval, data_path=data_path)
+        result = context.tools.run_backtest(
+            interval=interval,
+            data_path=data_path,
+            dataset=context.backtest_dataset,
+            budget=context.backtest_budget,
+        )
 
         if result.error:
             return SkillResult(success=False, output="", error=result.error)
@@ -156,7 +165,9 @@ class BacktestSkill(Skill):
 
         result = context.tools.run_backtest(
             interval=interval,
-            data_path=data_path
+            data_path=data_path,
+            dataset=context.backtest_dataset,
+            budget=context.backtest_budget,
         )
 
         if result.error:
@@ -351,10 +362,10 @@ def create_default_registry() -> SkillRegistry:
     """Create a registry with default skills."""
     registry = SkillRegistry()
 
-    # BacktestSkill disabled: causes edit→backtest loop.
-    # Agent should read backtest results from workspace files instead.
-    # registry.register(BacktestSkill())
-
+    # Runs against real cached market data under BacktestBudget, so results are
+    # deterministic and the run count is capped -- the two things that made the
+    # earlier synthetic-data version loop forever.
+    registry.register(BacktestSkill())
     registry.register(AnalyzeSkill())
 
     return registry

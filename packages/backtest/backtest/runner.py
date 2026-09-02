@@ -49,7 +49,7 @@ def _env_json_dict(name: str) -> dict[str, Any]:
     return obj
 
 
-def _network_guard_enabled() -> bool:
+def network_guard_enabled() -> bool:
     raw = (os.getenv("NETWORK_GUARD_ENABLED") or "").strip().lower()
     if not raw:
         return True
@@ -95,7 +95,7 @@ def _us_stock_allowlist() -> list[str]:
     return allow
 
 
-def _build_backtest_allowlist(exchange: str) -> list[str]:
+def build_backtest_allowlist(exchange: str) -> list[str]:
     s = (exchange or "").strip().lower()
     if s == "binance":
         return ["api.binance.com", "api.binance.us"]
@@ -165,10 +165,10 @@ def main() -> int:
     end_ms = _env_int("END_MS")
 
     extra_hosts = _split_allowlist(os.getenv("NETWORK_ALLOWLIST", ""))
-    allowlist = _merge_allowlist(_build_backtest_allowlist(exchange), extra_hosts)
+    allowlist = _merge_allowlist(build_backtest_allowlist(exchange), extra_hosts)
     if allowlist:
         os.environ["NETWORK_ALLOWLIST"] = ",".join(allowlist)
-    install_network_guard(allowlist=allowlist, enabled=_network_guard_enabled())
+    install_network_guard(allowlist=allowlist, enabled=network_guard_enabled())
 
     fee_rate = float(os.getenv("FEE_RATE", "0.0004"))
     slippage_bps = float(os.getenv("SLIPPAGE_BPS", "0"))

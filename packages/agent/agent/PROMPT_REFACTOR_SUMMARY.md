@@ -1,5 +1,10 @@
 # Prompt 生成重构实现总结
 
+> **历史记录（截至 2026-09-02 之前）。** 本文描述的是当时的 prompt/pipeline 体系，
+> 其中 `BasicPipeline`、`spec_pipeline`、`plan_builder`、`test_imports` 等已被删除，
+> `runner_v2` 也已改为驱动 `AutonomousAgent`。当前架构见仓库根目录 `CLAUDE.md`
+> 与 `docs/MVP_REFACTOR_PLAN.md`；本文仅作变更历史保留，不要据此写代码。
+
 ## 已完成的模块
 
 ### 1. Prompt 模块 (`agent/prompt/`)

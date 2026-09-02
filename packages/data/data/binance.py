@@ -6,6 +6,8 @@ from typing import Optional
 import pandas as pd
 import requests
 
+from data.cache import cached_fetch, interval_to_ms
+
 
 @dataclass(frozen=True)
 class KlinesRequest:
@@ -19,7 +21,7 @@ class KlinesRequest:
 BINANCE_SPOT_BASE_URL = "https://api.binance.com"
 
 
-def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
+def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
     """Fetch OHLCV klines from Binance Spot public API.
 
     Returns DataFrame with columns: timestamp (ms), open, high, low, close, volume.
@@ -86,3 +88,28 @@ def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
         df = df.drop_duplicates(subset=["timestamp"]).sort_values("timestamp").reset_index(drop=True)
     return df
 
+
+
+def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
+    """Cache-aware wrapper around the Binance klines API."""
+
+    def _fetch(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
+        return _fetch_klines_uncached(
+            KlinesRequest(
+                symbol=req.symbol,
+                interval=req.interval,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                limit=req.limit,
+            )
+        )
+
+    return cached_fetch(
+        exchange="binance",
+        symbol=req.symbol,
+        interval=req.interval,
+        start_ms=req.start_ms,
+        end_ms=req.end_ms,
+        fetch=_fetch,
+        interval_ms=interval_to_ms(req.interval),
+    )
