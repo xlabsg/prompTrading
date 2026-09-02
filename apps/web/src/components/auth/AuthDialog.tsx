@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Loader2, ArrowLeft, Ticket } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { authApi } from "@/lib/api";
 import { LogoIcon } from "@/components/Logo";
 import { useTranslation } from "react-i18next";
@@ -55,7 +54,6 @@ const GitHubLogo = ({ className }: { className?: string }) => (
 
 export function AuthDialog({ open, onOpenChange, initialStep = "register" }: AuthDialogProps) {
   const [step, setStep] = useState<AuthStep>(initialStep);
-  const [inviteCode, setInviteCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const { t } = useTranslation();
@@ -65,53 +63,16 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
     setStep(initialStep);
   }, [initialStep]);
 
-  const handleOAuthLogin = async (provider: "github" | "google") => {
+  const handleOAuth = async (provider: "github" | "google") => {
     setIsLoading(true);
     setError("");
 
     try {
-      // Login without invite code
       const response = await authApi.startOAuth(provider, "", window.location.pathname);
       window.location.assign(response.auth_url);
     } catch (err: any) {
       const errorMsg = err?.message || "";
-      if (errorMsg.includes("registration_required") || errorMsg.includes("invite_required_for_registration")) {
-        setError(t("auth.accountNotRegistered"));
-      } else {
-        setError(t("auth.authorizationFailed"));
-      }
-      setIsLoading(false);
-    }
-  };
-
-  const handleOAuthRegister = async (provider: "github" | "google", e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!inviteCode.trim()) {
-      setError(t("auth.invitePlaceholder"));
-      return;
-    }
-
-    setIsLoading(true);
-    setError("");
-
-    try {
-      // Validate invite code and start OAuth
-      await authApi.validateInvite(inviteCode.trim());
-      const response = await authApi.startOAuth(provider, inviteCode.trim(), window.location.pathname);
-      window.location.assign(response.auth_url);
-    } catch (err: any) {
-      console.error("Registration error:", err);
-      const errorMsg = err?.message || "";
-      if (errorMsg.includes("invalid_invite")) {
-        setError(t("auth.invalidInvite"));
-      } else if (errorMsg.includes("invite_expired")) {
-        setError(t("auth.inviteExpired"));
-      } else if (errorMsg.includes("invite_exhausted")) {
-        setError(t("auth.inviteExhausted"));
-      } else {
-        setError(`${t("auth.registrationFailed")}: ${errorMsg}`);
-      }
+      setError(`${t("auth.authorizationFailed")}: ${errorMsg}`);
       setIsLoading(false);
     }
   };
@@ -119,11 +80,41 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
   const handleOpenChange = (newOpen: boolean) => {
     if (!newOpen) {
       setStep(initialStep);
-      setInviteCode("");
       setError("");
     }
     onOpenChange(newOpen);
   };
+
+  const renderOAuthButtons = () => (
+    <div className="w-full mt-5 space-y-2.5">
+      <Button
+        variant="outline"
+        className="w-full h-11 text-sm font-medium justify-start px-4 gap-3 bg-stone-100 hover:bg-stone-200 border-stone-200"
+        onClick={() => handleOAuth("google")}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <GoogleLogo className="w-5 h-5" />
+        )}
+        {t("common.continue")} Google
+      </Button>
+      <Button
+        variant="outline"
+        className="w-full h-11 text-sm font-medium justify-start px-4 gap-3 bg-stone-100 hover:bg-stone-200 border-stone-200"
+        onClick={() => handleOAuth("github")}
+        disabled={isLoading}
+      >
+        {isLoading ? (
+          <Loader2 className="w-4 h-4 animate-spin" />
+        ) : (
+          <GitHubLogo className="w-5 h-5" />
+        )}
+        {t("common.continue")} GitHub
+      </Button>
+    </div>
+  );
 
   const renderLoginStep = () => (
     <>
@@ -142,34 +133,7 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
         </div>
       )}
 
-      <div className="w-full mt-5 space-y-2.5">
-        <Button
-          variant="outline"
-          className="w-full h-11 text-sm font-medium justify-start px-4 gap-3 bg-stone-100 hover:bg-stone-200 border-stone-200"
-          onClick={() => handleOAuthLogin("google")}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <GoogleLogo className="w-5 h-5" />
-          )}
-          {t("common.continue")} Google
-        </Button>
-        <Button
-          variant="outline"
-          className="w-full h-11 text-sm font-medium justify-start px-4 gap-3 bg-stone-100 hover:bg-stone-200 border-stone-200"
-          onClick={() => handleOAuthLogin("github")}
-          disabled={isLoading}
-        >
-          {isLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <GitHubLogo className="w-5 h-5" />
-          )}
-          {t("common.continue")} GitHub
-        </Button>
-      </div>
+      {renderOAuthButtons()}
 
       <div className="w-full mt-4 text-center">
         <p className="text-sm text-muted-foreground">
@@ -190,8 +154,6 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
 
   const renderRegisterStep = () => (
     <>
-
-
       <div className="mt-4 space-y-0.5">
         <h1 className="text-xl font-semibold tracking-tight">
           {t("auth.createAccount")}
@@ -201,82 +163,21 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
         </p>
       </div>
 
-      <form onSubmit={(e) => handleOAuthRegister("github", e)} className="w-full mt-5 space-y-3">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">{t("auth.inviteCode")}</label>
-          <div className="relative">
-            <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <Input
-              type="text"
-              placeholder={t("auth.invitePlaceholder")}
-              value={inviteCode}
-              onChange={(e) => {
-                setInviteCode(e.target.value);
-                setError("");
-              }}
-              className="h-11 text-sm pl-10"
-              autoFocus
-              disabled={isLoading}
-            />
-          </div>
-          {error && (
-            <p className="text-sm text-red-500">{error}</p>
-          )}
+      {error && (
+        <div className="w-full mt-4 p-3 rounded-lg bg-red-50 border border-red-200">
+          <p className="text-sm text-red-600">{error}</p>
         </div>
+      )}
 
-        <div className="space-y-2">
-          <Button
-            type="button"
-            className="w-full h-11 text-sm font-medium gap-3"
-            onClick={(e) => handleOAuthRegister("google", e)}
-            disabled={isLoading || !inviteCode.trim()}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t("auth.registering")}
-              </>
-            ) : (
-              <>
-                <GoogleLogo className="w-5 h-5" />
-                {t("common.continue")} Google
-              </>
-            )}
-          </Button>
-          <Button
-            type="submit"
-            className="w-full h-11 text-sm font-medium gap-3"
-            disabled={isLoading || !inviteCode.trim()}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {t("auth.registering")}
-              </>
-            ) : (
-              <>
-                <GitHubLogo className="w-5 h-5" />
-                {t("common.continue")} GitHub
-              </>
-            )}
-          </Button>
-        </div>
-      </form>
+      {renderOAuthButtons()}
 
-      <div className="w-full mt-4 p-3 rounded-lg bg-muted/50 border border-border">
-        <p className="text-xs text-muted-foreground text-center">
-          {t("auth.waitlistTitle")}
-        </p>
-      </div>
-
-      <div className="w-full mt-3 text-center">
+      <div className="w-full mt-4 text-center">
         <p className="text-sm text-muted-foreground">
           {t("auth.alreadyHaveAccount")}{" "}
           <button
             onClick={() => {
               setStep("login");
               setError("");
-              setInviteCode("");
             }}
             className="text-primary hover:underline font-medium"
           >

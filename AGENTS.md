@@ -5,6 +5,7 @@ focus on coding readabiliy and performance first
 do not write code at begining, we can talk first until I let you write code
 consider use “First principle” to thinking
 no need write README md docs
+when modifying worker, sandbox or docker orchestration, must verify with a real container smoke test (Worker -> Docker Agent lifecycle), do not rely solely on in-memory mocks
 
 ## Project Structure & Module Organization
 - `apps/web`: Vite + React console with Tailwind styling; code lives in `src/` and builds into `dist/`.
@@ -29,6 +30,7 @@ no need write README md docs
 - Prefer pytest for Python packages/services. Store tests beside implementation (e.g., `packages/control_plane/tests/`). Name files `test_<unit>.py` and keep fixtures reusable.
 - For the web console, add vitest or Playwright suites under `apps/web/src/__tests__`; snapshot tests should sit next to their components.
 - Target coverage of trading-critical paths (strategy eval, order placement, WebSocket broadcasting). When patching these areas, add regression tests or update `services/api/test_okx_setup.py`.
+- **Container Smoke Testing**: When modifying Worker orchestration, Docker container parameters (e.g., `read_only`, `tmpfs`, limits), or agent runtime dependencies, always execute a real end-to-end container run (`Worker -> Docker Agent/Backtest`) to verify filesystem permissions and lifecycle in addition to in-memory/mock unit tests.
 
 ## Commit & Pull Request Guidelines
 - Use Conventional Commit prefixes as seen in history (`feat:`, `fix:`, `refactor:`). Scope tags (`feat(api): ...`) help reviewers trace ownership.

@@ -51,7 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[eval] Bringing up stack (mode=$MODE, consumers=$CONSUMERS)..."
-dc up -d --build --remove-orphans postgres redis api agent-image backtest-image dev-image worker-scheduler
+dc up -d --build --remove-orphans redis api agent-image backtest-image dev-image worker-scheduler
 dc up -d --build --remove-orphans --scale worker-consumer="$CONSUMERS" worker-consumer
 
 echo "[eval] Waiting for API health..."

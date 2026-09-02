@@ -2,44 +2,14 @@
 # Usage: docker compose -f infra/compose/docker-compose.dev.yml up --build
 
 services:
-  # ==================== Infrastructure ====================
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
-  redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--requirepass", "dev_redis_password", "--appendonly", "yes"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "dev_redis_password", "ping"]
-      interval: 3s
-      timeout: 10s
-      retries: 10
-    volumes:
-      - redisdata:/data
-    ports:
-      - "6379:6379"
-
   # ==================== Backend API ====================
   api:
     build:
       context: ../../
       dockerfile: services/api/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
-      APP_REDIS_URL: redis://:dev_redis_password@redis:6379/0
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
+      APP_DEV_SKIP_AUTH: ${APP_DEV_SKIP_AUTH:-true}
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
       APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
@@ -94,10 +64,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       worker-rpc:
         condition: service_started
 
@@ -107,8 +73,7 @@ services:
       context: ../../
       dockerfile: services/worker/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
-      APP_REDIS_URL: redis://:dev_redis_password@redis:6379/0
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_WORKSPACES_DIR: /workspaces
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
@@ -161,11 +126,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
 
   worker-rpc:
     build:
@@ -223,13 +183,10 @@ services:
     entrypoint: ["true"]
 
 volumes:
-  pgdata:
-    name: ai_strategy_pgdata
-  redisdata:
-    name: ai_strategy_redisdata
   workspaces:
     name: ai_strategy_workspaces
 
 networks:
   default:
     name: ai_strategy_network
+

@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", extra="ignore")
 
-    db_url: str
+    db_url: str = "sqlite:////workspaces/app.db"
     redis_url: Optional[str] = None
     workspaces_dir: str = "/workspaces"
     public_base_url: str = "http://localhost:3000"
@@ -44,6 +44,7 @@ class Settings(BaseSettings):
 
     # Development settings
     dev_skip_subscription_check: bool = True  # Default to True for easy development
+    dev_skip_auth: bool = False  # Set to True in local development to bypass login
 
     # Trending (TradingView) scraping
     trending_scrape_enabled: bool = False

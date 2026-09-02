@@ -2,8 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from control_plane.enums import (
@@ -55,8 +54,8 @@ class Strategy(Base):
     chat_status: Mapped[ChatStatus] = mapped_column(
         SAEnum(ChatStatus, native_enum=False), default=ChatStatus.CHATTING, nullable=False
     )
-    chat_history: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSONB, nullable=True, default=list)
-    chat_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # Final config after confirmation
+    chat_history: Mapped[Optional[list[dict[str, Any]]]] = mapped_column(JSON, nullable=True, default=list)
+    chat_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)  # Final config after confirmation
 
     versions: Mapped[list["StrategyVersion"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
     backtests: Mapped[list["BacktestRun"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
@@ -167,7 +166,7 @@ class StrategyVersion(Base):
 
     # Optional provenance
     prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    llm_meta: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    llm_meta: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
 
     strategy: Mapped["Strategy"] = relationship(back_populates="versions")
 
@@ -215,7 +214,7 @@ class Job(Base):
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
@@ -236,9 +235,9 @@ class BacktestRun(Base):
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     run_path: Mapped[str] = mapped_column(String(500))  # relative, e.g. "runs/<id>/"
-    params: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict)
-    metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    result_summary: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    params: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    result_summary: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     strategy: Mapped["Strategy"] = relationship(back_populates="backtests")
@@ -279,8 +278,8 @@ class TradingConfig(Base):
     
     exchange: Mapped[str] = mapped_column(String(50))  # okx, binance
     symbol: Mapped[str] = mapped_column(String(50))  # Primary symbol for compatibility
-    symbols: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
-    intervals: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
+    symbols: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    intervals: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     
     # Encrypted credentials
     api_key_encrypted: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -400,7 +399,7 @@ class TradingLog(Base):
     
     level: Mapped["LogLevel"] = mapped_column(SAEnum(LogLevel, native_enum=False), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    log_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    log_metadata: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     
@@ -423,9 +422,9 @@ class StrategySignal(Base):
         SAEnum(SignalStatus, native_enum=False), default=SignalStatus.PENDING, nullable=False
     )
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    params_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    indicators: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    position: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    params_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    indicators: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
+    position: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     price_source: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
 
@@ -464,7 +463,7 @@ class Installation(Base):
     installation_id: Mapped[str] = mapped_column(String(64), index=True)
     account_login: Mapped[str] = mapped_column(String(200))
     target_type: Mapped[str] = mapped_column(String(20), default="Organization")  # or User
-    permissions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    permissions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
@@ -483,7 +482,7 @@ class Repository(Base):
     installation_id: Mapped[Optional[str]] = mapped_column(ForeignKey("installations.id", ondelete="SET NULL"), nullable=True)
     github_installation_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)  # GitHub's raw installation ID for API calls
     sync_mode: Mapped[str] = mapped_column(String(20), default="both")  # webhook/schedule/both
-    tracked_branches: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
+    tracked_branches: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active/archived/removed
     quota_state: Mapped[str] = mapped_column(String(20), default="ok")  # ok/over_quota
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
@@ -537,8 +536,8 @@ class TradingViewTrendingStrategy(Base):
     script_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     url: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
 
-    detected_symbols: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)  # ["BTCUSDT", "ETHUSDT"]
-    detected_markets: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)  # ["crypto"]
+    detected_symbols: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)  # ["BTCUSDT", "ETHUSDT"]
+    detected_markets: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)  # ["crypto"]
 
     scraped_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
     trending_rank: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -547,7 +546,7 @@ class TradingViewTrendingStrategy(Base):
     backtest_status: Mapped[str] = mapped_column(
         String(20), default="pending", nullable=False, index=True
     )
-    backtest_results: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    backtest_results: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     backtest_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
@@ -562,7 +561,7 @@ class TrendingSchedule(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     cron_expression: Mapped[str] = mapped_column(String(100), nullable=False, default="0 */6 * * *")
-    source_types: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
+    source_types: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
     max_count: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
     auto_backtest: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     auto_backtest_top_n: Mapped[int] = mapped_column(Integer, default=15, nullable=False)
@@ -593,24 +592,24 @@ class StrategyTemplate(Base):
 
     # Template content (the actual strategy code/prompt)
     prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    config_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # Trading config template
-    code_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # Version snapshot
+    config_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)  # Trading config template
+    code_snapshot: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)  # Version snapshot
 
     # Metadata
     version: Mapped[int] = mapped_column(Integer, default=1)
     author: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    tags: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
+    tags: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
 
     # Strategy classification (for SaaS marketplace)
     risk_level: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # low, medium, high
     trading_frequency: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # low_frequency, intraday, high_frequency
     complexity_score: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)  # 1-5 scale
     min_capital_usdt: Mapped[Optional[float]] = mapped_column(Numeric(10, 2), nullable=True, default=100.0)
-    supported_exchanges: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
-    supported_symbols: Mapped[Optional[list[str]]] = mapped_column(JSONB, nullable=True)
+    supported_exchanges: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
+    supported_symbols: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)
 
     # Performance summary (aggregated from backtests)
-    backtest_summary: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    backtest_summary: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     # Example backtest_summary:
     # {
     #   "total_return": 25.5,
@@ -679,7 +678,7 @@ class StrategySubscription(Base):
     sync_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # User configuration (trading params, overrides)
-    user_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    user_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     # Example user_config:
     # {
     #   "exchange": "okx",
@@ -690,7 +689,7 @@ class StrategySubscription(Base):
     # }
 
     # Telegram notification configuration
-    telegram_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    telegram_config: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     # Example telegram_config:
     # {
     #   "bot_token": "encrypted_token",
@@ -732,7 +731,7 @@ class TemplatePerformanceRun(Base):
     start_ms: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     end_ms: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
-    # Metrics (JSONB matching BacktestRun.metrics structure)
+    # Metrics (JSON matching BacktestRun.metrics structure)
     # Example: {
     #   "total_return": 45.2,
     #   "sharpe_ratio": 2.3,
@@ -743,7 +742,7 @@ class TemplatePerformanceRun(Base):
     #   "avg_trade_pnl": 120.5,
     #   "equity_curve": [[1698792000000, 10000], [1698878400000, 10230], ...]
     # }
-    metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    metrics: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="succeeded")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
@@ -775,7 +774,7 @@ class TemplateSignal(Base):
 
     # Metadata
     reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    indicators: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    indicators: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     executed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

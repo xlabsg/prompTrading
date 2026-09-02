@@ -8,10 +8,10 @@ from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import TradingConfig, TradingSession, StrategyExchangeAccount
 from control_plane.enums import TradingSessionStatus
 from app.trading_engine.monitor import PositionMonitor
-from sqlalchemy import select
+from app.settings import settings
 
 def main():
-    engine = create_db_engine('postgresql+psycopg://app:app@postgres:5432/app')
+    engine = create_db_engine(settings.db_url)
     Session = create_session_factory(engine)
 
     with Session() as db:

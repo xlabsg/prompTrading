@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 
 import pytest
 import requests
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
+from control_plane.db import create_db_engine
 from app.settings import settings
 from tests.fixtures.test_data import (
     build_auth_cookies,
@@ -104,7 +105,7 @@ def e2e_api_base_url() -> str:
 
 @pytest.fixture(scope="session")
 def e2e_db_engine():
-    engine = create_engine(settings.db_url, pool_pre_ping=True, echo=False)
+    engine = create_db_engine(settings.db_url)
     # Basic sanity: verify DB is reachable and schema exists.
     with engine.connect() as conn:
         conn.execute(text("SELECT 1"))

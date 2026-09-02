@@ -67,7 +67,7 @@ trap cleanup EXIT
 echo "[e2e] Bringing up stack (mode=$MODE, consumers=$CONSUMERS)..."
 
 # Build and start infra + workers; runner will be invoked as a one-shot.
-dc up -d --build --remove-orphans postgres redis api agent-image backtest-image dev-image worker-scheduler
+dc up -d --build --remove-orphans redis api agent-image backtest-image dev-image worker-scheduler
 dc up -d --build --remove-orphans --scale worker-consumer="$CONSUMERS" worker-consumer
 
 if [[ "$MODE" == "extended" ]]; then

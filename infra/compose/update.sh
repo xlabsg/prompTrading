@@ -6,7 +6,7 @@ cd "$SCRIPT_DIR"
 
 COMPOSE="${COMPOSE_CMD:-docker compose}"
 
-RUNTIME_SERVICES=(postgres redis api worker worker-rpc web)
+RUNTIME_SERVICES=(api worker worker-rpc web)
 TOOLING_SERVICES=(agent-image backtest-image dev-image)
 
 PULL=1
@@ -19,7 +19,7 @@ Usage:
   ./update.sh [options] [service...]
 
 What it does:
-  - Pulls remote images (traefik/postgres/redis) if newer are available
+  - Pulls remote base images if newer are available
   - Rebuilds local images (api/worker/web + tooling images) with --pull
   - Runs `docker compose up -d` to incrementally recreate only changed containers
 
@@ -126,24 +126,9 @@ fi
 echo "==> applying changes (incremental)"
 $COMPOSE up -d --remove-orphans "${SERVICES[@]}"
 
-if printf '%s\n' "${SERVICES[@]}" | grep -qx 'postgres'; then
-  echo "==> running db migrations (best-effort)"
-  $COMPOSE exec -T api bash -lc '
-    if [[ -d /app/services/api/migrations ]]; then
-      DB_URL="${APP_DB_URL:-}"
-      # psql cannot parse SQLAlchemy-style schemes like postgresql+psycopg://...
-      if [[ "$DB_URL" == postgresql+*://* ]]; then
-        DB_URL="${DB_URL/postgresql+psycopg/postgresql}"
-      fi
-      for file in /app/services/api/migrations/*.sql; do
-        [[ -f "$file" ]] || continue
-        echo "[migrate] $file"
-        psql "$DB_URL" -v ON_ERROR_STOP=1 -f "$file"
-      done
-    else
-      echo "[migrate] migrations directory not found"
-    fi
-  ' || true
+if printf '%s\n' "${SERVICES[@]}" | grep -qx 'api'; then
+  echo "==> seeding builtin templates (best-effort)"
+  $COMPOSE exec -T api python /app/services/api/scripts/seed_builtin_templates.py || true
 fi
 
 echo "==> status"
