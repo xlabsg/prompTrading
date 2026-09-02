@@ -9,12 +9,16 @@ from agent.tools import init_default_tools
 
 logger = logging.getLogger(__name__)
 
-# Heuristic keywords that signal an exploratory / deep research prompt
+# Heuristic keywords (bilingual) that signal an exploratory / deep research prompt
 _RESEARCH_KEYWORDS = frozenset({
+    # English
     "search", "research", "paper", "arxiv", "find", "explore", "latest",
     "hull", "supertrend", "vwap", "funding", "arbitrage", "pinescript",
     "tradingview", "orderbook", "machine learning", "neural", "kalman",
     "garch", "copula", "stat arb", "reinforcement", "alpha",
+    # Chinese
+    "联网", "调研", "搜索", "前沿", "研报", "论文", "最新",
+    "套利", "资金费率", "超买超卖", "动态波动", "机器学习",
 })
 
 
@@ -49,9 +53,13 @@ def build_smart_strategy_dag() -> DAG:
 
     # Node 2A: Web Search (executed conditionally on deep track)
     async def _search_action(ctx: DAGContext) -> Any:
+        import re
         prompt = ctx.get("prompt", "")
         search_tool = tools.require("web_search")
-        query = f"quantitative trading strategy {prompt[:80]}"
+        # Strip generic instruction filler words to focus search on core indicators/concepts
+        clean_q = re.sub(r"(?i)(请|联网|调研|搜索|编写|实现|一个|基于|策略|量化|代码|结合)", " ", prompt).strip()
+        clean_q = re.sub(r"\s+", " ", clean_q) or prompt
+        query = f"{clean_q} trading strategy"
         ctx.log(f"Performing web search for: '{query}'")
         res = await search_tool.run(query=query, max_results=3)
         return res.data if res.success else []
