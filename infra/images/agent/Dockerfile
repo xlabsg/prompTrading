@@ -16,16 +16,17 @@ COPY infra/images/agent/requirements.txt /app/requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r /app/requirements.txt
 
-# copy and install code_editor for patch application
-COPY packages/code_editor /tmp/code_editor
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir /tmp/code_editor && rm -rf /tmp/code_editor
-
 COPY packages/agent/agent /app/agent
 COPY packages/backtest/backtest /app/backtest
 COPY packages/data/data /app/data
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
 
 ENV PYTHONPATH=/app
+
+# Skills Tau loads from the user directory, and the provider entry it needs when
+# LLM_BASE_URL points at a gateway. `tau setup` only writes files, so it is safe
+# to resolve at build time.
+COPY packages/agent/skills /root/.tau/skills
+RUN python -m agent.tau_config
 
 CMD ["python", "-m", "agent.runner_v2"]

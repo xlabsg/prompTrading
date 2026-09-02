@@ -30,11 +30,6 @@ COPY packages/risk_engine /tmp/risk_engine
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir /tmp/risk_engine && rm -rf /tmp/risk_engine
 
-# Copy and install Code Editor package (AI code editing with fuzzy matching)
-COPY packages/code_editor /tmp/code_editor
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir /tmp/code_editor && rm -rf /tmp/code_editor
-
 # Copy agent package (strategy refinement prompts and logic)
 COPY packages/agent/agent /app/agent
 

@@ -1,0 +1,259 @@
+"""Driver contract: what the driver does with the event stream Tau emits.
+
+Every test drives a fake Tau -- a Python process that replays a recorded JSONL
+script -- so the whole file runs without a model, a network, or the real
+`tau` executable.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import textwrap
+
+import pytest
+
+from agent import tau_driver
+
+# One settled turn with a single successful tool call.
+SIMPLE_SCRIPT = [
+    {"type": "response", "command": "prompt", "success": True, "id": 1},
+    {"type": "agent_start"},
+    {"type": "turn_start"},
+    {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "write", "args": {"path": "strategy.py"}},
+    {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "write", "result": {}, "is_error": False},
+    {"type": "turn_end"},
+    {"type": "message_end", "message": {"content": [{"type": "text", "text": "Wrote the strategy."}]}},
+    {"type": "agent_end", "messages": []},
+    {"type": "agent_settled"},
+]
+
+
+@pytest.fixture
+def clean_env(monkeypatch):
+    for name in ("AGENT_TAU_EVENT_TIMEOUT_S", "AGENT_TAU_MAX_FOLLOW_UPS"):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_build_command_omits_extension_when_not_given():
+    command = tau_driver.build_command(
+        workspace="/w", provider="anthropic", model="claude-sonnet-4-6"
+    )
+    assert "-e" not in command
+    assert command[-2:] == ["--model", "claude-sonnet-4-6"]
+
+
+def test_build_command_always_passes_model_explicitly():
+    """Without --model Tau silently uses the provider's own default."""
+    command = tau_driver.build_command(
+        workspace="/w", provider="deepseek", model="deepseek-chat", extension_path="/e.py"
+    )
+    assert "--model" in command
+    assert command[command.index("--model") + 1] == "deepseek-chat"
+    assert command[command.index("-e") + 1] == "/e.py"
+
+
+def test_settles_and_records_the_turn(tmp_path, clean_env, monkeypatch):
+    result = _run_with_fake(tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=lambda: [])
+
+    assert result.turns == 1
+    assert result.follow_ups == 0
+    assert result.summary == "Wrote the strategy."
+    assert result.tool_calls == {"write": 1}
+    assert result.tool_errors == {}
+
+
+def test_agent_end_with_will_retry_is_not_the_end(tmp_path, clean_env, monkeypatch):
+    """`agent_end` fires again on every auto-retry; only `agent_settled` ends a turn."""
+    script = [
+        {"type": "agent_start"},
+        {"type": "agent_end", "messages": [], "will_retry": True},
+        {"type": "auto_retry_start"},
+        {"type": "auto_retry_end"},
+        {"type": "turn_end"},
+        {"type": "message_end", "message": {"content": [{"type": "text", "text": "second attempt"}]}},
+        {"type": "agent_end", "messages": [], "will_retry": False},
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.auto_retries == 1
+    assert result.summary == "second attempt"
+
+
+def test_incomplete_workspace_triggers_a_follow_up(tmp_path, clean_env, monkeypatch):
+    calls = {"n": 0}
+
+    def validate():
+        calls["n"] += 1
+        return ["- overview.md does not exist."] if calls["n"] == 1 else []
+
+    result = _run_with_fake(tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=validate)
+
+    assert calls["n"] == 2
+    assert result.follow_ups == 1
+    assert result.turns == 2
+
+
+def test_gives_up_after_the_follow_up_budget(tmp_path, clean_env, monkeypatch):
+    monkeypatch.setenv("AGENT_TAU_MAX_FOLLOW_UPS", "1")
+
+    with pytest.raises(tau_driver.TauSessionError, match="agent_incomplete_after_follow_ups"):
+        _run_with_fake(
+            tmp_path,
+            monkeypatch,
+            SIMPLE_SCRIPT,
+            validate=lambda: ["- strategy.py does not exist."],
+        )
+
+
+def test_rpc_error_fails_the_session(tmp_path, clean_env, monkeypatch):
+    script = [{"type": "rpc_error", "error": "provider exploded"}]
+
+    with pytest.raises(tau_driver.TauSessionError, match="provider exploded"):
+        _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+
+def test_failed_command_response_fails_the_session(tmp_path, clean_env, monkeypatch):
+    script = [
+        {"type": "response", "command": "prompt", "success": False, "error": "bad model"}
+    ]
+
+    with pytest.raises(tau_driver.TauSessionError, match="tau_command_failed"):
+        _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+
+def test_exit_before_settle_fails_the_session(tmp_path, clean_env, monkeypatch):
+    """A child that dies mid-turn must not look like a completed session."""
+    script = [{"type": "agent_start"}, {"type": "turn_start"}]
+
+    with pytest.raises(tau_driver.TauSessionError, match="tau_exited_before_settle"):
+        _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+
+def test_silence_times_out_and_kills_the_child(tmp_path, clean_env, monkeypatch):
+    monkeypatch.setenv("AGENT_TAU_EVENT_TIMEOUT_S", "0.5")
+    script: list[dict] = []  # accepts the prompt, then says nothing forever
+
+    with pytest.raises(tau_driver.TauSessionError, match="tau_event_timeout"):
+        _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [], hang=True)
+
+
+def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
+    script = [
+        {"type": "turn_start"},
+        {
+            "type": "tool_execution_end",
+            "tool_call_id": "c1",
+            "tool_name": "backtest",
+            "result": {"details": {"metrics": {"sharpe_ratio": 1.4}}},
+            "is_error": False,
+        },
+        {"type": "turn_end"},
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.backtest_metrics == [{"sharpe_ratio": 1.4}]
+
+
+def test_tool_errors_are_counted(tmp_path, clean_env, monkeypatch):
+    script = [
+        {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "edit", "args": {}},
+        {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "edit", "result": {}, "is_error": True},
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.tool_calls == {"edit": 1}
+    assert result.tool_errors == {"edit": 1}
+
+
+def test_progress_callback_failure_does_not_fail_the_run(tmp_path, clean_env, monkeypatch):
+    def explode(_payload):
+        raise RuntimeError("redis is down")
+
+    result = _run_with_fake(
+        tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=lambda: [], progress=explode
+    )
+    assert result.turns == 1
+
+
+def test_non_json_output_is_skipped(tmp_path, clean_env, monkeypatch):
+    """Tau may print a warning line; it must not derail event parsing."""
+    result = _run_with_fake(
+        tmp_path,
+        monkeypatch,
+        SIMPLE_SCRIPT,
+        validate=lambda: [],
+        preamble="warning: something happened",
+    )
+    assert result.turns == 1
+
+
+# --- fake Tau plumbing -------------------------------------------------------
+
+
+def _run_with_fake(
+    tmp_path,
+    monkeypatch,
+    script,
+    *,
+    validate,
+    progress=None,
+    hang=False,
+    preamble=None,
+):
+    """Run the driver against a fake Tau that replays `script` for each prompt."""
+    fake = tmp_path / "fake_tau.py"
+    fake.write_text(
+        textwrap.dedent(
+            """
+            import json, sys, time
+            script = json.loads(sys.argv[1])
+            hang = sys.argv[2] == "1"
+            preamble = sys.argv[3]
+
+            for line in sys.stdin:
+                line = line.strip()
+                if not line:
+                    continue
+                if json.loads(line).get("type") != "prompt":
+                    continue
+                if preamble:
+                    sys.stdout.write(preamble + "\\n")
+                    sys.stdout.flush()
+                for event in script:
+                    sys.stdout.write(json.dumps(event) + "\\n")
+                    sys.stdout.flush()
+                if hang:
+                    time.sleep(30)
+                # A script that never settles stands for a child that died
+                # mid-turn: close stdout so the driver sees the stream end
+                # instead of waiting out its event timeout.
+                if not any(e.get("type") == "agent_settled" for e in script):
+                    break
+            """
+        ).strip()
+        + "\n"
+    )
+
+    # The driver builds `[executable, --mode, rpc, ...]`; a wrapper script lets a
+    # plain interpreter stand in for the `tau` binary and ignore those flags.
+    wrapper = tmp_path / "tau_wrapper.sh"
+    wrapper.write_text(
+        f'#!/bin/sh\nexec "{sys.executable}" "{fake}" '
+        f"'{json.dumps(script)}' '{'1' if hang else '0'}' '{preamble or ''}'\n"
+    )
+    wrapper.chmod(0o755)
+
+    return tau_driver.run_session(
+        task="build a strategy",
+        workspace=str(tmp_path),
+        provider="openai",
+        model="gpt-4o-mini",
+        validate=validate,
+        tau_executable=str(wrapper),
+        progress_callback=progress,
+    )

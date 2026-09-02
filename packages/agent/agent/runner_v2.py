@@ -1,9 +1,11 @@
 """Container entry point for strategy generation and refinement.
 
-Drives the AutonomousAgent (the single coding agent) inside the version
-workspace: the agent reads existing code, edits files with fuzzy-matching tools,
-backtests against real cached market data under a bounded run budget, and
-finishes by calling task_done.
+Drives a Tau coding session inside the version workspace: the agent reads
+existing code, edits files with exact-match replacement, backtests against real
+cached market data under a bounded run budget, and finishes by calling
+task_done. This module owns everything around that session -- seeding the
+workspace, validating what came out of it, and publishing to the live strategy
+directory -- while Tau owns the agent loop itself.
 
 Usage:
     # STRATEGY_ID=strategy_123
@@ -22,28 +24,20 @@ import sys
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from agent.autonomous import AutonomousAgent
+from agent import tau_driver
 from agent.backtest_tool import BacktestBudget, BacktestDataset, budget_summary
-from agent.config import AgentConfig
 from agent.observability.langfuse_client import get_langfuse
 from agent.observability.metrics import SessionMetrics
 from agent.protocol import OVERVIEW_FILE, STRATEGY_FILE
+from agent.tau_config import resolve_provider
 from agent.templates import (
     DEFAULT_STRATEGY_PROTOCOL,
     DEFAULT_STRATEGY_SPEC_YAML,
     fallback_strategy_py,
 )
 
-
-@dataclass(frozen=True)
-class LLMConfig:
-    """LLM configuration."""
-
-    api_key: Optional[str]
-    base_url: str
-    model: str
-    temperature: float
-    provider: str
+# Path the extension is mounted at inside the agent image.
+TAU_EXTENSION_PATH = os.getenv("AGENT_TAU_EXTENSION") or "/app/agent/tau_ext.py"
 
 
 @dataclass(frozen=True)
@@ -229,42 +223,6 @@ def _ensure_overview_sections(markdown: str, summary: str) -> str:
     return value.strip() + "\n"
 
 
-def _llm_config() -> LLMConfig:
-    """Load LLM config from environment."""
-    provider = (_maybe_env("LLM_PROVIDER") or "").strip().lower()
-    if not provider:
-        provider = "deepseek" if _maybe_env("DEEPSEEK_API_KEY") else "openai"
-
-    api_key = (
-        _maybe_env("LLM_API_KEY")
-        or _maybe_env("DEEPSEEK_API_KEY")
-        or _maybe_env("OPENAI_API_KEY")
-    )
-
-    if provider == "deepseek":
-        base_url = (
-            _maybe_env("LLM_BASE_URL")
-            or _maybe_env("DEEPSEEK_BASE_URL")
-            or "https://api.deepseek.com/v1"
-        )
-        model = _maybe_env("LLM_MODEL") or _maybe_env("DEEPSEEK_MODEL") or "deepseek-chat"
-        temperature = float(
-            os.getenv("LLM_TEMPERATURE") or os.getenv("DEEPSEEK_TEMPERATURE") or "0.2"
-        )
-    else:
-        base_url = _maybe_env("LLM_BASE_URL") or "https://api.openai.com/v1"
-        model = _maybe_env("LLM_MODEL") or "gpt-4o-mini"
-        temperature = float(os.getenv("LLM_TEMPERATURE") or "0.2")
-
-    return LLMConfig(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        temperature=temperature,
-        provider=provider,
-    )
-
-
 def _git_commit(strategy_dir: str, message: str) -> None:
     """Git commit changes."""
     git_dir = os.path.join(strategy_dir, ".git")
@@ -317,9 +275,10 @@ You are working inside the strategy version workspace. Files present: {files}
 {capabilities}
 
 ## How to work
-- Read before you edit. Use `ls` and `read_file` first.
-- After writing `{strategy_file}`, call `skill_backtest` to evaluate it on real
-  market data, then use the reported metrics to improve the strategy.
+- Read before you edit. `edit` matches text exactly, so read the file first and
+  reproduce the target text verbatim.
+- After writing `{strategy_file}`, call `backtest` to evaluate it on real market
+  data, then use the reported metrics to improve the strategy.
 - You have at most {max_runs} backtest runs. Spend them deliberately: change
   something specific each time and check whether {score_key} improves.
 - Stop tuning when the budget is spent or the metrics stop improving, then
@@ -379,25 +338,69 @@ def _build_agent_task(
     )
 
 
-def _agent_config() -> AgentConfig:
-    cfg = AgentConfig()
-    for env_name, attr in (
-        ("AGENT_MAX_STEPS", "max_steps"),
-        ("AGENT_MAX_TOKENS", "max_tokens"),
-        ("AGENT_IDLE_THRESHOLD", "idle_threshold"),
-    ):
-        raw = (os.getenv(env_name) or "").strip()
-        if raw:
-            try:
-                setattr(cfg, attr, int(raw))
-            except ValueError:
-                pass
-    return cfg
+def _session_stats(session: "tau_driver.TauSessionResult | None") -> dict[str, Any]:
+    """Flatten a Tau session into the shape `llm_meta.json` records."""
+    if session is None:
+        return {}
+    return {
+        "turns": session.turns,
+        "follow_ups": session.follow_ups,
+        "tool_calls": session.tool_calls,
+        "tool_errors": session.tool_errors,
+        "compactions": session.compactions,
+        "auto_retries": session.auto_retries,
+    }
+
+
+def _max_turns() -> int | None:
+    """Turn budget for the session, from the existing AGENT_MAX_STEPS knob.
+
+    AGENT_MAX_TOKENS is deliberately not consulted any more: Tau sizes its own
+    compaction threshold from the model's context window, which is a better
+    bound than a fixed token count that has to be retuned per model.
+    """
+    raw = (os.getenv("AGENT_MAX_STEPS") or "").strip()
+    try:
+        return int(raw) if raw else None
+    except ValueError:
+        return None
+
+
+def _workspace_problems(version_dir: str) -> list[str]:
+    """Report why `version_dir` is not yet a publishable strategy.
+
+    This is the session's completion test. Tau's loop ends whenever the model
+    stops calling tools, so the driver -- not the model -- decides whether the
+    work is done, and sends the model back with this list when it is not.
+    """
+    problems: list[str] = []
+
+    strategy_path = os.path.join(version_dir, STRATEGY_FILE)
+    if not os.path.isfile(strategy_path):
+        problems.append(f"- {STRATEGY_FILE} does not exist.")
+    else:
+        try:
+            _validate_strategy_code(_read_text(strategy_path))
+        except SyntaxError as exc:
+            problems.append(f"- {STRATEGY_FILE} does not parse: {exc}")
+        except ValueError:
+            problems.append(
+                f"- {STRATEGY_FILE} has no generate_signals() entry point."
+            )
+        except OSError as exc:
+            problems.append(f"- {STRATEGY_FILE} could not be read: {exc}")
+
+    overview_path = os.path.join(version_dir, OVERVIEW_FILE)
+    if not os.path.isfile(overview_path):
+        problems.append(f"- {OVERVIEW_FILE} does not exist.")
+    elif "```mermaid" not in _read_text(overview_path):
+        problems.append(f"- {OVERVIEW_FILE} has no ```mermaid diagram block.")
+
+    return problems
 
 
 def main() -> int:
     """Run the coding agent for one generate/refine job."""
-    llm = _llm_config()
     strategy_id = _env("STRATEGY_ID")
     version_id = _env("VERSION_ID")
     prompt = _env("PROMPT", "")
@@ -428,13 +431,8 @@ def main() -> int:
     budget = BacktestBudget.from_env()
     print(f"[agent] backtest dataset={dataset.describe()} budget={budget.max_runs}")
 
-    agent = AutonomousAgent(
-        workspace_root=version_dir,
-        llm_config=llm,
-        config=_agent_config(),
-        backtest_dataset=dataset,
-        backtest_budget=budget,
-    )
+    tau_target = resolve_provider()
+    print(f"[agent] tau provider={tau_target.provider} model={tau_target.model}")
 
     task = _build_agent_task(
         prompt=prompt,
@@ -447,12 +445,18 @@ def main() -> int:
     used_llm = True
     agent_summary = ""
     stop_reason = "task_done"
+    session: tau_driver.TauSessionResult | None = None
     try:
-        result = agent.run(task)
-        agent_summary = result.summary
-        stop_reason = result.stop_reason.value
-        if not result.success:
-            raise RuntimeError(f"agent_failed: {result.summary}")
+        session = tau_driver.run_session(
+            task=task,
+            workspace=version_dir,
+            provider=tau_target.provider,
+            model=tau_target.model,
+            extension_path=TAU_EXTENSION_PATH,
+            validate=lambda: _workspace_problems(version_dir),
+            env=tau_target.credential_env(),
+        )
+        agent_summary = session.summary
         code = _read_text(os.path.join(version_dir, "strategy.py"))
         _validate_strategy_code(code)
     except Exception as exc:
@@ -500,15 +504,20 @@ def main() -> int:
     overview_md = _ensure_overview_sections(overview_md, summary)
     _write_text(overview_path, overview_md)
 
+    # The budget lives in the Tau child (the extension owns it), so replay the
+    # metrics the driver collected into this process's budget before recording.
+    for metrics in session.backtest_metrics if session else ():
+        budget.record(metrics)
     iteration = budget_summary(budget, dataset)
     _write_json(os.path.join(version_dir, "backtest_iterations.json"), iteration)
 
     llm_meta_payload = {
         "used_llm": used_llm,
-        "model": llm.model if used_llm else None,
-        "base_url": llm.base_url if used_llm else None,
-        "temperature": llm.temperature if used_llm else None,
-        "pipeline": "autonomous_agent",
+        "model": tau_target.model if used_llm else None,
+        "provider": tau_target.provider if used_llm else None,
+        "base_url": tau_target.base_url if used_llm else None,
+        "pipeline": "tau",
+        "tau_session": _session_stats(session),
         "summary": summary,
         "params_schema": params_schema,
         "signal_mode": DEFAULT_STRATEGY_PROTOCOL.get("signal_mode", "target_weights"),

@@ -110,7 +110,6 @@ packages/
   strategy_sdk/        Protocols strategy authors write against
   okx_sdk/             OKX REST client
   control_plane/       Shared SQLAlchemy models, enums, schemas
-  code_editor/         Fuzzy patch application for agent edits
   data/                Data utilities
 infra/
   compose/             Docker Compose stacks (dev / prod / e2e)

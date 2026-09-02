@@ -17,10 +17,9 @@ prompTrading/
 ├── packages/
 │   # --- MVP core ---
 │   ├── control_plane/     # Shared DB models, enums, version factory (SQLAlchemy)
-│   ├── agent/             # AutonomousAgent: the coding agent (container entry: agent.runner_v2)
+│   ├── agent/             # Strategy domain layer for the Tau agent (container entry: agent.runner_v2)
 │   ├── backtest/          # Backtesting engine (vectorized) + artifacts
 │   ├── data/              # Market data providers + shared OHLCV cache
-│   ├── code_editor/       # Fuzzy code matching/editing (single implementation)
 │   ├── okx_sdk/           # OKX Exchange REST API client
 │   # --- live trading ---
 │   ├── risk_engine/       # Risk control, stop loss, reconciliation, order manager
@@ -68,12 +67,11 @@ python test_okx_setup.py        # Test OKX SDK setup
 ### Package Tests
 Package tests need no services running, only the packages on `PYTHONPATH`:
 ```bash
-PYTHONPATH="packages/agent:packages/backtest:packages/data:packages/code_editor" \
+PYTHONPATH="packages/agent:packages/backtest:packages/data" \
   pytest packages/agent/tests packages/data/tests -q
 ```
-Known pre-existing failures (unrelated to the packages above):
-`packages/agent/agent/tests/test_code_slice.py` (3) and
-`packages/code_editor/.../test_editor.py::test_single_candidate_low_threshold` (1).
+`packages/agent/tests/test_tau_ext.py` needs `tau-ai` installed and skips without it.
+Known pre-existing failures, unrelated to the agent: `packages/agent/agent/tests/test_code_slice.py` (3).
 
 ### Selective Service Updates
 ```bash
@@ -148,19 +146,37 @@ Risk Engine is integrated directly into `executor.py` / `monitor.py` / `manager.
 - `Bar`, `StrategyContext` - Data structures for strategy execution
 
 ### Coding Agent (`packages/agent/`)
-**`AutonomousAgent` is the single coding agent.** Do not add a parallel
-generation path; extend this one.
+**The coding agent is [Tau](https://github.com/huggingface/tau) (`tau-ai`), run as
+a child process.** This repo owns the domain layer around it, not the agent loop.
+Do not reintroduce a hand-written loop, LLM client, or file-edit tool.
 
 - Container entry point: `agent.runner_v2` (`python -m agent.runner_v2`), spawned
   by the worker for `generate_strategy` / `generate_and_backtest` / `refine_strategy`.
+  The API also drives a session in-process for chat refine and `/generate_overview`.
+- `agent/tau_driver.py` speaks Tau's JSONL RPC (`tau --mode rpc`) from synchronous
+  code. It depends on nothing beyond the standard library.
+- `agent/tau_ext.py` is the Tau extension that registers `backtest` and
+  `task_done` and injects the strategy protocol into the system prompt.
+- Tau supplies `read` / `write` / `edit` / `bash`, context compaction, session
+  persistence and the provider layer. `edit` is exact-match: `oldText` must occur
+  exactly once, and a failed match is an error rather than a fuzzy fallback.
 - The agent works inside `versions/<version_id>/`, not the live `strategy/` dir.
   `runner_v2` seeds that workspace, then publishes to `strategy/` only on success.
-- Tools: `ls`, `read_file`, `search_files`, `edit_file`, `write_file`, `task_done`,
-  plus the `backtest` skill.
-- `task_done` is refused unless both `strategy.py` and `overview.md` (with a
-  mermaid diagram) exist.
-- Text matching lives in `packages/code_editor`; `agent/editor.py` is a thin
-  change-spec adapter over it.
+
+**Completion is decided by the driver, not the model.** Tau's loop ends whenever
+the model stops calling tools, and `AgentToolResult.terminate` is declared but
+never read in tau 0.4.1. So `runner_v2._workspace_problems()` validates the
+workspace after `agent_settled` and sends a follow-up prompt when something is
+missing. `task_done` is a protocol gate that reports problems early; it cannot
+stop the loop.
+
+**Wait for `agent_settled`, never `agent_end`.** `agent_end` carries `will_retry`
+and fires again for every automatic retry.
+
+**The backtest tool runs in a subprocess** (`agent/backtest_subprocess.py`).
+`run_agent_backtest` installs a process-wide network guard whose allowlist holds
+only the exchange host, so running it in-process would block the agent's own next
+call to the model provider.
 
 **Closed-loop backtesting** (`agent/backtest_tool.py`): the agent backtests its own
 code against real cached market data and iterates on the metrics. Two guards keep
@@ -175,7 +191,10 @@ Per-run results land in `versions/<id>/backtest_iterations.json` and in
 `StrategyVersion.llm_meta`.
 
 Tuning env vars: `AGENT_BACKTEST_MAX_RUNS`, `AGENT_BACKTEST_STALL_LIMIT`,
-`AGENT_BACKTEST_SCORE_KEY`, `AGENT_BACKTEST_BARS`, `AGENT_MAX_STEPS`, `AGENT_MAX_TOKENS`.
+`AGENT_BACKTEST_SCORE_KEY`, `AGENT_BACKTEST_BARS`, `AGENT_MAX_STEPS`,
+`AGENT_TAU_EVENT_TIMEOUT_S`, `AGENT_TAU_MAX_FOLLOW_UPS`.
+`AGENT_MAX_TOKENS` is no longer consulted: Tau sizes compaction from the model's
+context window.
 The worker points the agent at the job's own dataset when the job has one.
 
 ### Market Data Cache (`packages/data/data/cache.py`)

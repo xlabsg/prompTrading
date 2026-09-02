@@ -1,56 +1,26 @@
-"""Agent package - Enhanced Autonomous Coding Agent.
+"""Strategy-authoring domain layer for the coding agent.
 
-This package provides an autonomous coding agent with:
-- Skills (slash commands) for reusable workflows
-- Context management with automatic compression
-- Error recovery with retries
-- Dynamic step limits
+The agent loop itself is Tau (`tau-ai`); this package supplies what only this
+platform knows: the strategy file protocol, the in-loop backtest tool and its run
+budget, the prompts, and the driver that runs a Tau session and decides when its
+output is publishable.
+
+Only the protocol is re-exported here. The other modules pull in pandas, the
+backtest engine or Tau itself, and importing this package must stay cheap enough
+for a caller that only wants `agent.tau_driver` -- which depends on nothing
+beyond the standard library.
 """
 
-from agent.autonomous import AutonomousAgent, AgentResult
-from agent.config import (
-    AgentConfig,
-    RetryConfig,
-    ContextConfig,
-    StopReason,
-)
-from agent.skills import (
-    Skill,
-    SkillResult,
-    SkillContext,
-    SkillRegistry,
-    DEFAULT_SKILLS,
-    create_default_registry,
-)
-from agent.context_manager import ContextManager
 from agent.protocol import (
-    StrategyProtocol,
+    OVERVIEW_FILE,
     PROTOCOL,
+    SPEC_FILE,
     STRATEGY_FILE,
     STRATEGY_FUNCTION,
-    OVERVIEW_FILE,
-    SPEC_FILE,
+    StrategyProtocol,
 )
 
 __all__ = [
-    # Core
-    "AutonomousAgent",
-    "AgentResult",
-    # Config
-    "AgentConfig",
-    "RetryConfig",
-    "ContextConfig",
-    "StopReason",
-    # Skills
-    "Skill",
-    "SkillResult",
-    "SkillContext",
-    "SkillRegistry",
-    "DEFAULT_SKILLS",
-    "create_default_registry",
-    # Context
-    "ContextManager",
-    # Protocol
     "StrategyProtocol",
     "PROTOCOL",
     "STRATEGY_FILE",

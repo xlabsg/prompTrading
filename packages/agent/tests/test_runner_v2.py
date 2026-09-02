@@ -8,7 +8,7 @@ import os
 import pytest
 
 from agent import runner_v2
-from agent.config import StopReason
+from agent import tau_driver
 
 STRATEGY_SRC = "def generate_signals(data, params):\n    return {'target_weights': []}\n"
 OVERVIEW_SRC = "# Summary\n\nDoes things.\n\n# Flow Animation\n\n```mermaid\ngraph TD;A-->B;\n```\n"
@@ -32,34 +32,28 @@ def workspace(tmp_path, monkeypatch):
 
 
 class FakeAgent:
-    """Stands in for AutonomousAgent, writing the deliverables it is asked for."""
+    """Stands in for a Tau session, writing the deliverables it is asked for."""
 
     instances: list["FakeAgent"] = []
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
-        self.task = None
+        self.task = kwargs.get("task")
         FakeAgent.instances.append(self)
 
-    def run(self, task):
-        self.task = task
-        root = self.kwargs["workspace_root"]
+    @classmethod
+    def as_run_session(cls, **kwargs):
+        instance = cls(**kwargs)
+        return instance.run()
+
+    def run(self):
+        root = self.kwargs["workspace"]
         os.makedirs(root, exist_ok=True)
         with open(os.path.join(root, "strategy.py"), "w") as f:
             f.write(STRATEGY_SRC)
         with open(os.path.join(root, "overview.md"), "w") as f:
             f.write(OVERVIEW_SRC)
-        return type(
-            "R",
-            (),
-            {
-                "success": True,
-                "summary": "did the thing",
-                "stop_reason": StopReason.TASK_DONE,
-                "history": [],
-                "steps_taken": 3,
-            },
-        )()
+        return tau_driver.TauSessionResult(summary="did the thing", turns=3)
 
 
 @pytest.fixture(autouse=True)
@@ -69,15 +63,15 @@ def _reset_fake():
 
 def test_agent_runs_in_version_dir_not_strategy_dir(workspace, monkeypatch):
     """Version isolation: a run must not edit the live strategy in place."""
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
     assert runner_v2.main() == 0
 
     agent = FakeAgent.instances[0]
-    assert agent.kwargs["workspace_root"] == str(workspace["version_dir"])
+    assert agent.kwargs["workspace"] == str(workspace["version_dir"])
 
 
 def test_artifacts_written_to_version_and_published_to_strategy(workspace, monkeypatch):
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
     assert runner_v2.main() == 0
 
     for name in (
@@ -101,7 +95,7 @@ def test_artifacts_written_to_version_and_published_to_strategy(workspace, monke
 def test_existing_strategy_is_seeded_into_version_workspace(workspace, monkeypatch):
     (workspace["strategy_dir"] / "strategy.py").write_text("# existing code\n")
     (workspace["strategy_dir"] / "overview.md").write_text("# Summary\n\nold\n")
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
 
     assert runner_v2.main() == 0
     task = FakeAgent.instances[0].task
@@ -110,71 +104,52 @@ def test_existing_strategy_is_seeded_into_version_workspace(workspace, monkeypat
 
 
 def test_first_generation_uses_create_intent(workspace, monkeypatch):
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
     assert runner_v2.main() == 0
     assert "Create a new trading strategy" in FakeAgent.instances[0].task
 
 
 def test_task_states_the_backtest_budget(workspace, monkeypatch):
     monkeypatch.setenv("AGENT_BACKTEST_MAX_RUNS", "3")
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
     assert runner_v2.main() == 0
 
     task = FakeAgent.instances[0].task
     assert "at most 3 backtest runs" in task
-    assert "skill_backtest" in task
-    assert FakeAgent.instances[0].kwargs["backtest_budget"].max_runs == 3
+    assert "`backtest`" in task
 
 
 def test_llm_meta_records_agent_and_iterations(workspace, monkeypatch):
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", FakeAgent)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
     assert runner_v2.main() == 0
 
     meta = json.loads((workspace["version_dir"] / "llm_meta.json").read_text())
-    assert meta["pipeline"] == "autonomous_agent"
+    assert meta["pipeline"] == "tau"
     assert meta["agent_summary"] == "did the thing"
     assert meta["stop_reason"] == "task_done"
     assert meta["overview_status"] == "agent_generated"
     assert "backtest_iterations" in meta
 
 
-def test_agent_failure_propagates_without_fallback(workspace, monkeypatch):
-    class Failing(FakeAgent):
-        def run(self, task):
-            return type(
-                "R",
-                (),
-                {
-                    "success": False,
-                    "summary": "gave up",
-                    "stop_reason": StopReason.MAX_STEPS,
-                    "history": [],
-                    "steps_taken": 50,
-                },
-            )()
+def test_session_error_propagates_without_fallback(workspace, monkeypatch):
+    """A session the driver could not complete must not publish anything."""
 
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", Failing)
+    def failing(**kwargs):
+        raise tau_driver.TauSessionError(
+            "agent_incomplete_after_follow_ups: - strategy.py does not exist."
+        )
+
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", failing)
     monkeypatch.delenv("LLM_FALLBACK_ON_ERROR", raising=False)
-    with pytest.raises(RuntimeError, match="agent_failed"):
+    with pytest.raises(tau_driver.TauSessionError, match="agent_incomplete"):
         runner_v2.main()
 
 
-def test_agent_failure_uses_fallback_when_enabled(workspace, monkeypatch):
-    class Failing(FakeAgent):
-        def run(self, task):
-            return type(
-                "R",
-                (),
-                {
-                    "success": False,
-                    "summary": "gave up",
-                    "stop_reason": StopReason.MAX_STEPS,
-                    "history": [],
-                    "steps_taken": 50,
-                },
-            )()
+def test_session_error_uses_fallback_when_enabled(workspace, monkeypatch):
+    def failing(**kwargs):
+        raise tau_driver.TauSessionError("agent_incomplete_after_follow_ups")
 
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", Failing)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", failing)
     monkeypatch.setenv("LLM_FALLBACK_ON_ERROR", "1")
 
     assert runner_v2.main() == 0
@@ -184,57 +159,47 @@ def test_agent_failure_uses_fallback_when_enabled(workspace, monkeypatch):
     assert (workspace["version_dir"] / "strategy.py").is_file()
 
 
-def test_missing_overview_falls_back(workspace, monkeypatch):
-    class NoOverview(FakeAgent):
-        def run(self, task):
-            root = self.kwargs["workspace_root"]
-            os.makedirs(root, exist_ok=True)
-            with open(os.path.join(root, "strategy.py"), "w") as f:
-                f.write(STRATEGY_SRC)
-            return type(
-                "R",
-                (),
-                {
-                    "success": True,
-                    "summary": "no overview",
-                    "stop_reason": StopReason.TASK_DONE,
-                    "history": [],
-                    "steps_taken": 1,
-                },
-            )()
+def test_fallback_path_still_supplies_an_overview(workspace, monkeypatch):
+    """The template fallback writes no overview, so the runner must add one."""
 
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", NoOverview)
+    def failing(**kwargs):
+        raise tau_driver.TauSessionError("agent_incomplete_after_follow_ups")
+
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", failing)
+    monkeypatch.setenv("LLM_FALLBACK_ON_ERROR", "1")
+
     assert runner_v2.main() == 0
     meta = json.loads((workspace["version_dir"] / "llm_meta.json").read_text())
     assert meta["overview_status"] == "fallback_missing"
-    assert (workspace["version_dir"] / "overview.md").is_file()
+    assert "```mermaid" in (workspace["version_dir"] / "overview.md").read_text()
 
 
 def test_invalid_generated_code_is_rejected(workspace, monkeypatch):
+    """The runner re-validates even code a session claimed was finished."""
+
     class BadCode(FakeAgent):
-        def run(self, task):
-            root = self.kwargs["workspace_root"]
+        def run(self):
+            root = self.kwargs["workspace"]
             os.makedirs(root, exist_ok=True)
             with open(os.path.join(root, "strategy.py"), "w") as f:
                 f.write("x = 1\n")  # no generate_signals
             with open(os.path.join(root, "overview.md"), "w") as f:
                 f.write(OVERVIEW_SRC)
-            return type(
-                "R",
-                (),
-                {
-                    "success": True,
-                    "summary": "bad",
-                    "stop_reason": StopReason.TASK_DONE,
-                    "history": [],
-                    "steps_taken": 1,
-                },
-            )()
+            return tau_driver.TauSessionResult(summary="bad", turns=1)
 
-    monkeypatch.setattr(runner_v2, "AutonomousAgent", BadCode)
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", BadCode.as_run_session)
     monkeypatch.delenv("LLM_FALLBACK_ON_ERROR", raising=False)
     with pytest.raises(ValueError, match="generate_signals"):
         runner_v2.main()
+
+
+def test_session_stats_land_in_llm_meta(workspace, monkeypatch):
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
+    assert runner_v2.main() == 0
+
+    meta = json.loads((workspace["version_dir"] / "llm_meta.json").read_text())
+    assert meta["pipeline"] == "tau"
+    assert meta["tau_session"]["turns"] == 3
 
 
 def test_seed_workspace_does_not_overwrite_agent_output(tmp_path):
@@ -249,14 +214,30 @@ def test_seed_workspace_does_not_overwrite_agent_output(tmp_path):
     assert (version_dir / "strategy.py").read_text() == "new\n"
 
 
-def test_agent_config_from_env(monkeypatch):
+def test_max_turns_from_env(monkeypatch):
     monkeypatch.setenv("AGENT_MAX_STEPS", "12")
-    monkeypatch.setenv("AGENT_MAX_TOKENS", "5000")
-    cfg = runner_v2._agent_config()
-    assert cfg.max_steps == 12
-    assert cfg.max_tokens == 5000
+    assert runner_v2._max_turns() == 12
 
 
-def test_agent_config_ignores_garbage(monkeypatch):
+def test_max_turns_ignores_garbage(monkeypatch):
     monkeypatch.setenv("AGENT_MAX_STEPS", "not-a-number")
-    assert runner_v2._agent_config().max_steps == 50
+    assert runner_v2._max_turns() is None
+
+
+def test_workspace_problems_names_each_missing_artifact(tmp_path):
+    problems = runner_v2._workspace_problems(str(tmp_path))
+    assert any("strategy.py" in p for p in problems)
+    assert any("overview.md" in p for p in problems)
+
+    (tmp_path / "strategy.py").write_text(STRATEGY_SRC)
+    (tmp_path / "overview.md").write_text(OVERVIEW_SRC)
+    assert runner_v2._workspace_problems(str(tmp_path)) == []
+
+
+def test_workspace_problems_rejects_overview_without_diagram(tmp_path):
+    (tmp_path / "strategy.py").write_text(STRATEGY_SRC)
+    (tmp_path / "overview.md").write_text("# Summary\n\nNo diagram here.\n")
+
+    problems = runner_v2._workspace_problems(str(tmp_path))
+    assert len(problems) == 1
+    assert "mermaid" in problems[0]

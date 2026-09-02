@@ -5,10 +5,12 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "agent"
 version = "0.1.0"
-description = "AutonomousAgent: the coding agent that writes and iterates on strategies"
+description = "Strategy-authoring domain layer driving a Tau coding session"
 requires-python = ">=3.13"
 dependencies = [
-    "openai>=1.0.0",
+    # Pinned exactly: Tau is pre-1.0 and its RPC surface is the integration
+    # contract, so an unreviewed minor bump is a production change.
+    "tau-ai==0.4.1",
     "pandas>=1.5",
     "numpy>=1.24",
     "requests>=2.31",
@@ -17,7 +19,6 @@ dependencies = [
 # Sibling packages required at runtime but installed from this repo, not PyPI:
 #   backtest      - in-loop backtesting engine
 #   data          - market data providers and cache
-#   code_editor   - fuzzy matching behind agent.editor
 # They are deliberately not listed as dependencies: names like "data" and
 # "backtest" resolve to unrelated projects on PyPI.
 
