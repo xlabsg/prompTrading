@@ -1,0 +1,21 @@
+name: Commit attribution
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  commit-attribution:
+    name: no agent attribution in commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check commit messages
+        run: |
+          scripts/check-commit-attribution.sh \
+            "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}"
