@@ -4,7 +4,7 @@ AI-powered code editing service with Lovable-style tool integration.
 
 ## Features
 
-✅ **Multi-level Fuzzy Matching** - 9-tier replacer chain (ported from OpenCode)
+✅ **Multi-level Fuzzy Matching** - 9-tier replacer chain
 - Simple exact match
 - Line-trimmed match (trailing whitespace tolerance)
 - Block anchor match (first/last line + Levenshtein distance)
@@ -184,6 +184,4 @@ async def execute_tool(
 
 ## References
 
-- OpenCode edit.ts - Multi-level replacer chain
-- OpenCode patch/index.ts - Structured patch system
 - OpenHands DockerRuntime - Sandbox architecture

@@ -1,7 +1,5 @@
 """
 Bash 命令执行工具 - 带安全审计
-
-参考 OpenCode 的 bash.ts，增加审计日志
 """
 
 import re
