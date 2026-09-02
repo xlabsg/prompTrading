@@ -175,6 +175,10 @@ def run_backtest(
 
     dd = _compute_drawdown(equity)
 
+    # Benchmark: buy and hold the underlying asset from bar 0 close
+    benchmark_equity = float(config.initial_cash) * (close / close[0]) if close[0] > 0 else np.full(n, float(config.initial_cash))
+    benchmark_return = (close[-1] / close[0] - 1.0) if close[0] > 0 else 0.0
+
     # positions (target weights and implied units)
     units = (equity * w) / close
     positions = pd.DataFrame(
@@ -190,6 +194,7 @@ def run_backtest(
         {
             "timestamp": ts,
             "equity": equity,
+            "benchmark_equity": benchmark_equity,
             "returns": r,
             "drawdown": dd,
             "weight": w,
@@ -221,6 +226,8 @@ def run_backtest(
         "initial_cash": _safe_float(config.initial_cash),
         "final_equity": _safe_float(equity[-1]),
         "total_return": _safe_float(total_return * 100),  # Convert to percentage
+        "benchmark_return": _safe_float(benchmark_return * 100),  # Buy and hold return percentage
+        "alpha": _safe_float((total_return - benchmark_return) * 100),  # Excess return over benchmark
         "max_drawdown": _safe_float(abs(max_dd) * 100),  # Convert to positive percentage
         "sharpe_ratio": _safe_float(sharpe),  # Renamed from sharpe
         "num_bars": int(n),

@@ -613,11 +613,14 @@ def write_run_artifacts(
     equity_data = []
     for idx, row in equity.iterrows():
         ts_value = row["timestamp"] if "timestamp" in equity.columns else idx
-        equity_data.append({
+        item: dict[str, Any] = {
             "timestamp": int(ts_value),
             "equity": round(float(row["equity"]), 2),
             "drawdown": round(abs(float(row["drawdown"])) * 100, 2),  # Convert to positive percentage
-        })
+        }
+        if "benchmark_equity" in equity.columns and pd.notna(row["benchmark_equity"]):
+            item["benchmark_equity"] = round(float(row["benchmark_equity"]), 2)
+        equity_data.append(item)
     write_json(os.path.join(run_dir, "equity_curve.json"), {"data": equity_data})
 
     # Format trades for frontend (wrapped in { trades: [...] })

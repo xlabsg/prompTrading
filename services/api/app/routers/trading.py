@@ -238,7 +238,7 @@ def create_or_update_trading_config(
         raise HTTPException(status_code=404, detail="strategy_not_found")
     
     exchange = _clean(req.exchange).lower()
-    if exchange not in ("okx", "binance"):
+    if exchange not in ("okx", "binance", "paper"):
         raise HTTPException(status_code=400, detail="unsupported_exchange")
 
     symbols = _normalize_list(req.symbols)
@@ -465,6 +465,8 @@ def start_trading(
             client.test_credentials()
         except Exception as exc:
             raise HTTPException(status_code=400, detail=f"invalid_credentials: {exc}")
+    elif exchange == "paper":
+        logger.info(f"Starting Paper Trading simulation session for strategy {strategy_id}")
 
     # Create new session
     session = TradingSession(

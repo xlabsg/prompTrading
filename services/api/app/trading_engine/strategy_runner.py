@@ -154,6 +154,10 @@ class StrategyRunner:
 
     # ------------------------------------------------------------------
     def _create_okx_client(self, account: StrategyExchangeAccount):
+        if getattr(account, "exchange", "").lower() == "paper" or not account.api_secret_encrypted:
+            from app.trading_engine.paper_client import PaperExchangeClient
+            return PaperExchangeClient()
+
         from okx_sdk import OKXClient
 
         api_key = (account.api_key_encrypted or "").strip()

@@ -2154,6 +2154,12 @@ def chat_with_strategy_stream(
         # Parse full response (normal chat flow)
         new_status, clean_reply, config = _parse_chat_response(full_reply)
 
+        # Stream the reply content in smooth chunks for SSE typewriter effect
+        chunk_size = 12
+        for i in range(0, len(clean_reply), chunk_size):
+            chunk = clean_reply[i : i + chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+
         session = session_factory()
         try:
             strat = session.get(Strategy, strategy_id)
