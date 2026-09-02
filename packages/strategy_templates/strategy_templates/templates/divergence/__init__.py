@@ -27,7 +27,7 @@ class DivergenceStrategy(BaseTemplateStrategy):
         name="divergence",
         description="Regular divergence with multi-indicator confirmation and optional S/R risk filter.",
         version="1.0.0",
-        author="Stratsmith",
+        author="PromptTrading",
         tags=["divergence", "rsi", "macd", "mean_reversion"],
         risk_level="medium",
         trading_frequency="intraday",

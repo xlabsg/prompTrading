@@ -84,9 +84,9 @@ services:
       WORKER_MODE: scheduler
       WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
       WORKER_WORKSPACES_VOLUME: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_workspaces_e2e
-      WORKER_AGENT_IMAGE: stratsmith-agent:local
-      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
-      WORKER_DEV_IMAGE: stratsmith-dev:local
+      WORKER_AGENT_IMAGE: prompt-trading-agent:local
+      WORKER_BACKTEST_IMAGE: prompt-trading-backtest:local
+      WORKER_DEV_IMAGE: prompt-trading-dev:local
       # Scheduler enabled here
       # Default: keep schedulers OFF for e2e to avoid cron-triggered background jobs
       # that can interfere with deterministic test runs. Enable explicitly when needed.
@@ -116,9 +116,9 @@ services:
       WORKER_MODE: consumer
       WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
       WORKER_WORKSPACES_VOLUME: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_workspaces_e2e
-      WORKER_AGENT_IMAGE: stratsmith-agent:local
-      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
-      WORKER_DEV_IMAGE: stratsmith-dev:local
+      WORKER_AGENT_IMAGE: prompt-trading-agent:local
+      WORKER_BACKTEST_IMAGE: prompt-trading-backtest:local
+      WORKER_DEV_IMAGE: prompt-trading-dev:local
       # LLM config passed through into agent sandbox
       LLM_PROVIDER: ${LLM_PROVIDER:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
@@ -169,21 +169,21 @@ services:
     build:
       context: ../../
       dockerfile: infra/images/agent/Dockerfile
-    image: stratsmith-agent:local
+    image: prompt-trading-agent:local
     command: ["true"]
 
   backtest-image:
     build:
       context: ../../
       dockerfile: infra/images/backtest/Dockerfile
-    image: stratsmith-backtest:local
+    image: prompt-trading-backtest:local
     command: ["true"]
 
   dev-image:
     build:
       context: ../../
       dockerfile: infra/images/dev/Dockerfile
-    image: stratsmith-dev:local
+    image: prompt-trading-dev:local
     entrypoint: ["true"]
 
   # ==================== Test Runner ====================

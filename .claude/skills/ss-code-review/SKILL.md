@@ -1,9 +1,9 @@
 ---
 name: ss-code-review
-description: Use when reviewing a pull request or a branch diff in the stratsmith repo — orients the reviewer to this codebase's standards (AGENTS.md conventions, trading-critical paths, risk engine and credential handling, async lifecycle, Compose topology) and the review-specific checks that the code alone cannot show.
+description: Use when reviewing a pull request or a branch diff in the prompt-trading repo — orients the reviewer to this codebase's standards (AGENTS.md conventions, trading-critical paths, risk engine and credential handling, async lifecycle, Compose topology) and the review-specific checks that the code alone cannot show.
 ---
 
-# Reviewing a stratsmith change
+# Reviewing a prompt-trading change
 
 **Guidance, not a complete checklist.** Establish the real base ref, read the full diff plus enough surrounding code to understand the design, then prioritize correctness, money-losing behavior, credential safety, lifecycle, and broken required behavior over style. One substantiated blocker beats a list of nits.
 

@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stratsmith-worker"
+name = "prompt-trading-worker"
 version = "0.1.0"
-description = "Stratsmith background job processor"
+description = "PromptTrading background job processor"
 requires-python = ">=3.13"
 dependencies = [
     "docker==7.1.0",

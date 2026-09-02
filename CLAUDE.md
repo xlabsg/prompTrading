@@ -9,7 +9,7 @@ AI-powered algorithmic trading strategy platform. Combines LLM-assisted strategy
 ## Repository Structure
 
 ```
-stratsmith/
+prompTrading/
 ├── apps/web/              # React/Vite SPA (TypeScript)
 ├── services/
 │   ├── api/               # FastAPI backend
@@ -223,8 +223,8 @@ ephemeral task images under `infra/images/` still use one each).
 After changing any dependency or Dockerfile, rebuild and run the image — a
 dependency edit that only works locally proves nothing about the image:
 ```bash
-docker build -f services/api/Dockerfile -t stratsmith-api:verify .
-docker run --rm ... stratsmith-api:verify python -c "import app.main"
+docker build -f services/api/Dockerfile -t prompt-trading-api:verify .
+docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 ```
 
 ## Tech Stack
