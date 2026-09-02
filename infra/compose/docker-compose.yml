@@ -119,6 +119,9 @@ services:
       LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
       # Fail-fast timeout for strategy name generation (seconds)
       STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
+      # Sandbox & Resource Control
+      SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-}
+      MIN_AVAILABLE_MEMORY_MB: ${MIN_AVAILABLE_MEMORY_MB:-256}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces

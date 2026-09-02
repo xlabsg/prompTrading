@@ -7,9 +7,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     app_db_url: str
-    app_redis_url: str
+    app_redis_url: Optional[str] = None
     app_workspaces_dir: str = "/workspaces"
     log_dir: str = "/var/log/app"
+    sandbox_runtime: Optional[str] = None
+    min_available_memory_mb: int = 256
 
     github_app_id: Optional[str] = None
     github_app_private_key: Optional[str] = None

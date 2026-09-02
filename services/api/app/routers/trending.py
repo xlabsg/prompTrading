@@ -22,7 +22,7 @@ from control_plane.enums import (
     TrendingSourceType,
 )
 from control_plane.models import Job, TradingViewTrendingStrategy, TrendingSchedule
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from app.deps import get_db, get_redis
 from app.auth import get_current_user
 from app.settings import settings
@@ -235,8 +235,7 @@ async def trigger_scrape_now(
     db.add(job)
     db.commit()
 
-    import json
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+    enqueue_job(settings.workspaces_dir, job_id, job.type, job.payload, priority="batch", redis_client=rds)
 
     return TrendingScrapeResponse(
         job_id=job_id,

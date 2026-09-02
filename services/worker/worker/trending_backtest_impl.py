@@ -228,9 +228,9 @@ def trigger_llm_conversion(
     db.flush()
     db.commit()  # Commit so other workers can see this job
 
-    import json
-    from control_plane.queue import QUEUE_NAME
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    from control_plane.queue import enqueue_job
+    from worker.settings import settings
+    enqueue_job(settings.app_workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
 
     func_logger.info(f"Created conversion job {job.id}")
     return job
@@ -307,7 +307,9 @@ def create_backtest_jobs(
         db.add(job)
         db.flush()
 
-        rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+        from control_plane.queue import enqueue_job
+        from worker.settings import settings
+        enqueue_job(settings.app_workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
         jobs.append(job)
 
     db.commit()  # Commit so other workers can see these jobs

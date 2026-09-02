@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from control_plane.enums import JobType
 from control_plane.models import Job, Repository
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from app.deps import get_db
 from app.settings import settings
 
@@ -99,7 +99,7 @@ async def github_webhook(
     )
     db.add(job)
     db.flush()
-    rds = request.app.state.redis
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    rds = getattr(request.app.state, "redis", None)
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     return {"ok": True, "event": event, "delivery_id": x_github_delivery or "", "received": bool(payload)}

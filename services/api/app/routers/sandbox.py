@@ -9,7 +9,7 @@ from sqlalchemy import select
 
 from control_plane.enums import JobStatus, JobType, SandboxStatus, StrategyRole
 from control_plane.models import Job, SandboxSession, Strategy
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from app.auth import require_strategy_member
 from app.deps import get_db, get_redis
 from app.schemas import JobResponse, SandboxCreateResponse, TriggerJobResponse
@@ -50,7 +50,7 @@ def start_sandbox(
     db.flush()
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     sandbox_url = f"{settings.sandbox_base_url}{session.url_path}/"
     db.refresh(job)
@@ -72,7 +72,7 @@ def stop_sandbox(session_id: str, request: Request, db: Session = Depends(get_db
     db.add(job)
     db.flush()
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
     db.refresh(job)
     return job
 

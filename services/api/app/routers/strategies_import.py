@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from control_plane.enums import ChatStatus, JobStatus, JobType, StrategyRole
 from control_plane.versions import create_strategy_version
 from control_plane.models import Job, Strategy, StrategyMember
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from control_plane.workspaces import init_strategy_workspace
 
 from app.auth import get_current_user, user_has_active_subscription
@@ -179,7 +179,7 @@ async def import_from_tradingview(
     db.commit()
 
     # Queue job for worker
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(strategy)
     db.refresh(job)
@@ -414,7 +414,7 @@ async def import_from_youtube(
     db.commit()
 
     # Queue job for worker
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(strategy)
     db.refresh(job)
