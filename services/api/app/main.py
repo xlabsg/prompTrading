@@ -242,7 +242,7 @@ async def lifespan(app: FastAPI):
         engine.dispose()
 
 
-app = FastAPI(title="PromptTrading API", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="PrompTrading API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

@@ -1,5 +1,5 @@
 ---
-description: Run end-to-end integration tests for the PromptTrading
+description: Run end-to-end integration tests for the PrompTrading
 ---
 
 # Integration Tests

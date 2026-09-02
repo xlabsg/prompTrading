@@ -1,4 +1,4 @@
-"""TradingView PineScript scraper for PromptTrading."""
+"""TradingView PineScript scraper for PrompTrading."""
 
 from tradingview_scraper.scraper import PineScriptScraper, get_pinescript
 

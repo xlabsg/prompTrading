@@ -464,7 +464,7 @@ const en = {
       about: "About",
       blog: "Blog",
       careers: "Careers",
-      copyright: "© 2026 PromptTrading. All rights reserved.",
+      copyright: "© 2026 PrompTrading. All rights reserved.",
     },
   },
   dashboard: {

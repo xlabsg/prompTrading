@@ -1,8 +1,8 @@
-# PromptTrading
+# PrompTrading
 
 Forge algorithmic trading strategies with an LLM, backtest them, and run them live.
 
-PromptTrading turns a plain-language description — *"a moving average crossover on BTC with a 2% trailing stop"* — into executable strategy code, backtests it against historical data, and can promote it to live trading on OKX behind a risk-control layer.
+PrompTrading turns a plain-language description — *"a moving average crossover on BTC with a 2% trailing stop"* — into executable strategy code, backtests it against historical data, and can promote it to live trading on OKX behind a risk-control layer.
 
 > **Trading real money carries real risk.** This project executes live orders against a real exchange. Nothing here is financial advice, and no strategy it produces is validated for profitability. Start with [OKX demo trading](https://www.okx.com/demo-trading), and never grant your API key withdrawal permissions.
 

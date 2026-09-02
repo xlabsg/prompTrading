@@ -150,7 +150,7 @@ class {template_name.title().replace("_", "")}Strategy(BaseTemplateStrategy):
         name="{template_name}",
         description="{metadata.get("description", "")}",
         version="1.0.0",
-        author="PromptTrading",
+        author="PrompTrading",
         tags={metadata.get("tags", [])},
         risk_level="{metadata.get("risk_level", "medium")}",
         trading_frequency="{metadata.get("trading_frequency", "intraday")}",

@@ -1,4 +1,4 @@
-"""Strategy templates package for PromptTrading.
+"""Strategy templates package for PrompTrading.
 
 This package contains pre-built trading strategies that can be used as templates
 for SaaS subscription.

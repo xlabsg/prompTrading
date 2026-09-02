@@ -83,7 +83,7 @@ const AuthError = () => {
                 {t("auth.waitlistTitle")}
               </p>
               <a
-                href="mailto:info@example.com?subject=Waitlist Request - PromptTrading"
+                href="mailto:info@example.com?subject=Waitlist Request - PrompTrading"
                 className="inline-flex items-center justify-center gap-2 w-full px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
                 <Mail size={16} />

@@ -1,12 +1,12 @@
 ---
 name: integration-test
-description: Run end-to-end integration tests for the PromptTrading. Use when user asks to run, execute, or check integration tests. Supports running all tests, specific tests, with coverage, or in verbose mode. Automatically handles Docker Compose environment checks.
+description: Run end-to-end integration tests for the PrompTrading. Use when user asks to run, execute, or check integration tests. Supports running all tests, specific tests, with coverage, or in verbose mode. Automatically handles Docker Compose environment checks.
 tools: Bash, Read
 ---
 
 # Integration Test Runner
 
-Run end-to-end integration tests for the PromptTrading. Tests validate the complete workflow from strategy generation to backtesting using real Docker containers.
+Run end-to-end integration tests for the PrompTrading. Tests validate the complete workflow from strategy generation to backtesting using real Docker containers.
 
 ## When to Use
 

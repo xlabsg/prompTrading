@@ -1,4 +1,4 @@
-# Nginx 部署指南 - PromptTrading Platform
+# Nginx 部署指南 - PrompTrading Platform
 
 ## 部署架构
 

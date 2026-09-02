@@ -1,6 +1,6 @@
 # Integration Tests
 
-End-to-end integration tests for the PromptTrading API.
+End-to-end integration tests for the PrompTrading API.
 
 ## Prerequisites
 

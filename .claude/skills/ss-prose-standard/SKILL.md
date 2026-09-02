@@ -3,7 +3,7 @@ name: ss-prose-standard
 description: Use when writing, reviewing, restoring, trimming, or auditing prose in the prompt-trading repo — deciding where documentation or comments are required across Markdown, docstrings, code and test comments, agent prompts, tool descriptions, error messages, and user-visible UI strings.
 ---
 
-# PromptTrading prose standard
+# PrompTrading prose standard
 
 Write enough to preserve the contract, then remove reasoning transcripts, repetition, and decoration. A contract is an obligation, invariant, precondition, postcondition, or compatibility promise that a caller, callee, implementer, producer, or consumer relies on.
 
