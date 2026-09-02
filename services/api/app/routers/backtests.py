@@ -8,13 +8,14 @@ import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import func, select, or_
+from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
 from control_plane.enums import JobStatus, JobType, StrategyRole
-from control_plane.models import BacktestRun, Dataset, Job, Strategy, StrategyVersion
+from control_plane.versions import create_strategy_version
+from control_plane.models import BacktestRun, Dataset, Job, Strategy
 from control_plane.queue import QUEUE_NAME
-from control_plane.workspaces import get_run_dir, init_strategy_workspace, snapshot_current_strategy_to_version
+from control_plane.workspaces import get_run_dir, init_strategy_workspace
 from app.auth import require_strategy_member
 from app.deps import get_db, get_redis
 from app.schemas import (
@@ -247,9 +248,6 @@ def _create_dataset(db: Session, dataset: DatasetRequest) -> Dataset:
     return ds
 
 
-def _next_version_number(db: Session, strategy_id: str) -> int:
-    cur = db.execute(select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_id == strategy_id)).scalar()
-    return int(cur or 0) + 1
 
 
 @router.post("/strategies/{strategy_id}/backtests", response_model=TriggerJobResponse)
@@ -270,14 +268,12 @@ def create_backtest(
 
     init_strategy_workspace(settings.workspaces_dir, strategy_id)
 
-    version = StrategyVersion(
+    version = create_strategy_version(
+        db,
         strategy_id=strategy_id,
-        version=_next_version_number(db, strategy_id),
-        workspace_path="",
+        snapshot=True,
+        workspaces_dir=settings.workspaces_dir,
     )
-    db.add(version)
-    db.flush()
-    version.workspace_path = snapshot_current_strategy_to_version(settings.workspaces_dir, strategy_id, version.id)
 
     ds = _create_dataset(db, req.dataset)
 
@@ -344,17 +340,14 @@ def generate_and_backtest(
 
     init_strategy_workspace(settings.workspaces_dir, strategy_id)
 
-    version = StrategyVersion(
+    # The agent container populates versions/<id>/, so no snapshot here.
+    version = create_strategy_version(
+        db,
         strategy_id=strategy_id,
-        version=_next_version_number(db, strategy_id),
-        workspace_path="",
         prompt=req.prompt,
         llm_meta=req.llm_meta or {},
+        snapshot=False,
     )
-    db.add(version)
-    db.flush()
-    # Make the version directory stable by using the DB id
-    version.workspace_path = f"versions/{version.id}"
 
     ds = _create_dataset(db, req.dataset)
 

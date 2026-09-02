@@ -22,10 +22,10 @@ docker compose -f docker-compose.dev.yml logs api | grep "Application startup"
 ```bash
 # If running locally (not inside container)
 cd services/api
-pip install -r requirements.txt
+pip install -e '.[test]'
 
-# Or if running inside the API container
-docker compose -f docker-compose.dev.yml exec api pip install -r requirements.txt
+# Test dependencies are already installed in the API image
+docker compose -f docker-compose.dev.yml exec api pytest -q
 ```
 
 ### 3. No LLM API Key Required
@@ -237,7 +237,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd services/api
-          pip install -r requirements.txt
+          pip install -e '.[test]'
 
       - name: Run integration tests
         env:

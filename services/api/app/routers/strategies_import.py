@@ -12,9 +12,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from control_plane.enums import ChatStatus, JobStatus, JobType, StrategyRole
-from control_plane.models import Job, Strategy, StrategyMember, StrategyVersion
+from control_plane.versions import create_strategy_version
+from control_plane.models import Job, Strategy, StrategyMember
 from control_plane.queue import QUEUE_NAME
-from control_plane.workspaces import init_strategy_workspace, snapshot_current_strategy_to_version
+from control_plane.workspaces import init_strategy_workspace
 
 from app.auth import get_current_user, user_has_active_subscription
 from app.deps import get_db, get_redis
@@ -40,12 +41,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _next_version_number(db: Session, strategy_id: str) -> int:
-    from sqlalchemy import func, select
-    cur = db.execute(
-        select(func.max(StrategyVersion.version)).where(StrategyVersion.strategy_id == strategy_id)
-    ).scalar()
-    return int(cur or 0) + 1
 
 
 @router.post("/strategies/import/tradingview", response_model=ImportStrategyResponse)
@@ -129,23 +124,19 @@ async def import_from_tradingview(
     init_strategy_workspace(settings.workspaces_dir, strategy.id)
 
     # Create initial version
-    version = StrategyVersion(
+    version = create_strategy_version(
+        db,
         strategy_id=strategy.id,
         version=1,
-        workspace_path="",
         prompt=f"Imported from TradingView: {req.url}",
         llm_meta={
             "source": "tradingview_import",
             "original_url": req.url,
             "script_name": script_name,
             "script_author": script_author,
-        }
-    )
-    db.add(version)
-    db.flush()
-
-    version.workspace_path = snapshot_current_strategy_to_version(
-        settings.workspaces_dir, strategy.id, version.id
+        },
+        snapshot=True,
+        workspaces_dir=settings.workspaces_dir,
     )
 
     # Add user as admin
@@ -371,10 +362,10 @@ async def import_from_youtube(
     init_strategy_workspace(settings.workspaces_dir, strategy.id)
 
     # Create initial version
-    version = StrategyVersion(
+    version = create_strategy_version(
+        db,
         strategy_id=strategy.id,
         version=1,
-        workspace_path="",
         prompt=f"Imported from YouTube: {req.url}",
         llm_meta={
             "source": "youtube_import",
@@ -384,13 +375,9 @@ async def import_from_youtube(
             "uploader": uploader,
             "whisper_model": whisper_model,
             "transcript_length": len(transcript),
-        }
-    )
-    db.add(version)
-    db.flush()
-
-    version.workspace_path = snapshot_current_strategy_to_version(
-        settings.workspaces_dir, strategy.id, version.id
+        },
+        snapshot=True,
+        workspaces_dir=settings.workspaces_dir,
     )
 
     # Add user as admin

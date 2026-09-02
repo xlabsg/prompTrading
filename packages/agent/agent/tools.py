@@ -5,11 +5,14 @@ import ast
 import re
 import json
 import pandas as pd
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
+from typing import TYPE_CHECKING, List, Dict, Any, Optional
+from dataclasses import dataclass, replace
 from agent.editor import CodeEditor
 from agent.protocol import STRATEGY_FILE, STRATEGY_FUNCTION
 from backtest.vectorized import run_backtest, BacktestConfig
+
+if TYPE_CHECKING:
+    from agent.backtest_tool import BacktestBudget, BacktestDataset
 
 @dataclass
 class ToolResult:
@@ -218,79 +221,107 @@ class FileSystemTools:
         except Exception as e:
             return ToolResult(output="", error=str(e))
 
-    def run_backtest(self, interval: str = "1h", data_path: Optional[str] = None) -> ToolResult:
+    def run_backtest(
+        self,
+        interval: Optional[str] = None,
+        data_path: Optional[str] = None,
+        dataset: Optional["BacktestDataset"] = None,
+        budget: Optional["BacktestBudget"] = None,
+        params: Optional[Dict[str, Any]] = None,
+    ) -> ToolResult:
+        """Backtest the workspace strategy against real, cached market data.
+
+        `dataset`/`budget` are supplied by the agent session so the edit->backtest
+        loop stays bounded; `data_path` overrides the market with a local CSV.
         """
-        Run a backtest on the current strategy.
-        Uses synthetic data if data_path is not provided.
-        """
+        from agent.backtest_tool import (
+            BacktestBudget,
+            BacktestDataset,
+            run_agent_backtest,
+        )
+
+        ds = dataset or BacktestDataset.from_env()
+        if interval:
+            ds = replace(ds, interval=interval)
+        bg = budget if budget is not None else BacktestBudget.from_env()
+
+        if data_path:
+            return self._run_backtest_on_csv(data_path, ds, bg, params)
+
+        ok, report, metrics = run_agent_backtest(
+            strategy_path=self._resolve_path(STRATEGY_FILE),
+            entry_function=STRATEGY_FUNCTION,
+            dataset=ds,
+            budget=bg,
+            params=params,
+        )
+        if not ok:
+            return ToolResult(output="", error=report)
+        return ToolResult(output=report, metadata=metrics)
+
+    def _run_backtest_on_csv(
+        self,
+        data_path: str,
+        dataset: "BacktestDataset",
+        budget: "BacktestBudget",
+        params: Optional[Dict[str, Any]],
+    ) -> ToolResult:
+        """Backtest against a CSV in the workspace instead of live market data."""
+        from backtest.protocol import normalize_signals
+
         try:
-            strategy_path = self._resolve_path(STRATEGY_FILE)
-            if not os.path.isfile(strategy_path):
-                return ToolResult(output="", error=f"{STRATEGY_FILE} not found")
+            data = pd.read_csv(self._resolve_path(data_path))
+        except Exception as e:
+            return ToolResult(output="", error=f"Failed to read {data_path}: {e}")
 
-            # Load strategy module dynamically
-            import importlib.util
-            spec = importlib.util.spec_from_file_location("strategy_module", strategy_path)
-            if not spec or not spec.loader:
-                return ToolResult(output="", error="Failed to load strategy module")
+        required = ["timestamp", "open", "high", "low", "close", "volume"]
+        missing = [c for c in required if c not in data.columns]
+        if missing:
+            return ToolResult(output="", error=f"Data file missing columns: {missing}")
 
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-
-            if not hasattr(module, STRATEGY_FUNCTION):
-                return ToolResult(output="", error=f"{STRATEGY_FUNCTION}() function not found in {STRATEGY_FILE}")
-
-            # Prepare data
-            if data_path:
-                data_abs_path = self._resolve_path(data_path)
-                data = pd.read_csv(data_abs_path) # Assuming CSV for now
-                # Basic validation
-                required_cols = ["timestamp", "open", "high", "low", "close", "volume"]
-                if not all(col in data.columns for col in required_cols):
-                     return ToolResult(output="", error=f"Data file missing columns. Required: {required_cols}")
-            else:
-                # Synthetic data for quick testing
-                dates = pd.date_range(end=pd.Timestamp.now(), periods=1000, freq=interval)
-                timestamps = dates.astype('int64') // 10**6 # ms
-                close = np.cumprod(1 + np.random.normal(0, 0.01, 1000)) * 100
-                data = pd.DataFrame({
-                    "timestamp": timestamps,
-                    "open": close, "high": close * 1.01, "low": close * 0.99, "close": close,
-                    "volume": np.random.random(1000) * 1000
-                })
-                # Add numpy import for synthetic data gen
-                import numpy as np
-
-            # Run Strategy
-            params = {} # Could allow passing params later
-            try:
-                signals = module.generate_signals(data.copy(), params)
-            except Exception as e:
-                return ToolResult(output="", error=f"Strategy Execution Error: {str(e)}")
-
-            # Run Backtest Engine
-            try:
-                result = run_backtest(
-                    data,
-                    signals=signals,
-                    interval=interval,
-                    config=BacktestConfig()
-                )
-            except Exception as e:
-                return ToolResult(output="", error=f"Backtest Engine Error: {str(e)}")
-
-            # Format Metrics
-            metrics_str = json.dumps(result.metrics, indent=2)
-            summary = (
-                f"Backtest Completed Successfully.\n"
-                f"Sharpe Ratio: {result.metrics.get('sharpe_ratio', 0):.2f}\n"
-                f"Total Return: {result.metrics.get('total_return', 0):.2f}%\n"
-                f"Max Drawdown: {result.metrics.get('max_drawdown', 0):.2f}%\n"
-                f"Trades: {result.metrics.get('total_trades', 0)}\n\n"
-                f"Full Metrics:\n{metrics_str}"
+        if budget.exhausted:
+            return ToolResult(
+                output="",
+                error=(
+                    f"Backtest budget exhausted ({budget.max_runs} runs used). "
+                    "Finalise the strategy and call task_done."
+                ),
             )
 
-            return ToolResult(output=summary, metadata=result.metrics)
+        strategy_path = self._resolve_path(STRATEGY_FILE)
+        if not os.path.isfile(strategy_path):
+            return ToolResult(output="", error=f"{STRATEGY_FILE} not found")
 
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("strategy_module", strategy_path)
+        if not spec or not spec.loader:
+            return ToolResult(output="", error="Failed to load strategy module")
+        module = importlib.util.module_from_spec(spec)
+        try:
+            spec.loader.exec_module(module)
         except Exception as e:
-            return ToolResult(output="", error=f"System Error: {str(e)}")
+            return ToolResult(output="", error=f"Strategy import failed: {type(e).__name__}: {e}")
+
+        fn = getattr(module, STRATEGY_FUNCTION, None)
+        if fn is None:
+            return ToolResult(output="", error=f"{STRATEGY_FUNCTION}() not found in {STRATEGY_FILE}")
+
+        data = data.sort_values("timestamp").reset_index(drop=True)
+        try:
+            signals = fn(data.copy(), dict(params or {}))
+            signals = normalize_signals(signals, n=len(data), mode="auto", symbol=dataset.symbol)
+            result = run_backtest(
+                data, signals=signals, interval=dataset.interval, config=BacktestConfig()
+            )
+        except Exception as e:
+            return ToolResult(output="", error=f"Backtest failed: {type(e).__name__}: {e}")
+
+        metrics = dict(result.metrics)
+        budget.record(metrics)
+        summary = (
+            f"Backtest #{budget.runs_used} on {data_path} ({len(data)} bars):\n"
+            + json.dumps({k: metrics.get(k) for k in sorted(metrics)}, indent=2)
+            + f"\n{budget.remaining} backtest run(s) remaining."
+        )
+        return ToolResult(output=summary, metadata=metrics)

@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "backtest"
+version = "0.1.0"
+description = "Vectorized backtesting engine, signal protocol, and run artifacts"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas>=1.5",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# indicators falls back to its own implementations when TA-Lib is absent.
+talib = ["TA-Lib>=0.6"]
+
+[tool.setuptools.packages.find]
+include = ["backtest*"]
+exclude = ["tests*"]

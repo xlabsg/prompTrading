@@ -5,17 +5,16 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import io
-import json
 import os
 import time
 
 import pandas as pd
 import requests
 
+from data.cache import cached_fetch
+
 
 YFINANCE_INTERVAL = "1d"
-DEFAULT_CACHE_DIR = "/workspaces/us_stock_cache"
-DEFAULT_CACHE_TTL_DAYS = 7
 DEFAULT_MAX_RETRIES = 5
 DEFAULT_RATE_LIMIT_SLEEP_S = 10.0
 STOOQ_BASE_URL = "https://stooq.com"
@@ -39,20 +38,6 @@ def _normalize_symbol(symbol: str) -> str:
     return s
 
 
-def _cache_dir() -> str:
-    return os.getenv("US_STOCK_CACHE_DIR", DEFAULT_CACHE_DIR)
-
-
-def _cache_ttl_days() -> int:
-    raw = os.getenv("US_STOCK_CACHE_TTL_DAYS", "")
-    if not raw:
-        return DEFAULT_CACHE_TTL_DAYS
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        return DEFAULT_CACHE_TTL_DAYS
-
-
 def _max_retries() -> int:
     raw = os.getenv("US_STOCK_MAX_RETRIES", "")
     if not raw:
@@ -71,38 +56,6 @@ def _rate_limit_sleep_s() -> float:
         return max(0.0, float(raw))
     except ValueError:
         return DEFAULT_RATE_LIMIT_SLEEP_S
-
-
-def _cache_paths(symbol: str) -> tuple[str, str]:
-    safe = symbol.replace("/", "_").replace(":", "_")
-    base = _cache_dir()
-    return os.path.join(base, f"{safe}.parquet"), os.path.join(base, f"{safe}.meta.json")
-
-
-def _read_cache(symbol: str) -> Optional[pd.DataFrame]:
-    data_path, meta_path = _cache_paths(symbol)
-    if not os.path.exists(data_path) or not os.path.exists(meta_path):
-        return None
-    try:
-        with open(meta_path, "r", encoding="utf-8") as f:
-            meta = json.load(f)
-        ttl_days = _cache_ttl_days()
-        if ttl_days > 0:
-            updated_at = float(meta.get("updated_at", 0))
-            if updated_at and (time.time() - updated_at) > ttl_days * 86400:
-                return None
-        df = pd.read_parquet(data_path)
-        return df
-    except Exception:
-        return None
-
-
-def _write_cache(symbol: str, df: pd.DataFrame) -> None:
-    data_path, meta_path = _cache_paths(symbol)
-    os.makedirs(os.path.dirname(data_path), exist_ok=True)
-    df.to_parquet(data_path, index=False)
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump({"updated_at": time.time()}, f)
 
 
 def _is_rate_limit_error(err: Exception) -> bool:
@@ -239,74 +192,73 @@ def fetch_us_stock_daily(req: USStockDailyRequest) -> pd.DataFrame:
     """Fetch US stock daily OHLCV data from Yahoo Finance (yfinance).
 
     Returns DataFrame with columns: timestamp (ms), open, high, low, close, volume.
+    Bars are served through the shared market-data cache, so a repeated request
+    for an already-downloaded range performs no network call.
     """
     symbol = _normalize_symbol(req.symbol)
-
-    start_date: datetime | None = None
-    end_date: datetime | None = None
-    if req.start_ms is not None:
-        start_date = datetime.fromtimestamp(req.start_ms / 1000, tz=timezone.utc).date()
-    if req.end_ms is not None:
-        end_date = datetime.fromtimestamp(req.end_ms / 1000, tz=timezone.utc).date() + timedelta(days=1)
 
     provider = os.getenv("US_STOCK_PROVIDER", "yfinance").strip().lower()
     fallback_provider = os.getenv("US_STOCK_FALLBACK_PROVIDER", "stooq").strip().lower()
     allow_fallback = (os.getenv("US_STOCK_FALLBACK", "1") or "").strip().lower() not in ("0", "false", "no")
 
-    cache_df = _read_cache(symbol)
-    if cache_df is not None and not cache_df.empty:
-        if req.start_ms is None and req.end_ms is None:
-            return cache_df.copy()
-        filtered = cache_df.copy()
-        if req.start_ms is not None:
-            filtered = filtered[filtered["timestamp"] >= int(req.start_ms)]
-        if req.end_ms is not None:
-            filtered = filtered[filtered["timestamp"] <= int(req.end_ms)]
-        if len(filtered) >= 3:
-            return filtered.reset_index(drop=True)
+    def _download(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
+        window = USStockDailyRequest(symbol=req.symbol, start_ms=start_ms, end_ms=end_ms)
 
-    def try_yfinance() -> pd.DataFrame:
-        df_local = None
-        last_err: Exception | None = None
-        max_retries = _max_retries()
-        rate_limit_sleep_s = _rate_limit_sleep_s()
-        for attempt in range(max_retries):
-            try:
-                df_local = _download_with_yfinance(symbol, start_date=start_date, end_date=end_date)
-                last_err = None
-                break
-            except Exception as e:
-                last_err = e
-                if _is_rate_limit_error(e):
-                    time.sleep(rate_limit_sleep_s * (attempt + 1))
-                    continue
-                break
-        if last_err is not None and _is_rate_limit_error(last_err):
-            if cache_df is not None and not cache_df.empty:
-                return cache_df.copy()
-            raise ValueError("us_stock_rate_limited") from last_err
-        return _finalize_ohlcv(df_local, use_adj_close=True, req=req)
+        start_date: datetime | None = None
+        end_date: datetime | None = None
+        if start_ms is not None:
+            start_date = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc).date()
+        if end_ms is not None:
+            end_date = datetime.fromtimestamp(end_ms / 1000, tz=timezone.utc).date() + timedelta(days=1)
 
-    def try_stooq() -> pd.DataFrame:
-        df_local = _download_with_stooq(symbol)
-        return _finalize_ohlcv(df_local, use_adj_close=False, req=req)
+        def try_yfinance() -> pd.DataFrame:
+            df_local = None
+            last_err: Exception | None = None
+            max_retries = _max_retries()
+            rate_limit_sleep_s = _rate_limit_sleep_s()
+            for attempt in range(max_retries):
+                try:
+                    df_local = _download_with_yfinance(symbol, start_date=start_date, end_date=end_date)
+                    last_err = None
+                    break
+                except Exception as e:
+                    last_err = e
+                    if _is_rate_limit_error(e):
+                        time.sleep(rate_limit_sleep_s * (attempt + 1))
+                        continue
+                    break
+            if last_err is not None and _is_rate_limit_error(last_err):
+                # Surfaced to the cache layer, which falls back to stored bars.
+                raise ValueError("us_stock_rate_limited") from last_err
+            return _finalize_ohlcv(df_local, use_adj_close=True, req=window)
 
-    if provider == "stooq":
-        df_out = try_stooq()
-    else:
+        def try_stooq() -> pd.DataFrame:
+            df_local = _download_with_stooq(symbol)
+            return _finalize_ohlcv(df_local, use_adj_close=False, req=window)
+
+        if provider == "stooq":
+            return try_stooq()
+
         try:
             df_out = try_yfinance()
         except ValueError as e:
             if allow_fallback and fallback_provider == "stooq" and str(e) == "us_stock_rate_limited":
-                df_out = try_stooq()
-            else:
-                raise
-        if (df_out is None or len(df_out) < 3) and allow_fallback and fallback_provider == "stooq":
+                return try_stooq()
+            raise
+        if len(df_out) < 3 and allow_fallback and fallback_provider == "stooq":
             df_out = try_stooq()
+        return df_out
+
+    df_out = cached_fetch(
+        exchange="us_stock",
+        symbol=symbol,
+        interval=YFINANCE_INTERVAL,
+        start_ms=req.start_ms,
+        end_ms=req.end_ms,
+        fetch=_download,
+        fallback_to_stale_on_error=True,
+    )
 
     if df_out is None or len(df_out) < 3:
         raise ValueError("us_stock_no_data_or_rate_limited")
-
-    if len(df_out) >= 3:
-        _write_cache(symbol, df_out)
     return df_out

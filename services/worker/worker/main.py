@@ -6,8 +6,6 @@ import subprocess
 import shutil
 import time
 import traceback
-import textwrap
-import sys
 import re
 import logging
 import logging.config
@@ -15,7 +13,7 @@ import threading
 import uuid
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import docker
 from docker.types import Ulimit
@@ -29,7 +27,7 @@ from control_plane.db import create_db_engine, create_session_factory, session_s
 from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, SandboxStatus, TrendingBacktestStatus, TrendingSourceType
 from control_plane.models import Base, BacktestRun, Dataset, Job, SandboxSession, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, SearchStats, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
 from control_plane.queue import QUEUE_NAME, job_log_channel
-from control_plane.workspaces import git_commit, init_git_repo, restore_version_to_current_strategy
+from control_plane.workspaces import git_commit, init_git_repo
 from worker.settings import settings
 from worker.repo_sync import clone_or_update, ensure_worktree
 from worker.search_index import open_db, index_full
@@ -324,6 +322,31 @@ def _run_container_and_stream_logs(
                 pass
 
 
+def _agent_backtest_env(db: Session, job: Job) -> dict[str, str]:
+    """Point the agent's in-loop backtest at this job's dataset.
+
+    Keeps the metrics the agent optimises against comparable to the platform
+    backtest that runs afterwards. Falls back to the agent defaults when the job
+    carries no dataset.
+    """
+    dataset_id = (job.payload or {}).get("dataset_id")
+    if not dataset_id:
+        return {}
+    ds = db.get(Dataset, dataset_id)
+    if ds is None:
+        return {}
+    env = {
+        "AGENT_BACKTEST_EXCHANGE": str(ds.exchange),
+        "AGENT_BACKTEST_SYMBOL": str(ds.symbol),
+        "AGENT_BACKTEST_INTERVAL": str(ds.interval),
+    }
+    if ds.start_ms is not None:
+        env["AGENT_BACKTEST_START_MS"] = str(ds.start_ms)
+    if ds.end_ms is not None:
+        env["AGENT_BACKTEST_END_MS"] = str(ds.end_ms)
+    return env
+
+
 def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
     strategy_id = job.payload["strategy_id"]
     version_id = job.payload["version_id"]
@@ -381,6 +404,15 @@ def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.Docker
             **{
                 key: val
                 for key in (
+                    "MARKET_DATA_CACHE_DIR",
+                    "MARKET_DATA_CACHE_ENABLED",
+                    "MARKET_DATA_CACHE_TTL_S",
+                )
+                if (val := os.getenv(key)) is not None
+            },
+            **{
+                key: val
+                for key in (
                     "NETWORK_GUARD_ENABLED",
                     "NETWORK_ALLOWLIST",
                 )
@@ -406,18 +438,37 @@ def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.Docker
         db.flush()
         raise RuntimeError(msg)
 
-    run.status = BacktestStatus.SUCCEEDED
     run.finished_at = _utcnow()
-    # Best-effort: read metrics.json written by the runner.
-    metrics_payload = None
+
+    # metrics.json is the run's actual output: if it is missing or unreadable the
+    # run did not succeed, however the container exited. Reporting SUCCEEDED here
+    # used to hand the UI an empty-metrics run with no error to explain it.
+    metrics_path = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id, "metrics.json")
     try:
-        metrics_path = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id, "metrics.json")
-        if os.path.isfile(metrics_path):
-            with open(metrics_path, "r", encoding="utf-8") as f:
-                metrics_payload = json.load(f)
-                run.metrics = metrics_payload
-    except Exception:
-        metrics_payload = None
+        with open(metrics_path, "r", encoding="utf-8") as f:
+            metrics_payload = json.load(f)
+    except FileNotFoundError:
+        run.status = BacktestStatus.FAILED
+        run.error_message = (
+            f"backtest_metrics_missing: {metrics_path} was not written by the runner. "
+            "See artifact: backtest.log"
+        )
+        db.flush()
+        raise RuntimeError(run.error_message)
+    except (OSError, json.JSONDecodeError) as e:
+        run.status = BacktestStatus.FAILED
+        run.error_message = f"backtest_metrics_unreadable: {type(e).__name__}: {e}"
+        db.flush()
+        raise RuntimeError(run.error_message)
+
+    if not isinstance(metrics_payload, dict) or not metrics_payload:
+        run.status = BacktestStatus.FAILED
+        run.error_message = "backtest_metrics_empty: metrics.json did not contain a metrics object"
+        db.flush()
+        raise RuntimeError(run.error_message)
+
+    run.status = BacktestStatus.SUCCEEDED
+    run.metrics = metrics_payload
 
     if metrics_payload:
         run.result_summary = {
@@ -487,6 +538,17 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         "LLM_FALLBACK_ON_ERROR",
         "NETWORK_GUARD_ENABLED",
         "NETWORK_ALLOWLIST",
+        # Market data cache, shared with the backtest container via /workspaces.
+        "MARKET_DATA_CACHE_DIR",
+        "MARKET_DATA_CACHE_ENABLED",
+        "MARKET_DATA_CACHE_TTL_S",
+        # Agent in-loop backtest tuning
+        "AGENT_BACKTEST_MAX_RUNS",
+        "AGENT_BACKTEST_STALL_LIMIT",
+        "AGENT_BACKTEST_SCORE_KEY",
+        "AGENT_BACKTEST_BARS",
+        "AGENT_MAX_STEPS",
+        "AGENT_MAX_TOKENS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -499,6 +561,7 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(run_dir, "agent.log")
     sandbox_opts = _agent_sandbox_options()
@@ -984,6 +1047,17 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         "LLM_STREAM",
         "NETWORK_GUARD_ENABLED",
         "NETWORK_ALLOWLIST",
+        # Market data cache, shared with the backtest container via /workspaces.
+        "MARKET_DATA_CACHE_DIR",
+        "MARKET_DATA_CACHE_ENABLED",
+        "MARKET_DATA_CACHE_TTL_S",
+        # Agent in-loop backtest tuning
+        "AGENT_BACKTEST_MAX_RUNS",
+        "AGENT_BACKTEST_STALL_LIMIT",
+        "AGENT_BACKTEST_SCORE_KEY",
+        "AGENT_BACKTEST_BARS",
+        "AGENT_MAX_STEPS",
+        "AGENT_MAX_TOKENS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -996,6 +1070,7 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")
     sandbox_opts = _agent_sandbox_options()
@@ -1050,15 +1125,7 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
     version_id = job.payload["version_id"]
     prompt = job.payload.get("prompt", "")
     llm_meta = job.payload.get("llm_meta") or {}
-    mode = (job.payload.get("mode") or "").strip().lower()
     strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
-
-    if mode == "patch_validate":
-        _handle_refine_patch_validate(db, rds, job)
-        return
-    if mode == "proposal_validate":
-        _handle_refine_proposal_validate(db, rds, job)
-        return
 
     # Store logs under the version directory for debugging/traceability.
     version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
@@ -1099,6 +1166,17 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         "LLM_STREAM",
         "NETWORK_GUARD_ENABLED",
         "NETWORK_ALLOWLIST",
+        # Market data cache, shared with the backtest container via /workspaces.
+        "MARKET_DATA_CACHE_DIR",
+        "MARKET_DATA_CACHE_ENABLED",
+        "MARKET_DATA_CACHE_TTL_S",
+        # Agent in-loop backtest tuning
+        "AGENT_BACKTEST_MAX_RUNS",
+        "AGENT_BACKTEST_STALL_LIMIT",
+        "AGENT_BACKTEST_SCORE_KEY",
+        "AGENT_BACKTEST_BARS",
+        "AGENT_MAX_STEPS",
+        "AGENT_MAX_TOKENS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -1111,6 +1189,7 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")
     sandbox_opts = _agent_sandbox_options()
@@ -1153,533 +1232,6 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
 
     _ensure_strategy_repo(strategy_dir)
     git_commit(strategy_dir, f"AI refine: {prompt[:80]}" if prompt else "AI refine")
-
-
-def _load_signal_mode(version_dir: str) -> str:
-    protocol_path = os.path.join(version_dir, "strategy_protocol.json")
-    if not os.path.isfile(protocol_path):
-        return "target_weights"
-    try:
-        with open(protocol_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        mode = str(payload.get("signal_mode") or "").strip()
-        return mode or "target_weights"
-    except Exception:
-        return "target_weights"
-
-
-def _validate_strategy_version(version_dir: str, *, n_bars: int = 200, interval: str = "1h") -> dict[str, Any]:
-    strategy_path = os.path.join(version_dir, "strategy.py")
-    if not os.path.isfile(strategy_path):
-        raise RuntimeError("strategy_code_not_found")
-
-    with open(strategy_path, "r", encoding="utf-8") as f:
-        code = f.read()
-
-    from agent.smoke_validation import run_smoke_validation, run_static_checks
-
-    static_result = run_static_checks(code)
-    smoke_result = run_smoke_validation(
-        code,
-        n_bars=int(n_bars),
-        interval=str(interval),
-        signal_mode=_load_signal_mode(version_dir),
-    )
-    report = {
-        "static_check": static_result,
-        "smoke_backtest": smoke_result,
-    }
-
-    try:
-        with open(os.path.join(version_dir, "validation_report.json"), "w", encoding="utf-8") as f:
-            json.dump(report, f, ensure_ascii=False, indent=2, sort_keys=True)
-    except Exception:
-        pass
-
-    if not static_result.get("ok"):
-        raise RuntimeError(f"static_check_failed:{static_result.get('error')}")
-    if not smoke_result.get("ok"):
-        raise RuntimeError(f"smoke_backtest_failed:{smoke_result.get('error')}")
-    return report
-
-
-def _ensure_code_editor_path() -> None:
-    code_editor_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "code_editor")
-    if code_editor_path not in sys.path:
-        sys.path.insert(0, code_editor_path)
-
-
-def _apply_unified_diff_simple(original: str, diff: str) -> str:
-    lines = diff.splitlines()
-    if not lines:
-        return original
-    if lines[0].startswith(("---", "+++")):
-        lines = lines[2:]
-    original_lines = original.splitlines()
-    new_lines: list[str] = []
-    orig_idx = 0
-
-    hunk_header = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if not line.startswith("@@"):
-            i += 1
-            continue
-
-        match = hunk_header.match(line)
-        if not match:
-            raise ValueError("invalid_hunk_header")
-
-        start_old = int(match.group(1))
-        if start_old < 1:
-            raise ValueError("invalid_hunk_header")
-
-        target_idx = start_old - 1
-        if target_idx < orig_idx:
-            raise ValueError("overlapping_hunks")
-        if target_idx > len(original_lines):
-            raise ValueError("hunk_out_of_range")
-
-        if target_idx > orig_idx:
-            new_lines.extend(original_lines[orig_idx:target_idx])
-            orig_idx = target_idx
-
-        i += 1
-        while i < len(lines) and not lines[i].startswith("@@"):
-            hunk_line = lines[i]
-            if hunk_line.startswith(" "):
-                expected = hunk_line[1:]
-                if orig_idx >= len(original_lines) or original_lines[orig_idx] != expected:
-                    raise ValueError("context_mismatch")
-                new_lines.append(expected)
-                orig_idx += 1
-            elif hunk_line.startswith("-"):
-                expected = hunk_line[1:]
-                if orig_idx >= len(original_lines) or original_lines[orig_idx] != expected:
-                    raise ValueError("delete_mismatch")
-                orig_idx += 1
-            elif hunk_line.startswith("+"):
-                new_lines.append(hunk_line[1:])
-            elif hunk_line.startswith("\\"):
-                pass
-            else:
-                raise ValueError("invalid_hunk_line")
-            i += 1
-
-    new_lines.extend(original_lines[orig_idx:])
-    result = "\n".join(new_lines)
-    if original.endswith("\n"):
-        result += "\n"
-    return result
-
-
-def _apply_change_spec_to_code(current_code: str, change_spec: dict[str, Any]) -> tuple[bool, str | None, str]:
-    operations = change_spec.get("operations") or []
-    if not isinstance(operations, list):
-        return False, "change_spec_invalid_operations", current_code
-
-    _ensure_code_editor_path()
-    try:
-        from code_editor.core.editor import replace, EditError
-    except Exception as exc:
-        return False, f"code_editor_unavailable:{exc}", current_code
-
-    updated = current_code
-
-    def normalize_for_search(text: str) -> str:
-        return " ".join(text.split())
-
-    for idx, op in enumerate(operations):
-        op_type = str(op.get("type") or "").strip()
-        try:
-            if op_type == "exact_replace":
-                old_text = op.get("old_text")
-                new_text = op.get("new_text")
-                if not old_text or new_text is None:
-                    return False, f"operation_{idx}_invalid_exact_replace", current_code
-                # Skip if old_text equals new_text (no-op)
-                if old_text == new_text:
-                    continue
-                updated = replace(updated, old_text, new_text, replace_all=False)
-            elif op_type == "insert_after":
-                anchor = op.get("anchor")
-                insert_text = op.get("insert_text")
-                if not anchor or not insert_text:
-                    return False, f"operation_{idx}_invalid_insert_after", current_code
-                anchor_normalized = normalize_for_search(anchor)
-                lines = updated.split("\n")
-                anchor_found = False
-                if "\n" in anchor:
-                    content_normalized = normalize_for_search(updated)
-                    if anchor_normalized in content_normalized:
-                        anchor_lines = anchor.strip().split("\n")
-                        last_anchor_line = anchor_lines[-1].strip()
-                        for i, line in enumerate(lines):
-                            if normalize_for_search(line) == normalize_for_search(last_anchor_line):
-                                lines.insert(i + 1, insert_text)
-                                anchor_found = True
-                                break
-                else:
-                    for i, line in enumerate(lines):
-                        if anchor_normalized in normalize_for_search(line):
-                            lines.insert(i + 1, insert_text)
-                            anchor_found = True
-                            break
-                if not anchor_found:
-                    return False, f"operation_{idx}_anchor_not_found", current_code
-                updated = "\n".join(lines)
-            elif op_type == "insert_before":
-                anchor = op.get("anchor")
-                insert_text = op.get("insert_text")
-                if not anchor or not insert_text:
-                    return False, f"operation_{idx}_invalid_insert_before", current_code
-                anchor_normalized = normalize_for_search(anchor)
-                lines = updated.split("\n")
-                anchor_found = False
-                if "\n" in anchor:
-                    content_normalized = normalize_for_search(updated)
-                    if anchor_normalized in content_normalized:
-                        anchor_lines = anchor.strip().split("\n")
-                        first_anchor_line = anchor_lines[0].strip()
-                        for i, line in enumerate(lines):
-                            if normalize_for_search(line) == normalize_for_search(first_anchor_line):
-                                lines.insert(i, insert_text)
-                                anchor_found = True
-                                break
-                else:
-                    for i, line in enumerate(lines):
-                        if anchor_normalized in normalize_for_search(line):
-                            lines.insert(i, insert_text)
-                            anchor_found = True
-                            break
-                if not anchor_found:
-                    return False, f"operation_{idx}_anchor_not_found", current_code
-                updated = "\n".join(lines)
-            elif op_type == "range_replace":
-                start_line = op.get("start_line")
-                end_line = op.get("end_line")
-                replacement = op.get("replacement")
-                if start_line is None or end_line is None or not replacement:
-                    return False, f"operation_{idx}_invalid_range_replace", current_code
-                lines = updated.split("\n")
-                start_idx = int(start_line) - 1
-                end_idx = int(end_line)
-                if start_idx < 0 or end_idx > len(lines):
-                    return False, f"operation_{idx}_range_out_of_bounds", current_code
-                lines[start_idx:end_idx] = [replacement]
-                updated = "\n".join(lines)
-            elif op_type == "unified_diff":
-                diff_content = op.get("diff_content")
-                if not diff_content:
-                    return False, f"operation_{idx}_invalid_unified_diff", current_code
-                updated = _apply_unified_diff_simple(updated, diff_content)
-            else:
-                return False, f"operation_{idx}_unsupported_type:{op_type}", current_code
-        except EditError as exc:
-            return False, f"operation_{idx}_edit_error:{exc}", current_code
-        except Exception as exc:
-            return False, f"operation_{idx}_failed:{exc}", current_code
-
-    return True, None, updated
-
-
-def _list_backtest_indicators() -> list[str]:
-    try:
-        from backtest import indicators as bt_indicators  # type: ignore
-    except Exception:
-        return []
-    names: list[str] = []
-    for name in dir(bt_indicators):
-        if name.startswith("_"):
-            continue
-        value = getattr(bt_indicators, name, None)
-        if callable(value):
-            names.append(name)
-    return sorted(set(names))
-
-
-def _extract_json_object(text: str) -> str:
-    start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return text
-    return text[start : end + 1]
-
-
-def _normalize_refine_json(data: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
-    instructions = data.get("instructions") or data.get("instruction") or ""
-    change_spec = data.get("change_spec")
-    if change_spec is None:
-        change_spec = data.get("changeSpec") or data.get("changespec") or data.get("change")
-    if change_spec is None and isinstance(data.get("operations"), list):
-        change_spec = {"operations": data.get("operations")}
-    if change_spec is None:
-        return None
-    if not isinstance(change_spec, dict):
-        return None
-    return str(instructions).strip(), change_spec
-
-
-def _parse_json_change_spec(response: str) -> tuple[str, dict] | None:
-    if not response:
-        return None
-    try:
-        data = json.loads(_extract_json_object(response))
-    except Exception:
-        return None
-    normalized = _normalize_refine_json(data)
-    if not normalized:
-        return None
-    instructions, change_spec = normalized
-    ops = change_spec.get("operations")
-    if ops is None:
-        return None
-    if not isinstance(ops, list):
-        return None
-    return instructions, change_spec
-
-
-def _resolve_llm_config(llm_meta: dict | None = None) -> tuple[str | None, str, str]:
-    api_key = os.getenv("DEEPSEEK_API_KEY") or os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("DEEPSEEK_BASE_URL") or os.getenv("LLM_BASE_URL") or "https://api.deepseek.com/v1"
-    model = os.getenv("DEEPSEEK_MODEL") or os.getenv("LLM_MODEL") or "deepseek-chat"
-    if isinstance(llm_meta, dict):
-        if llm_meta.get("base_url"):
-            base_url = str(llm_meta["base_url"])
-        if llm_meta.get("model"):
-            model = str(llm_meta["model"])
-    return api_key, base_url, model
-
-
-def _call_refine_llm(
-    *,
-    system_prompt: str,
-    user_prompt: str,
-    llm_meta: dict | None = None,
-) -> str | None:
-    api_key, base_url, model = _resolve_llm_config(llm_meta)
-    if not api_key:
-        return None
-    from agent.llm_openai_compat import ChatCompletionRequest, ChatMessage, chat_completion
-
-    req = ChatCompletionRequest(
-        api_key=api_key,
-        base_url=base_url,
-        model=model,
-        messages=[ChatMessage(role="system", content=system_prompt), ChatMessage(role="user", content=user_prompt)],
-        temperature=0.1,
-    )
-    return chat_completion(req)
-
-
-def _load_signal_mode_from_strategy_dir(strategy_dir: str) -> str:
-    protocol_path = os.path.join(strategy_dir, "strategy_protocol.json")
-    if not os.path.isfile(protocol_path):
-        return "target_weights"
-    try:
-        with open(protocol_path, "r", encoding="utf-8") as f:
-            payload = json.load(f)
-        mode = str(payload.get("signal_mode") or "").strip()
-        return mode or "target_weights"
-    except Exception:
-        return "target_weights"
-
-
-def _run_minimal_validation_on_code(
-    *,
-    code: str,
-    signal_mode: str,
-    n_bars: int = 200,
-    interval: str = "1h",
-) -> dict[str, Any]:
-    from agent.smoke_validation import run_smoke_validation, run_static_checks
-
-    static_result = run_static_checks(code)
-    if not static_result.get("ok"):
-        return {"ok": False, "stage": "static_check", "static": static_result}
-
-    smoke_result = run_smoke_validation(code, n_bars=n_bars, interval=interval, signal_mode=signal_mode)
-    if not smoke_result.get("ok"):
-        return {"ok": False, "stage": "smoke_backtest", "static": static_result, "smoke": smoke_result}
-
-    return {"ok": True, "stage": "ok", "static": static_result, "smoke": smoke_result}
-
-
-def _repair_change_spec_with_llm(
-    *,
-    current_code: str,
-    user_message: str,
-    error_summary: str,
-    validation_report: dict[str, Any],
-    previous_change_spec: dict[str, Any],
-    llm_meta: dict | None,
-) -> tuple[str, dict] | None:
-    try:
-        from agent.refine_prompts import REFINE_SYSTEM_PROMPT, build_refine_user_prompt
-    except Exception:
-        return None
-
-    indicators = _list_backtest_indicators()
-    hint = "Available indicators from backtest.indicators: " + (", ".join(indicators) if indicators else "(unavailable)")
-    previous = json.dumps(previous_change_spec or {}, ensure_ascii=False)
-    report = json.dumps(validation_report or {}, ensure_ascii=False)
-    repair_message = textwrap.dedent(
-        f"""
-        User request:
-        {user_message}
-
-        Previous ChangeSpec failed minimal validation.
-        Error: {error_summary}
-
-        Validation report:
-        {report}
-
-        Previous ChangeSpec:
-        {previous}
-
-        {hint}
-
-        Please output a corrected ChangeSpec JSON that passes validation.
-        - Prefer using available indicators or implement missing ones in-line.
-        - Keep changes minimal and preserve existing logic unless required.
-        """
-    ).strip()
-    user_prompt = build_refine_user_prompt(current_code, repair_message)
-    system_prompt = (
-        REFINE_SYSTEM_PROMPT
-        + "\n\nYou MUST respond with a single JSON object (no markdown, no code fences).\n"
-        + "Schema:\n"
-        + '{\n  "instructions": "<string>",\n  "change_spec": {"operations": [<operation>, ...]}\n}\n'
-        + "Rules:\n"
-        + "- change_spec.operations MUST be a JSON array.\n"
-    )
-    reply = _call_refine_llm(system_prompt=system_prompt, user_prompt=user_prompt, llm_meta=llm_meta)
-    if not reply:
-        return None
-    return _parse_json_change_spec(reply)
-
-
-def _validate_refine_change_spec_with_loop(
-    *,
-    current_code: str,
-    user_message: str,
-    refine_instructions: str,
-    change_spec_dict: dict[str, Any],
-    signal_mode: str,
-    llm_meta: dict | None,
-    max_attempts: int = 2,
-) -> tuple[bool, str, dict[str, Any], dict[str, Any], str | None]:
-    last_error = ""
-    last_report: dict[str, Any] = {}
-    attempt = 0
-    while attempt < max_attempts:
-        attempt += 1
-        applied_ok, apply_error, updated_code = _apply_change_spec_to_code(current_code, change_spec_dict)
-        if not applied_ok:
-            last_error = apply_error or "change_spec_apply_failed"
-            last_report = {"stage": "change_spec_apply", "error": last_error}
-        else:
-            validation_report = _run_minimal_validation_on_code(
-                code=updated_code,
-                signal_mode=signal_mode,
-                n_bars=200,
-                interval="1h",
-            )
-            if validation_report.get("ok"):
-                return True, refine_instructions, change_spec_dict, validation_report, None
-            stage = str(validation_report.get("stage") or "validation_failed")
-            if stage == "static_check":
-                static_error = (validation_report.get("static") or {}).get("error")
-                last_error = f"static_check_failed:{static_error}" if static_error else stage
-            elif stage == "smoke_backtest":
-                smoke_error = (validation_report.get("smoke") or {}).get("error")
-                last_error = f"smoke_backtest_failed:{smoke_error}" if smoke_error else stage
-            else:
-                last_error = stage
-            last_report = dict(validation_report)
-            last_report["error"] = last_error
-
-        if attempt >= max_attempts:
-            break
-
-        repaired = _repair_change_spec_with_llm(
-            current_code=current_code,
-            user_message=user_message,
-            error_summary=last_error,
-            validation_report=last_report,
-            previous_change_spec=change_spec_dict,
-            llm_meta=llm_meta,
-        )
-        if not repaired:
-            break
-        refine_instructions, change_spec_dict = repaired
-
-    return False, refine_instructions, change_spec_dict, last_report, last_error
-
-
-def _handle_refine_proposal_validate(db: Session, rds: redis.Redis, job: Job) -> None:
-    strategy_id = job.payload["strategy_id"]
-    change_spec = job.payload.get("change_spec") or {}
-    refine_instructions = job.payload.get("refine_instructions") or ""
-    user_message = job.payload.get("source_message") or job.payload.get("prompt") or ""
-    llm_meta = job.payload.get("llm_meta") or {}
-
-    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
-    strategy_path = os.path.join(strategy_dir, "strategy.py")
-    if not os.path.isfile(strategy_path):
-        raise RuntimeError("strategy_code_not_found")
-
-    with open(strategy_path, "r", encoding="utf-8") as f:
-        current_code = f.read()
-
-    _publish_log(rds, job.id, "Validating refine proposal...")
-    signal_mode = _load_signal_mode_from_strategy_dir(strategy_dir)
-    ok, refine_instructions, change_spec, report, error = _validate_refine_change_spec_with_loop(
-        current_code=current_code,
-        user_message=user_message,
-        refine_instructions=refine_instructions,
-        change_spec_dict=change_spec,
-        signal_mode=signal_mode,
-        llm_meta=llm_meta,
-        max_attempts=2,
-    )
-
-    job.payload = dict(job.payload or {})
-    job.payload["validation_report"] = report
-    if not ok:
-        job.payload["validation_error"] = error or "proposal_validation_failed"
-        db.flush()
-        raise RuntimeError(job.payload["validation_error"])
-
-    job.payload["validated_change_spec"] = change_spec
-    job.payload["validated_instructions"] = refine_instructions
-    db.flush()
-
-
-def _handle_refine_patch_validate(db: Session, rds: redis.Redis, job: Job) -> None:
-    strategy_id = job.payload["strategy_id"]
-    version_id = job.payload["version_id"]
-    prompt = job.payload.get("prompt", "")
-    version_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "versions", version_id)
-    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
-
-    _publish_log(rds, job.id, "Validating patched strategy...")
-    n_bars = int(job.payload.get("smoke_n_bars", 200))
-    interval = str(job.payload.get("smoke_interval", "1h"))
-    _validate_strategy_version(version_dir, n_bars=n_bars, interval=interval)
-    _publish_log(rds, job.id, "Validation passed. Promoting strategy...")
-
-    restore_version_to_current_strategy(settings.app_workspaces_dir, strategy_id, version_id)
-    _ensure_strategy_repo(strategy_dir)
-    commit_msg = f"AI patch: {prompt[:80]}" if prompt else "AI patch"
-    git_commit(strategy_dir, commit_msg)
-
-    strategy = db.get(Strategy, strategy_id)
-    if strategy is not None:
-        strategy.chat_status = ChatStatus.DONE
-        strategy.updated_at = _utcnow()
-        db.flush()
 
 
 def _handle_scrape_tradingview_trending(
@@ -2000,6 +1552,60 @@ def _handle_stop_sandbox(db: Session, rds: redis.Redis, docker_client: docker.Do
     _publish_log(rds, job.id, "dev sandbox stopped")
 
 
+# --- Job dispatch ----------------------------------------------------------
+#
+# Every handler is normalised to (db, rds, docker_client, job); handlers that do
+# not spawn a container simply ignore docker_client. Template jobs are imported
+# lazily inside their wrappers to keep worker start-up cheap.
+
+
+def _dispatch_repo(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    # REPO_SYNC is handled as a re-run of import over the selected branches.
+    _handle_repo_import(db, rds, job)
+
+
+def _dispatch_template_performance(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    generate_template_performance_data(db, rds, job)
+
+
+def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    from worker.template_backtest_job import handle_template_backtest
+
+    handle_template_backtest(db, rds, docker_client, job)
+
+
+def _dispatch_template_stable5(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    from worker.template_stable5_screening_job import run_template_stable5_screening
+
+    run_template_stable5_screening(db, rds, job)
+
+
+JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
+    # MVP core
+    JobType.BACKTEST.value: _handle_backtest,
+    JobType.GENERATE_STRATEGY.value: _handle_generate_strategy,
+    JobType.GENERATE_AND_BACKTEST.value: _handle_generate_and_backtest,
+    JobType.REFINE_STRATEGY.value: _handle_refine_strategy,
+    # Sandbox
+    JobType.START_SANDBOX.value: _handle_start_sandbox,
+    JobType.STOP_SANDBOX.value: _handle_stop_sandbox,
+    # Repositories
+    JobType.REPO_IMPORT.value: _dispatch_repo,
+    JobType.REPO_SYNC.value: _dispatch_repo,
+    # Trending (gated by settings.trending_scheduler_enabled)
+    JobType.TRENDING_SCRAPE.value: _handle_scrape_tradingview_trending,
+    JobType.TRENDING_BACKTEST.value: _handle_backtest_trending_top_n,
+    # Templates
+    JobType.TEMPLATE_PERFORMANCE_UPDATE.value: _dispatch_template_performance,
+    JobType.TEMPLATE_BACKTEST.value: _dispatch_template_backtest,
+    JobType.TEMPLATE_STABLE5_SCREENING.value: _dispatch_template_stable5,
+}
+
+_TRENDING_JOB_TYPES = frozenset(
+    {JobType.TRENDING_SCRAPE.value, JobType.TRENDING_BACKTEST.value}
+)
+
+
 def _process_job(session_factory, rds: redis.Redis, docker_client: docker.DockerClient, job_id: str) -> None:
     # DB/queue are not transactional together; the worker may see the queue message
     # slightly before the DB commit. Retry a bit to avoid dropping jobs.
@@ -2042,45 +1648,18 @@ def _process_job(session_factory, rds: redis.Redis, docker_client: docker.Docker
                 job.error_message = "cancelled"
                 db.flush()
                 return
-            if job.type == JobType.BACKTEST.value:
-                _handle_backtest(db, rds, docker_client, job)
-            elif job.type == JobType.GENERATE_STRATEGY.value:
-                _handle_generate_strategy(db, rds, docker_client, job)
-            elif job.type == JobType.GENERATE_AND_BACKTEST.value:
-                _handle_generate_and_backtest(db, rds, docker_client, job)
-            elif job.type == JobType.REFINE_STRATEGY.value:
-                _handle_refine_strategy(db, rds, docker_client, job)
-            elif job.type == JobType.START_SANDBOX.value:
-                _handle_start_sandbox(db, rds, docker_client, job)
-            elif job.type == JobType.STOP_SANDBOX.value:
-                _handle_stop_sandbox(db, rds, docker_client, job)
-            # Handle job types (now plain strings)
-            elif job.type == JobType.REPO_IMPORT.value:
-                _handle_repo_import(db, rds, job)
-            elif job.type == JobType.REPO_SYNC.value:
-                # For M1, treat as re-run of import for selected branches
-                _handle_repo_import(db, rds, job)
-            elif job.type in (JobType.TRENDING_SCRAPE.value, JobType.TRENDING_BACKTEST.value) and not settings.trending_scheduler_enabled:
+            if job.type in _TRENDING_JOB_TYPES and not settings.trending_scheduler_enabled:
                 _publish_log(rds, job.id, "trending_disabled")
                 job.status = JobStatus.CANCELLED
                 job.finished_at = _utcnow()
                 job.error_message = "trending_disabled"
                 db.flush()
                 return
-            elif job.type == JobType.TRENDING_SCRAPE.value:
-                _handle_scrape_tradingview_trending(db, rds, docker_client, job)
-            elif job.type == JobType.TRENDING_BACKTEST.value:
-                _handle_backtest_trending_top_n(db, rds, docker_client, job)
-            elif job.type == JobType.TEMPLATE_PERFORMANCE_UPDATE.value:
-                generate_template_performance_data(db, rds, job)
-            elif job.type == JobType.TEMPLATE_BACKTEST.value:
-                from worker.template_backtest_job import handle_template_backtest
-                handle_template_backtest(db, rds, docker_client, job)
-            elif job.type == JobType.TEMPLATE_STABLE5_SCREENING.value:
-                from worker.template_stable5_screening_job import run_template_stable5_screening
-                run_template_stable5_screening(db, rds, job)
-            else:
+
+            handler = JOB_HANDLERS.get(job.type)
+            if handler is None:
                 raise RuntimeError(f"unsupported_job_type: {job.type}")
+            handler(db, rds, docker_client, job)
 
         with session_scope(session_factory) as db:
             job = db.get(Job, job_id)
