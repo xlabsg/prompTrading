@@ -245,6 +245,8 @@ export interface BacktestRun {
 
 export interface BacktestMetrics {
     total_return?: number;
+    benchmark_return?: number;
+    alpha?: number;
     sharpe_ratio?: number;
     max_drawdown?: number;
     win_rate?: number;

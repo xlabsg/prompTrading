@@ -325,6 +325,7 @@ const BacktestView = ({
         const equity = rawEquity.map((p, i) => ({
             timestamp: normalizeTimestampMs(p.timestamp, i),
             equity: Number(p.equity ?? 0),
+            benchmark_equity: p.benchmark_equity !== undefined ? Number(p.benchmark_equity) : undefined,
             drawdown: Number(p.drawdown ?? 0),
         }));
 
@@ -949,6 +950,22 @@ const BacktestView = ({
                                             <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.finished")}</span><span className="font-medium">{backtestWindowEndMs ? formatTimestampLong(backtestWindowEndMs) : "-"}</span></div>
                                             <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.trades")}</span><span className="font-medium">{selectedRun.metrics.total_trades ?? "-"}</span></div>
                                             <div className="flex justify-between py-2"><span className="text-muted-foreground">{t("backtest.summary.winRate")}</span><span className="font-medium">{selectedRun.metrics.win_rate?.toFixed(1) ?? "-"}%</span></div>
+                                            {selectedRun.metrics.benchmark_return !== undefined && (
+                                                <div className="flex justify-between py-2">
+                                                    <span className="text-muted-foreground">Benchmark (Buy & Hold)</span>
+                                                    <span className={cn("font-medium", Number(selectedRun.metrics.benchmark_return) >= 0 ? "text-green-600" : "text-red-600")}>
+                                                        {Number(selectedRun.metrics.benchmark_return) >= 0 ? "+" : ""}{Number(selectedRun.metrics.benchmark_return).toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {selectedRun.metrics.alpha !== undefined && (
+                                                <div className="flex justify-between py-2">
+                                                    <span className="text-muted-foreground">Alpha (Excess Return)</span>
+                                                    <span className={cn("font-medium", Number(selectedRun.metrics.alpha) >= 0 ? "text-green-600" : "text-red-600")}>
+                                                        {Number(selectedRun.metrics.alpha) >= 0 ? "+" : ""}{Number(selectedRun.metrics.alpha).toFixed(2)}%
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div></CardContent></Card>
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                             <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span>{t("backtest.charts.equityCurve")}</span><span className="text-[11px] font-normal text-muted-foreground">{candleAligned ? `timeline: candles (${candleBarCount} bars)` : "timeline: equity"}</span></CardTitle></CardHeader><CardContent>

@@ -35,7 +35,7 @@ def list_exchange_accounts(
     db: Session = Depends(get_db),
 ) -> list[ExchangeAccountResponse]:
     require_strategy_member(request, db, strategy_id)
-    accounts = (
+    accounts = list(
         db.execute(
             select(StrategyExchangeAccount)
             .where(StrategyExchangeAccount.strategy_id == strategy_id)
@@ -44,6 +44,22 @@ def list_exchange_accounts(
         .scalars()
         .all()
     )
+    has_paper = any(a.exchange == "paper" for a in accounts)
+    if not has_paper:
+        paper_account = StrategyExchangeAccount(
+            strategy_id=strategy_id,
+            name="Paper Trading (Simulation)",
+            exchange="paper",
+            api_key_encrypted="paper_sim_key",
+            api_secret_encrypted=None,
+            api_passphrase_encrypted=None,
+            is_connected=True,
+        )
+        db.add(paper_account)
+        db.commit()
+        db.refresh(paper_account)
+        accounts.insert(0, paper_account)
+
     return accounts
 
 
@@ -56,14 +72,14 @@ def create_exchange_account(
 ) -> ExchangeAccountResponse:
     require_strategy_member(request, db, strategy_id, [StrategyRole.ADMIN])
     exchange = (req.exchange or "").strip().lower()
-    if exchange not in ("okx", "binance"):
+    if exchange not in ("okx", "binance", "paper"):
         raise HTTPException(status_code=400, detail="unsupported_exchange")
     account = StrategyExchangeAccount(
         strategy_id=strategy_id,
         name=req.name.strip(),
         exchange=exchange,
         api_key_encrypted=req.api_key.strip(),
-        api_secret_encrypted=encrypt_credential(req.api_secret.strip()),
+        api_secret_encrypted=encrypt_credential(req.api_secret.strip()) if req.api_secret else None,
         api_passphrase_encrypted=encrypt_credential(req.api_passphrase.strip()) if req.api_passphrase else None,
         is_connected=True,
     )

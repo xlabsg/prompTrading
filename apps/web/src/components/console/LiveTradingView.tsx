@@ -93,10 +93,15 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
     const filteredAccounts = accounts.filter((account) => account.exchange === config.exchange.toLowerCase());
 
     useEffect(() => {
-        if (!config.accountId && accounts.length > 0) {
-            setConfig(prev => ({ ...prev, accountId: accounts[0].id }));
+        if (config.exchange === "PAPER") {
+            const paperAcc = accounts.find((a) => a.exchange === "paper");
+            if (paperAcc && config.accountId !== paperAcc.id) {
+                setConfig((prev) => ({ ...prev, accountId: paperAcc.id }));
+            }
+        } else if (!config.accountId && filteredAccounts.length > 0) {
+            setConfig((prev) => ({ ...prev, accountId: filteredAccounts[0].id }));
         }
-    }, [accounts, config.accountId]);
+    }, [accounts, config.exchange, config.accountId, filteredAccounts]);
 
     // Load existing config on mount
     useEffect(() => {
@@ -371,8 +376,29 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                 <CardDescription>{t("liveTradingView.steps.exchangeDesc")}</CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="grid gap-3">
+                                <div className="grid gap-3 sm:grid-cols-2">
                                     <button
+                                        type="button"
+                                        onClick={() => {
+                                            const paperAcc = accounts.find((a) => a.exchange === "paper");
+                                            setConfig({ ...config, exchange: "PAPER", accountId: paperAcc ? paperAcc.id : "" });
+                                        }}
+                                        className={`p-4 rounded-lg border-2 text-left transition-all ${
+                                            config.exchange === "PAPER"
+                                                ? "border-primary bg-primary/5"
+                                                : "border-border hover:border-primary/50"
+                                        }`}
+                                    >
+                                        <div className="flex items-center gap-2 font-medium">
+                                            <span>Paper Trading (模拟盘)</span>
+                                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary">推荐</Badge>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground mt-1">
+                                            免 API Key，实时公共行情驱动，本地零风险模拟撮合
+                                        </div>
+                                    </button>
+                                    <button
+                                        type="button"
                                         onClick={() => setConfig({ ...config, exchange: "OKX", accountId: "" })}
                                         className={`p-4 rounded-lg border-2 text-left transition-all ${
                                             config.exchange === "OKX"
@@ -380,8 +406,8 @@ const LiveTradingView = ({ strategy, onNavigateToPortfolio, onNavigateToChat }: 
                                                 : "border-border hover:border-primary/50"
                                         }`}
                                     >
-                                        <div className="font-medium">OKX</div>
-                                        <div className="text-sm text-muted-foreground">
+                                        <div className="font-medium">OKX (实盘 / Demo)</div>
+                                        <div className="text-sm text-muted-foreground mt-1">
                                             {t("liveTradingView.exchange.okxSupport")}
                                         </div>
                                     </button>

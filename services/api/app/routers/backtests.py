@@ -71,15 +71,21 @@ def _normalize_equity_curve_payload(base_dir: str, payload: dict) -> dict:
             try:
                 import pandas as pd
 
-                df = pd.read_parquet(equity_parquet, columns=["timestamp", "equity", "drawdown"])
-                rebuilt = [
-                    {
+                cols = ["timestamp", "equity", "drawdown"]
+                available = pd.read_parquet(equity_parquet).columns.tolist()
+                if "benchmark_equity" in available:
+                    cols.append("benchmark_equity")
+                df = pd.read_parquet(equity_parquet, columns=cols)
+                rebuilt = []
+                for _, row in df.iterrows():
+                    item = {
                         "timestamp": int(row["timestamp"]),
                         "equity": round(float(row["equity"]), 2),
                         "drawdown": round(abs(float(row["drawdown"])) * 100, 2),
                     }
-                    for _, row in df.iterrows()
-                ]
+                    if "benchmark_equity" in df.columns and pd.notna(row.get("benchmark_equity")):
+                        item["benchmark_equity"] = round(float(row["benchmark_equity"]), 2)
+                    rebuilt.append(item)
                 return {"data": rebuilt}
             except Exception:
                 return payload

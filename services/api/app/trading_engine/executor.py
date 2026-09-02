@@ -84,7 +84,11 @@ class OrderExecutor:
         )
 
     def _get_client(self):
-        """获取或创建 OKX 客户端"""
+        """获取或创建 OKX 客户端或 Paper Trading 客户端"""
+        if getattr(self.account, "exchange", "").lower() == "paper" or not self.account.api_secret_encrypted:
+            from app.trading_engine.paper_client import PaperExchangeClient
+            return PaperExchangeClient()
+
         from okx_sdk import OKXClient
 
         return OKXClient(
