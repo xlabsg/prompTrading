@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "live-trading-sdk"
 version = "0.1.0"
-description = "Lightweight SDK for authoring live trading strategies against the Stratsmith."
+description = "Lightweight SDK for authoring live trading strategies against the PromptTrading."
 requires-python = ">=3.10"
 dependencies = [
     "pandas>=1.5",

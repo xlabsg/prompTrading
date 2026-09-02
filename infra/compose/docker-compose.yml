@@ -97,9 +97,9 @@ services:
       REPO_SYNC_INTERVAL_S: ${REPO_SYNC_INTERVAL_S:-900}
       WORKER_DOCKER_NETWORK: compose_default
       WORKER_WORKSPACES_VOLUME: ai_strategy_workspaces
-      WORKER_AGENT_IMAGE: stratsmith-agent:local
-      WORKER_BACKTEST_IMAGE: stratsmith-backtest:local
-      WORKER_DEV_IMAGE: stratsmith-dev:local
+      WORKER_AGENT_IMAGE: prompt-trading-agent:local
+      WORKER_BACKTEST_IMAGE: prompt-trading-backtest:local
+      WORKER_DEV_IMAGE: prompt-trading-dev:local
       WORKER_JOB_TIMEOUT_S: ${WORKER_JOB_TIMEOUT_S:-420}
       WORKER_CONSUMERS: ${WORKER_CONSUMERS:-2}
       # LLM config (from ./infra/compose/.env)
@@ -171,21 +171,21 @@ services:
     build:
       context: ../../
       dockerfile: infra/images/agent/Dockerfile
-    image: stratsmith-agent:local
+    image: prompt-trading-agent:local
     command: ["true"]
 
   backtest-image:
     build:
       context: ../../
       dockerfile: infra/images/backtest/Dockerfile
-    image: stratsmith-backtest:local
+    image: prompt-trading-backtest:local
     command: ["true"]
 
   dev-image:
     build:
       context: ../../
       dockerfile: infra/images/dev/Dockerfile
-    image: stratsmith-dev:local
+    image: prompt-trading-dev:local
     entrypoint: ["true"]
 
 volumes:

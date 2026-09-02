@@ -36,7 +36,7 @@ class PromptMetadata:
     description: str
     """Human-readable description of what this prompt does."""
 
-    author: str = "stratsmith"
+    author: str = "prompt-trading"
     """Author or creator of the prompt."""
 
     tags: list[str] = field(default_factory=list)

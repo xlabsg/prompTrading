@@ -150,7 +150,7 @@ Available tools:
 pytest packages/code_editor/code_editor/tests/
 ```
 
-## Integration with stratsmith
+## Integration with prompt-trading
 
 Add to `services/api/app/routers/`:
 

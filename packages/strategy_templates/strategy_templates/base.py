@@ -20,7 +20,7 @@ class TemplateMetadata:
     name: str
     description: str
     version: str = "1.0.0"
-    author: str = "Stratsmith"
+    author: str = "PromptTrading"
     tags: list[str] = field(default_factory=list)
     risk_level: str = "medium"  # low, medium, high
     trading_frequency: str = "intraday"  # low_frequency, intraday, high_frequency

@@ -1,9 +1,9 @@
 ---
 name: ss-test-reliability
-description: Design, review, and diagnose stratsmith tests and fixtures that can fail nondeterministically — shared Postgres/Redis state, Docker Compose services, host ports, asyncio tasks, event loops, clocks, module-global singletons, subprocesses, and unawaited teardown. Use when adding or changing tests with those risks, investigating a flaky test, or reviewing test isolation; use ss-pre-push-checks separately to select which commands to run.
+description: Design, review, and diagnose prompt-trading tests and fixtures that can fail nondeterministically — shared Postgres/Redis state, Docker Compose services, host ports, asyncio tasks, event loops, clocks, module-global singletons, subprocesses, and unawaited teardown. Use when adding or changing tests with those risks, investigating a flaky test, or reviewing test isolation; use ss-pre-push-checks separately to select which commands to run.
 ---
 
-# Reliable stratsmith tests
+# Reliable prompt-trading tests
 
 Build tests that stay correct when the whole suite runs against a live Compose stack, not only when run alone on a quiet machine. This skill owns isolation and reliability decisions; it does not decide which tests to run for a push.
 

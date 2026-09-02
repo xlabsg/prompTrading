@@ -1,8 +1,8 @@
-# Stratsmith
+# PromptTrading
 
 Forge algorithmic trading strategies with an LLM, backtest them, and run them live.
 
-Stratsmith turns a plain-language description — *"a moving average crossover on BTC with a 2% trailing stop"* — into executable strategy code, backtests it against historical data, and can promote it to live trading on OKX behind a risk-control layer.
+PromptTrading turns a plain-language description — *"a moving average crossover on BTC with a 2% trailing stop"* — into executable strategy code, backtests it against historical data, and can promote it to live trading on OKX behind a risk-control layer.
 
 > **Trading real money carries real risk.** This project executes live orders against a real exchange. Nothing here is financial advice, and no strategy it produces is validated for profitability. Start with [OKX demo trading](https://www.okx.com/demo-trading), and never grant your API key withdrawal permissions.
 
@@ -41,8 +41,8 @@ Strategy generation, backtesting, and trading are all queued through Redis and e
 **Requirements:** Docker with Compose, and an API key for an OpenAI-compatible LLM.
 
 ```bash
-git clone https://github.com/<you>/stratsmith.git
-cd stratsmith
+git clone https://github.com/<you>/prompTrading.git
+cd prompTrading
 cp infra/compose/.env.example infra/compose/.env   # then edit it, see below
 ./infra/compose/update.sh
 ```

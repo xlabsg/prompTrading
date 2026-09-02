@@ -1,7 +1,7 @@
 """Public SDK for authoring live trading strategies.
 
 Strategy authors import these types when implementing real-time strategies
-that run on the Stratsmith.
+that run on the PromptTrading.
 """
 
 from .types import Bar, StrategyContext

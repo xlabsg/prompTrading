@@ -1,4 +1,4 @@
-# Nginx 部署指南 - Stratsmith Platform
+# Nginx 部署指南 - PromptTrading Platform
 
 ## 部署架构
 
@@ -54,11 +54,11 @@ certbot --version
 
 ```bash
 # 复制配置文件
-cd /path/to/stratsmith
-sudo cp infra/nginx/stratsmith.conf /etc/nginx/sites-available/
+cd /path/to/prompTrading
+sudo cp infra/nginx/prompt-trading.conf /etc/nginx/sites-available/
 
 # 创建软链接
-sudo ln -s /etc/nginx/sites-available/stratsmith.conf /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/prompt-trading.conf /etc/nginx/sites-enabled/
 
 # 创建 certbot webroot 目录
 sudo mkdir -p /var/www/certbot
@@ -72,7 +72,7 @@ sudo nginx -t
 由于还没有 SSL 证书，需要先注释掉 SSL 相关配置：
 
 ```bash
-sudo nano /etc/nginx/sites-available/stratsmith.conf
+sudo nano /etc/nginx/sites-available/prompt-trading.conf
 ```
 
 **临时修改**：注释掉 HTTPS server block（line 31-185），只保留 HTTP server block (line 11-24)
@@ -99,7 +99,7 @@ sudo certbot --nginx -d ai.example.com
 
 ```bash
 # 编辑配置文件
-sudo nano /etc/nginx/sites-available/stratsmith.conf
+sudo nano /etc/nginx/sites-available/prompt-trading.conf
 
 # 取消 OCSP stapling 相关行的注释（约 line 48-52）
 # ssl_stapling on;
@@ -188,10 +188,10 @@ sudo firewall-cmd --reload
 
 ```bash
 # 实时查看访问日志
-sudo tail -f /var/log/nginx/stratsmith-access.log
+sudo tail -f /var/log/nginx/prompt-trading-access.log
 
 # 实时查看错误日志
-sudo tail -f /var/log/nginx/stratsmith-error.log
+sudo tail -f /var/log/nginx/prompt-trading-error.log
 
 # 日志轮转（nginx 默认已配置）
 cat /etc/logrotate.d/nginx

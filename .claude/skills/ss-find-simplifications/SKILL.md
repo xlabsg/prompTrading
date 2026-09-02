@@ -1,9 +1,9 @@
 ---
 name: ss-find-simplifications
-description: Use when working in the stratsmith repo to find non-obvious simplification candidates — dead, duplicated, speculative, over-built, added-then-removed, or hand-rolled-where-a-library-exists surfaces — and to turn them into evidence-backed proposals or targeted TODO markers rather than vague "this looks complex" complaints.
+description: Use when working in the prompt-trading repo to find non-obvious simplification candidates — dead, duplicated, speculative, over-built, added-then-removed, or hand-rolled-where-a-library-exists surfaces — and to turn them into evidence-backed proposals or targeted TODO markers rather than vague "this looks complex" complaints.
 ---
 
-# Finding stratsmith simplifications
+# Finding prompt-trading simplifications
 
 Turn a broad "find things to simplify" request into evidence-backed candidates that actually remove or collapse surface area. Guidance, not a checklist: follow the code, keep judgment active, and prefer a few well-proven candidates over a pile of thin guesses.
 

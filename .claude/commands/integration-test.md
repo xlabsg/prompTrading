@@ -1,5 +1,5 @@
 ---
-description: Run end-to-end integration tests for the Stratsmith
+description: Run end-to-end integration tests for the PromptTrading
 ---
 
 # Integration Tests
