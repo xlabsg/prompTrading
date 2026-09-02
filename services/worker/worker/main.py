@@ -548,7 +548,8 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         "AGENT_BACKTEST_SCORE_KEY",
         "AGENT_BACKTEST_BARS",
         "AGENT_MAX_STEPS",
-        "AGENT_MAX_TOKENS",
+        "AGENT_TAU_EVENT_TIMEOUT_S",
+        "AGENT_TAU_MAX_FOLLOW_UPS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -1057,7 +1058,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         "AGENT_BACKTEST_SCORE_KEY",
         "AGENT_BACKTEST_BARS",
         "AGENT_MAX_STEPS",
-        "AGENT_MAX_TOKENS",
+        "AGENT_TAU_EVENT_TIMEOUT_S",
+        "AGENT_TAU_MAX_FOLLOW_UPS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -1176,7 +1178,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         "AGENT_BACKTEST_SCORE_KEY",
         "AGENT_BACKTEST_BARS",
         "AGENT_MAX_STEPS",
-        "AGENT_MAX_TOKENS",
+        "AGENT_TAU_EVENT_TIMEOUT_S",
+        "AGENT_TAU_MAX_FOLLOW_UPS",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",

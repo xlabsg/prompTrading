@@ -26,7 +26,6 @@ dependencies = [
     "pydantic==2.10.4",
     "pydantic-settings==2.7.0",
     "APScheduler==3.11.0",
-    # smoke_validation runs LLM calls and traces them
     "openai>=1.0.0",
     "langfuse>=2.0.0",
 ]

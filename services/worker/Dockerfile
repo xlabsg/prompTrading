@@ -21,11 +21,6 @@ COPY packages/trending_scraper /tmp/trending_scraper
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir /tmp/trending_scraper && rm -rf /tmp/trending_scraper
 
-# Copy and install code_editor (fuzzy matching behind agent.editor)
-COPY packages/code_editor /tmp/code_editor
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir /tmp/code_editor && rm -rf /tmp/code_editor
-
 # Copy tradingview_scraper package (for scraping individual TradingView scripts)
 COPY packages/tradingview_scraper /tmp/tradingview_scraper
 RUN --mount=type=cache,target=/root/.cache/pip \

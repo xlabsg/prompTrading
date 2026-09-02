@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import os
 import re
 import logging
@@ -49,7 +50,6 @@ from app.schemas import (
 )
 from app.settings import settings
 from app.prompt_guard import validate_prompt
-from agent.llm_config import load_llm_config
 
 router = APIRouter()
 
@@ -374,7 +374,7 @@ def confirm_live_strategy(
             "live_ready": True,
         }
 
-    # AutonomousAgent-only flow: confirm succeeds only after strategy_live.py exists.
+    # Agent-only flow: confirm succeeds only after strategy_live.py exists.
     raise HTTPException(status_code=400, detail="Live strategy generation is still in progress or failed. Please check logs.")
 
 
@@ -901,6 +901,43 @@ def _build_autonomous_refine_task(user_message: str, history_context: str = "") 
     )
 
 
+def _tau_extension_path() -> str:
+    """Where the strategy-domain Tau extension lives in the API image."""
+    return os.getenv("AGENT_TAU_EXTENSION") or "/app/agent/tau_ext.py"
+
+
+def _strategy_code_problems(strategy_dir: str) -> list[str]:
+    """Report why `strategy_dir` does not hold usable strategy code."""
+    path = os.path.join(strategy_dir, "strategy.py")
+    if not os.path.isfile(path):
+        return ["- strategy.py does not exist."]
+    source = _read_strategy_code(path).strip()
+    if not source:
+        return ["- strategy.py is empty."]
+    try:
+        ast.parse(source)
+    except SyntaxError as exc:
+        return [f"- strategy.py does not parse: {exc}"]
+    return []
+
+
+def _overview_problems(strategy_dir: str) -> list[str]:
+    """Report why `strategy_dir` does not hold a usable overview."""
+    path = os.path.join(strategy_dir, "overview.md")
+    if not os.path.isfile(path):
+        return ["- overview.md does not exist."]
+    try:
+        with open(path, encoding="utf-8") as handle:
+            content = handle.read().strip()
+    except OSError as exc:
+        return [f"- overview.md could not be read: {exc}"]
+    if not content:
+        return ["- overview.md is empty."]
+    if "```mermaid" not in content:
+        return ["- overview.md has no ```mermaid diagram block."]
+    return []
+
+
 def _run_autonomous_refine(
     strategy_id: str,
     user_message: str,
@@ -908,37 +945,36 @@ def _run_autonomous_refine(
     chat_history: list[dict[str, Any]] | None = None,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
-    from agent.autonomous import AutonomousAgent
+    from agent import tau_driver
+    from agent.tau_config import ensure_catalog_entry, resolve_provider
 
     strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
-    strategy_path = os.path.join(strategy_dir, "strategy.py")
-    if not os.path.isfile(strategy_path):
+    if not os.path.isfile(os.path.join(strategy_dir, "strategy.py")):
         raise RuntimeError("strategy_code_not_found")
 
-    llm = load_llm_config()
-    if not llm.api_key:
+    target = resolve_provider()
+    ensure_catalog_entry(target)
+    if not os.getenv(target.api_key_env):
         raise RuntimeError("missing_llm_api_key")
 
-    agent = AutonomousAgent(
-        workspace_root=strategy_dir,
-        llm_config=llm,
-        progress_callback=on_progress,
-    )
     history_context = _build_refine_history_context(
         chat_history,
         latest_user_message=user_message,
     )
-    result = agent.run(_build_autonomous_refine_task(user_message, history_context))
-    if not result.success:
-        raise RuntimeError(result.summary or "autonomous_refine_failed")
-
-    updated_code = _read_strategy_code(strategy_path).strip()
-    if not updated_code:
-        raise RuntimeError("strategy_code_empty_after_refine")
+    session = tau_driver.run_session(
+        task=_build_autonomous_refine_task(user_message, history_context),
+        workspace=strategy_dir,
+        provider=target.provider,
+        model=target.model,
+        extension_path=_tau_extension_path(),
+        validate=lambda: _strategy_code_problems(strategy_dir),
+        progress_callback=on_progress,
+        env=target.credential_env(),
+    )
 
     return {
-        "agent_summary": result.summary,
-        "history_length": len(result.history),
+        "agent_summary": session.summary,
+        "history_length": session.turns,
         "refine_context_chars": len(history_context),
     }
 
@@ -1804,11 +1840,11 @@ def chat_with_strategy(
                     chat_history=history,
                 )
                 clean_reply = (
-                    "AutonomousAgent 已完成本次 refine，并已直接写入策略工作区。\n\n"
+                    "Agent 已完成本次 refine，并已直接写入策略工作区。\n\n"
                     f"{refine_meta.get('agent_summary') or '修改已应用。'}"
                 )
             except Exception as exc:
-                clean_reply = f"AutonomousAgent refine 失败：{exc}"
+                clean_reply = f"Agent refine 失败：{exc}"
                 _append_assistant_message(history, clean_reply)
                 strategy.chat_history = history
                 strategy.updated_at = datetime.now(timezone.utc)
@@ -1949,15 +1985,15 @@ def chat_with_strategy_stream(
                 session.close()
 
         if user_message.strip() == "/generate_overview":
-            from agent.autonomous import AutonomousAgent
+            from agent import tau_driver
+            from agent.tau_config import ensure_catalog_entry, resolve_provider
 
             yield f"data: {json.dumps({'type': 'token', 'content': 'Starting autonomous agent to generate overview...\\n'})}\n\n"
 
             try:
-                # Run Autonomous Agent
                 strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
-                llm = load_llm_config()
-                agent = AutonomousAgent(workspace_root=strategy_dir, llm_config=llm)
+                target = resolve_provider()
+                ensure_catalog_entry(target)
 
                 task_prompt = (
                     "Analyze `strategy.py` and create/update `overview.md`.\n\n"
@@ -1970,19 +2006,15 @@ def chat_with_strategy_stream(
                     "6. Verify the file before completing."
                 )
 
-                result = agent.run(task_prompt)
-
-                if result.success:
-                    overview_path = os.path.join(strategy_dir, "overview.md")
-                    if not os.path.exists(overview_path):
-                        raise RuntimeError("overview.md was not generated")
-                    with open(overview_path, "r", encoding="utf-8") as f:
-                        overview_content = f.read().strip()
-                    if not overview_content:
-                        raise RuntimeError("overview.md is empty")
-                    clean_reply = "Overview generated successfully and saved to `overview.md`."
-                else:
-                    clean_reply = f"Failed to generate overview. Agent stopped after {len(result.history)} steps."
+                tau_driver.run_session(
+                    task=task_prompt,
+                    workspace=strategy_dir,
+                    provider=target.provider,
+                    model=target.model,
+                    validate=lambda: _overview_problems(strategy_dir),
+                    env=target.credential_env(),
+                )
+                clean_reply = "Overview generated successfully and saved to `overview.md`."
 
                 _persist_chat(clean_reply)
 
@@ -2029,7 +2061,7 @@ def chat_with_strategy_stream(
             }
 
         if is_refinement_mode:
-            yield f"data: {json.dumps({'type': 'token', 'content': 'Running AutonomousAgent refine...\\n'})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'content': 'Running agent refine...\\n'})}\n\n"
             progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
             def _push_progress(event: dict[str, Any]) -> None:
@@ -2075,7 +2107,7 @@ def chat_with_strategy_stream(
 
             if refine_meta is not None and refine_error is None:
                 clean_reply = (
-                    "AutonomousAgent 已完成本次 refine，并已直接写入策略工作区。\n\n"
+                    "Agent 已完成本次 refine，并已直接写入策略工作区。\n\n"
                     f"{refine_meta.get('agent_summary') or '修改已应用。'}"
                 )
                 final_history = history + [{"role": "assistant", "content": clean_reply}]
@@ -2096,7 +2128,7 @@ def chat_with_strategy_stream(
                 finally:
                     session.close()
             else:
-                clean_reply = f"AutonomousAgent refine 失败：{refine_error or 'unknown_error'}"
+                clean_reply = f"Agent refine 失败：{refine_error or 'unknown_error'}"
                 _persist_chat(clean_reply)
                 final_history = history + [{"role": "assistant", "content": clean_reply}]
 

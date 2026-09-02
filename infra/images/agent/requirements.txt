@@ -6,6 +6,9 @@ TA-Lib==0.6.8
 pyarrow==18.1.0
 yfinance==0.2.54
 
+# Coding agent runtime. Pinned exactly: Tau is pre-1.0 and its RPC surface is
+# the integration contract, so an unreviewed minor bump is a production change.
+tau-ai==0.4.1
+
 # Observability (optional)
 langfuse>=2.0.0
-openai>=1.0.0
