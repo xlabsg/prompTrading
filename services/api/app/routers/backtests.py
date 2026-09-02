@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from control_plane.enums import JobStatus, JobType, StrategyRole
 from control_plane.versions import create_strategy_version
 from control_plane.models import BacktestRun, Dataset, Job, Strategy
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from control_plane.workspaces import get_run_dir, init_strategy_workspace
 from app.auth import require_strategy_member
 from app.deps import get_db, get_redis
@@ -299,7 +299,7 @@ def create_backtest(
     run.job_id = job.id
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(job)
     db.refresh(run)
@@ -381,7 +381,7 @@ def generate_and_backtest(
     run.job_id = job.id
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(job)
     db.refresh(run)

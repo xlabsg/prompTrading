@@ -8,6 +8,10 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 
+from typing import Optional
+from control_plane.file_queue import FileJobQueue
+
+
 def get_engine(request: Request) -> Engine:
     return request.app.state.db_engine
 
@@ -25,6 +29,10 @@ def get_db(request: Request) -> Generator[Session, None, None]:
         db.close()
 
 
-def get_redis(request: Request) -> redis.Redis:
-    return request.app.state.redis
+def get_redis(request: Request) -> Optional[redis.Redis]:
+    return getattr(request.app.state, "redis", None)
+
+
+def get_queue(request: Request) -> FileJobQueue:
+    return request.app.state.file_queue
 

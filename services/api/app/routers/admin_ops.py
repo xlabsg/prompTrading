@@ -79,6 +79,8 @@ class AdminDeleteTrendingStrategyRequest(BaseModel):
     tradingview_id: str
 
 
+from control_plane.queue import QUEUE_NAME, get_file_queue, request_cancel_job
+
 @router.get("/admin/queue", response_model=AdminQueueResponse)
 def admin_queue(
     request: Request,
@@ -87,19 +89,39 @@ def admin_queue(
     head_n: int = Query(10, ge=0, le=50),
 ) -> AdminQueueResponse:
     require_admin(request, db=db)
-    length = int(rds.llen(QUEUE_NAME))
-    head_raw = rds.lrange(QUEUE_NAME, 0, max(0, head_n - 1)) if head_n else []
     head: list[str] = []
-    for raw in head_raw or []:
+    
+    # Check file queue first
+    fq = get_file_queue(settings.workspaces_dir)
+    interactive_files = sorted(os.listdir(fq.interactive_dir)) if os.path.exists(fq.interactive_dir) else []
+    batch_files = sorted(os.listdir(fq.batch_dir)) if os.path.exists(fq.batch_dir) else []
+    
+    for f in interactive_files + batch_files:
+        if f.endswith(".json"):
+            job_id = f.split("_", 1)[-1].replace(".json", "")
+            head.append(job_id)
+            if len(head) >= head_n:
+                break
+    
+    length = len([f for f in interactive_files if f.endswith(".json")]) + len([f for f in batch_files if f.endswith(".json")])
+    
+    if rds is not None and length == 0:
         try:
-            payload = json.loads(raw)
-            if isinstance(payload, dict) and payload.get("job_id"):
-                head.append(str(payload["job_id"]))
-            elif isinstance(payload, str):
-                head.append(payload)
+            length = int(rds.llen(QUEUE_NAME))
+            head_raw = rds.lrange(QUEUE_NAME, 0, max(0, head_n - 1)) if head_n else []
+            for raw in head_raw or []:
+                try:
+                    payload = json.loads(raw)
+                    if isinstance(payload, dict) and payload.get("job_id"):
+                        head.append(str(payload["job_id"]))
+                    elif isinstance(payload, str):
+                        head.append(payload)
+                except Exception:
+                    head.append(str(raw))
         except Exception:
-            head.append(str(raw))
-    return AdminQueueResponse(length=length, head=head)
+            pass
+
+    return AdminQueueResponse(length=length, head=head[:head_n])
 
 
 @router.get("/admin/jobs", response_model=AdminJobsResponse)
@@ -122,7 +144,22 @@ def admin_jobs(
 
     jobs: list[AdminJobRow] = []
     for job in rows:
-        last_log = rds.get(f"{LAST_LOG_KEY_PREFIX}{job.id}")
+        last_log = None
+        if rds is not None:
+            try:
+                last_log = rds.get(f"{LAST_LOG_KEY_PREFIX}{job.id}")
+            except Exception:
+                pass
+        if not last_log:
+            log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job.id}.log")
+            if os.path.exists(log_path):
+                try:
+                    with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                        lines = f.readlines()
+                        if lines:
+                            last_log = lines[-1].strip()
+                except Exception:
+                    pass
         jobs.append(
             AdminJobRow(
                 id=job.id,
@@ -147,9 +184,25 @@ def admin_job_logs(
     tail: int = Query(120, ge=1, le=500),
 ) -> AdminLogTailResponse:
     require_admin(request, db=db)
-    key = f"{LOG_TAIL_KEY_PREFIX}{job_id}"
-    lines = rds.lrange(key, max(0, -tail), -1) or []
-    return AdminLogTailResponse(job_id=job_id, lines=[str(x) for x in lines])
+    lines: list[str] = []
+    log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
+    if os.path.exists(log_path):
+        try:
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                all_lines = f.readlines()
+                lines = [l.rstrip("\r\n") for l in all_lines[-tail:]]
+        except Exception:
+            pass
+
+    if not lines and rds is not None:
+        try:
+            key = f"{LOG_TAIL_KEY_PREFIX}{job_id}"
+            r_lines = rds.lrange(key, max(0, -tail), -1) or []
+            lines = [str(x) for x in r_lines]
+        except Exception:
+            pass
+
+    return AdminLogTailResponse(job_id=job_id, lines=lines)
 
 
 @router.post("/admin/jobs/{job_id}/cancel", response_model=AdminCancelResponse)
@@ -173,21 +226,8 @@ def admin_cancel_job(
     if status in (JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED):
         raise HTTPException(status_code=409, detail=f"job_not_cancellable:{status.value}")
 
-    # Signal cancel to workers (running jobs) and remove from queue (queued jobs).
-    rds.setex(f"{CANCEL_KEY_PREFIX}{job_id}", 3600, "1")
-    try:
-        # Producers sometimes push a raw job_id string, and sometimes push a JSON object
-        # with extra fields (type/payload). Remove any queue entries pointing to this job.
-        rds.lrem(QUEUE_NAME, 0, job_id)
-        for raw in rds.lrange(QUEUE_NAME, 0, -1) or []:
-            try:
-                payload = json.loads(raw)
-                if isinstance(payload, dict) and str(payload.get("job_id") or "") == job_id:
-                    rds.lrem(QUEUE_NAME, 0, raw)
-            except Exception:
-                continue
-    except Exception:
-        pass
+    # Signal cancel via file marker and optional Redis
+    request_cancel_job(settings.workspaces_dir, job_id, redis_client=rds)
 
     # If not started yet, cancel immediately in DB.
     if status == JobStatus.QUEUED:

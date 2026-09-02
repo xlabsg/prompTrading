@@ -169,7 +169,15 @@ async def lifespan(app: FastAPI):
     session_factory = create_session_factory(engine)
     Base.metadata.create_all(engine)
 
-    rds = await _wait_for_redis(settings.redis_url, timeout_s=60.0)
+    rds = None
+    if settings.redis_url:
+        try:
+            rds = await _wait_for_redis(settings.redis_url, timeout_s=10.0)
+        except Exception as e:
+            logger.warning(f"Redis not reachable ({e}), proceeding with zero-redis file queue")
+
+    from control_plane.queue import get_file_queue
+    app.state.file_queue = get_file_queue(settings.workspaces_dir)
 
     # Save main event loop reference for thread-safe WebSocket broadcasting
     loop = asyncio.get_running_loop()
@@ -238,7 +246,11 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        rds.close()
+        if rds is not None:
+            try:
+                rds.close()
+            except Exception:
+                pass
         engine.dispose()
 
 

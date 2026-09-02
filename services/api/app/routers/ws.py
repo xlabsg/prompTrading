@@ -29,33 +29,54 @@ def get_main_event_loop() -> asyncio.AbstractEventLoop | None:
     return _main_event_loop
 
 
+import os
+
 @router.websocket("/jobs/{job_id}")
 async def job_logs_ws(websocket: WebSocket, job_id: str) -> None:
     await websocket.accept()
-    channel = job_log_channel(job_id)
+    log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
+    done_marker = f"{log_path}.done"
 
-    rds = aioredis.from_url(settings.redis_url, decode_responses=True)
-    pubsub = rds.pubsub()
-    await pubsub.subscribe(channel)
+    # Wait up to 30s for the job log file to be created
+    wait_count = 0
     try:
-        async for msg in pubsub.listen():
-            if msg is None:
-                await asyncio.sleep(0)
-                continue
-            if msg.get("type") != "message":
-                continue
-            data = msg.get("data")
-            if data is None:
-                continue
-            await websocket.send_text(str(data))
+        while not os.path.exists(log_path) and wait_count < 300:
+            if os.path.exists(done_marker):
+                break
+            await asyncio.sleep(0.1)
+            wait_count += 1
+
+        if not os.path.exists(log_path):
+            await websocket.send_text(f"[api] Job {job_id} is queued or has no logs yet...")
+            while not os.path.exists(log_path):
+                if os.path.exists(done_marker):
+                    break
+                await asyncio.sleep(0.5)
+
+        if os.path.exists(log_path):
+            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
+                idle_ticks = 0
+                while True:
+                    line = f.readline()
+                    if line:
+                        idle_ticks = 0
+                        await websocket.send_text(line.rstrip("\r\n"))
+                    else:
+                        if os.path.exists(done_marker):
+                            # Drain any remaining lines written before done marker
+                            tail_line = f.readline()
+                            while tail_line:
+                                await websocket.send_text(tail_line.rstrip("\r\n"))
+                                tail_line = f.readline()
+                            break
+                        await asyncio.sleep(0.1)
+                        idle_ticks += 1
+                        if idle_ticks > 6000:  # 10 minutes timeout on idle
+                            break
     except WebSocketDisconnect:
         pass
-    finally:
-        try:
-            await pubsub.unsubscribe(channel)
-            await pubsub.close()
-        finally:
-            await rds.aclose()
+    except Exception as e:
+        logger.warning(f"WebSocket error for job {job_id}: {e}")
 
 
 class ConnectionManager:

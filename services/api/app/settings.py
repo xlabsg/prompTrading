@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="APP_", extra="ignore")
 
     db_url: str
-    redis_url: str
+    redis_url: Optional[str] = None
     workspaces_dir: str = "/workspaces"
     public_base_url: str = "http://localhost:3000"
     sandbox_base_url: str = "http://localhost:8080"

@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from control_plane.models import StrategyTemplate, Job, BacktestRun
 from control_plane.enums import JobType, JobStatus
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from control_plane.workspaces import get_run_dir
 from app.admin import require_admin
 from app.deps import get_db, get_redis
@@ -165,13 +165,8 @@ async def run_template_backtest(
     db.commit()
     db.refresh(job)
 
-    # Queue job in Redis
-    import json
-    rds.rpush(QUEUE_NAME, json.dumps({
-        "job_id": job.id,
-        "type": job.type,
-        "payload": job.payload,
-    }))
+    # Queue job
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
 
     return RunBacktestResponse(
         message=f"Backtest job queued for template '{template.name}'",
@@ -361,18 +356,7 @@ async def run_stable5_screening(
     db.commit()
     db.refresh(job)
 
-    import json
-
-    rds.rpush(
-        QUEUE_NAME,
-        json.dumps(
-            {
-                "job_id": job.id,
-                "type": job.type,
-                "payload": job.payload,
-            }
-        ),
-    )
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
 
     return RunStable5ScreeningResponse(message="Stable5 screening job queued", job_id=job.id)
 

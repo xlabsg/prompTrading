@@ -97,18 +97,50 @@ def _wait_for_db(db_url: str, timeout_s: float = 90.0) -> None:
     raise RuntimeError(f"db_not_ready after {attempt} attempts") from last_err
 
 
-def _wait_for_redis(redis_url: str, timeout_s: float = 60.0) -> redis.Redis:
-    rds = redis.Redis.from_url(redis_url, decode_responses=True)
-    deadline = time.monotonic() + timeout_s
-    last_err: Exception | None = None
-    while time.monotonic() < deadline:
-        try:
-            rds.ping()
-            return rds
-        except Exception as e:
-            last_err = e
-            time.sleep(0.5)
-    raise RuntimeError("redis_not_ready") from last_err
+import psutil
+from control_plane.queue import (
+    QUEUE_NAME,
+    job_log_channel,
+    get_file_queue,
+    enqueue_job,
+    request_cancel_job,
+    is_job_cancelled,
+)
+
+
+def _check_system_resources_available(min_available_mb: int = 256) -> bool:
+    try:
+        vm = psutil.virtual_memory()
+        available_mb = vm.available / (1024 * 1024)
+        if available_mb < min_available_mb:
+            logging.warning(
+                f"[worker] Low memory warning: {available_mb:.1f} MB available (threshold: {min_available_mb} MB). Throttling job dequeue."
+            )
+            return False
+        return True
+    except Exception:
+        return True
+
+
+def _wait_for_redis(redis_url: str | None, timeout_s: float = 10.0) -> Optional[redis.Redis]:
+    if not redis_url:
+        return None
+    try:
+        rds = redis.Redis.from_url(redis_url, decode_responses=True)
+        deadline = time.monotonic() + timeout_s
+        last_err: Exception | None = None
+        while time.monotonic() < deadline:
+            try:
+                rds.ping()
+                return rds
+            except Exception as e:
+                last_err = e
+                time.sleep(0.5)
+        print(f"[worker] Redis not reachable ({last_err}), proceeding in zero-redis file queue mode.")
+        return None
+    except Exception as e:
+        print(f"[worker] Redis initialization skipped ({e}).")
+        return None
 
 
 LOG_TAIL_KEY_PREFIX = "jobs:logtail:v1:"
@@ -116,20 +148,40 @@ LAST_LOG_KEY_PREFIX = "jobs:lastlog:v1:"
 CANCEL_KEY_PREFIX = "jobs:cancel:v1:"
 
 
-def _publish_log(rds: redis.Redis, job_id: str, message: str) -> None:
-    # PubSub is used by the UI log stream; store a small Redis tail as well so admins
-    # can inspect progress without relying on transient pubsub subscribers.
-    rds.publish(job_log_channel(job_id), message)
+def _publish_log(job_id: str, message: str, rds: Optional[redis.Redis] = None) -> None:
+    # Always append to local file queue log: /workspaces/.queue/logs/{job_id}.log
     try:
-        pipe = rds.pipeline()
-        tail_key = f"{LOG_TAIL_KEY_PREFIX}{job_id}"
-        pipe.rpush(tail_key, message)
-        pipe.ltrim(tail_key, -200, -1)
-        pipe.expire(tail_key, 86400)
-        pipe.setex(f"{LAST_LOG_KEY_PREFIX}{job_id}", 86400, message)
-        pipe.execute()
+        log_dir = os.path.join(settings.app_workspaces_dir, ".queue", "logs")
+        _safe_mkdir(log_dir)
+        log_path = os.path.join(log_dir, f"{job_id}.log")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(message + "\n")
     except Exception:
-        # Never let logging break job execution.
+        pass
+
+    # Optional Redis fallback/mirroring
+    if rds is not None:
+        try:
+            rds.publish(job_log_channel(job_id), message)
+            pipe = rds.pipeline()
+            tail_key = f"{LOG_TAIL_KEY_PREFIX}{job_id}"
+            pipe.rpush(tail_key, message)
+            pipe.ltrim(tail_key, -200, -1)
+            pipe.expire(tail_key, 86400)
+            pipe.setex(f"{LAST_LOG_KEY_PREFIX}{job_id}", 86400, message)
+            pipe.execute()
+        except Exception:
+            pass
+
+
+def _mark_job_log_done(job_id: str) -> None:
+    try:
+        log_dir = os.path.join(settings.app_workspaces_dir, ".queue", "logs")
+        _safe_mkdir(log_dir)
+        done_marker = os.path.join(log_dir, f"{job_id}.log.done")
+        with open(done_marker, "w", encoding="utf-8") as f:
+            f.write(str(time.time()))
+    except Exception:
         pass
 
 
@@ -137,15 +189,12 @@ def _cancel_key(job_id: str) -> str:
     return f"{CANCEL_KEY_PREFIX}{job_id}"
 
 
-def _is_cancel_requested(rds: redis.Redis, job_id: str) -> bool:
-    try:
-        return str(rds.get(_cancel_key(job_id)) or "") == "1"
-    except Exception:
-        return False
+def _is_cancel_requested(job_id: str, rds: Optional[redis.Redis] = None) -> bool:
+    return is_job_cancelled(settings.app_workspaces_dir, job_id, redis_client=rds)
 
 
-def _raise_if_cancelled(rds: redis.Redis, job_id: str) -> None:
-    if _is_cancel_requested(rds, job_id):
+def _raise_if_cancelled(job_id: str, rds: Optional[redis.Redis] = None) -> None:
+    if _is_cancel_requested(job_id, rds=rds):
         raise RuntimeError("job_cancelled")
 
 
@@ -191,7 +240,7 @@ def _run_container_and_stream_logs(
     client: docker.DockerClient,
     *,
     job_id: str,
-    rds: redis.Redis,
+    rds: Optional[redis.Redis] = None,
     image: str,
     name: str,
     command: Optional[list[str]] = None,
@@ -241,6 +290,11 @@ def _run_container_and_stream_logs(
     if ulimits:
         run_kwargs["ulimits"] = ulimits
 
+    # Support gVisor (runsc) or custom container runtime for sandboxing
+    sandbox_runtime = settings.sandbox_runtime or os.getenv("SANDBOX_RUNTIME")
+    if sandbox_runtime:
+        run_kwargs["runtime"] = sandbox_runtime
+
     container = client.containers.run(**run_kwargs)
     stop_event = threading.Event()
     def _stream_logs() -> None:
@@ -255,7 +309,7 @@ def _run_container_and_stream_logs(
                 if not line:
                     continue
                 tail.append(line)
-                _publish_log(rds, job_id, line)
+                _publish_log(job_id, line, rds=rds)
                 if log_f is not None:
                     log_f.write(line + "\n")
         except BaseException:
@@ -275,8 +329,8 @@ def _run_container_and_stream_logs(
                 # If the daemon or container disappears, treat as failure and let cleanup run.
                 break
 
-            if _is_cancel_requested(rds, job_id):
-                _publish_log(rds, job_id, "[worker] job_cancelled: killing container")
+            if _is_cancel_requested(job_id, rds=rds):
+                _publish_log(job_id, "[worker] job_cancelled: killing container", rds=rds)
                 try:
                     container.kill()
                 except Exception:
@@ -293,7 +347,7 @@ def _run_container_and_stream_logs(
                 break
 
             if timeout_s is not None and (time.monotonic() - start) > float(timeout_s):
-                _publish_log(rds, job_id, f"[worker] job_timeout: killing container after {timeout_s}s")
+                _publish_log(job_id, f"[worker] job_timeout: killing container after {timeout_s}s", rds=rds)
                 try:
                     container.kill()
                 except Exception:
@@ -305,6 +359,7 @@ def _run_container_and_stream_logs(
 
         return exit_code, list(tail)
     finally:
+        _mark_job_log_done(job_id)
         stop_event.set()
         try:
             t.join(timeout=2.0)
@@ -782,7 +837,7 @@ def _enqueue_stale_repo_syncs(session_factory, rds: redis.Redis, *, min_age_s: i
             )
             db.add(job)
             db.flush()
-            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+            enqueue_job(settings.app_workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
 
 
 def _parse_timeout_s(env_key: str) -> float | None:
@@ -1520,15 +1575,12 @@ def _create_backtest_trending_top_n_job(
     db.add(job)
     db.commit()
 
-    # Add to Redis queue
-    import json
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+    enqueue_job(settings.app_workspaces_dir, job_id, JobType.TRENDING_BACKTEST.value, {"strategy_ids": strategy_ids}, priority="batch", redis_client=rds)
 
 
-
-def _handle_start_sandbox(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+def _handle_start_sandbox(db: Session, rds: Optional[redis.Redis], docker_client: docker.DockerClient, job: Job) -> None:
     """Sandbox feature disabled - Traefik has been removed."""
-    _publish_log(rds, job.id, "Sandbox feature is disabled. Traefik reverse proxy has been removed.")
+    _publish_log(job.id, "Sandbox feature is disabled. Traefik reverse proxy has been removed.", rds=rds)
     raise RuntimeError(
         "Sandbox (code-server) feature is disabled. "
         "Traefik reverse proxy has been removed from the infrastructure. "
@@ -1609,7 +1661,7 @@ _TRENDING_JOB_TYPES = frozenset(
 )
 
 
-def _process_job(session_factory, rds: redis.Redis, docker_client: docker.DockerClient, job_id: str) -> None:
+def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: docker.DockerClient, job_id: str) -> None:
     # DB/queue are not transactional together; the worker may see the queue message
     # slightly before the DB commit. Retry a bit to avoid dropping jobs.
     job_found = False
@@ -1623,7 +1675,7 @@ def _process_job(session_factory, rds: redis.Redis, docker_client: docker.Docker
                 # If an admin already cancelled this job, don't override it.
                 if str(job.status) == JobStatus.CANCELLED:
                     return
-                if _is_cancel_requested(rds, job_id) and str(job.status) == JobStatus.QUEUED:
+                if _is_cancel_requested(job_id, rds=rds) and str(job.status) == JobStatus.QUEUED:
                     job.status = JobStatus.CANCELLED
                     job.finished_at = _utcnow()
                     job.error_message = "cancelled"
@@ -1645,14 +1697,14 @@ def _process_job(session_factory, rds: redis.Redis, docker_client: docker.Docker
                 return
             if str(job.status) == JobStatus.CANCELLED:
                 return
-            if _is_cancel_requested(rds, job_id):
+            if _is_cancel_requested(job_id, rds=rds):
                 job.status = JobStatus.CANCELLED
                 job.finished_at = _utcnow()
                 job.error_message = "cancelled"
                 db.flush()
                 return
             if job.type in _TRENDING_JOB_TYPES and not settings.trending_scheduler_enabled:
-                _publish_log(rds, job.id, "trending_disabled")
+                _publish_log(job.id, "trending_disabled", rds=rds)
                 job.status = JobStatus.CANCELLED
                 job.finished_at = _utcnow()
                 job.error_message = "trending_disabled"
@@ -1671,23 +1723,25 @@ def _process_job(session_factory, rds: redis.Redis, docker_client: docker.Docker
             job.status = JobStatus.SUCCEEDED
             job.finished_at = _utcnow()
             db.flush()
-            _publish_log(rds, job_id, "job succeeded")
+            _publish_log(job_id, "job succeeded", rds=rds)
     except Exception as e:
         err = f"{type(e).__name__}: {e}"
         tb = traceback.format_exc()
-        _publish_log(rds, job_id, err)
-        _publish_log(rds, job_id, tb)
+        _publish_log(job_id, err, rds=rds)
+        _publish_log(job_id, tb, rds=rds)
         with session_scope(session_factory) as db:
             job = db.get(Job, job_id)
             if job is None:
                 return
-            if _is_cancel_requested(rds, job_id) or "cancelled" in err.lower():
+            if _is_cancel_requested(job_id, rds=rds) or "cancelled" in err.lower():
                 job.status = JobStatus.CANCELLED
                 job.error_message = "cancelled"
             else:
                 job.status = JobStatus.FAILED
                 job.error_message = err
             job.finished_at = _utcnow()
+    finally:
+        _mark_job_log_done(job_id)
 
             # Ensure related entities reflect failure even if the original transaction rolled back.
             run_id = None
@@ -1760,7 +1814,7 @@ def _run_scheduled_scrape(rds: redis.Redis) -> None:
             schedule.next_run_at = None
             db.commit()
 
-            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+            enqueue_job(settings.app_workspaces_dir, job_id, job.type, job.payload, priority="batch", redis_client=rds)
             logger.info(f"Created scheduled scrape job: {job_id}")
     except Exception as e:
         logger.error(f"Error running scheduled scrape: {e}")
@@ -1852,7 +1906,7 @@ def _run_scheduled_template_update(rds: redis.Redis) -> None:
                 schedule.next_run_at = None
                 db.commit()
 
-            rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+            enqueue_job(settings.app_workspaces_dir, job_id, job.type, job.payload, priority="batch", redis_client=rds)
             logger.info(f"Created scheduled template performance update job: {job_id}")
     except Exception as e:
         logger.error(f"Error running scheduled template update: {e}")
@@ -1934,9 +1988,7 @@ def _run_scheduled_stable5_screening(rds: redis.Redis) -> None:
             db.add(job)
             db.commit()
 
-        import json
-
-        rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+        enqueue_job(settings.app_workspaces_dir, job_id, job.type, job.payload, priority="batch", redis_client=rds)
         logger.info(f"Created scheduled Stable5 screening job: {job_id}")
     except Exception as e:
         logger.error(f"Error running scheduled Stable5 screening: {e}")
@@ -1989,9 +2041,17 @@ def main() -> None:
         finally:
             conn.execute(text("SELECT pg_advisory_unlock(8811223344)"))
 
-    print("[worker] Waiting for Redis connection...")
-    rds = _wait_for_redis(settings.app_redis_url, timeout_s=60.0)
-    print("[worker] Redis connected")
+    print("[worker] Connecting to Redis (optional)...")
+    rds = _wait_for_redis(settings.app_redis_url, timeout_s=10.0)
+    if rds:
+        print("[worker] Redis connected")
+    else:
+        print("[worker] Running in standalone zero-redis mode")
+
+    file_queue = get_file_queue(settings.app_workspaces_dir)
+    recovered = file_queue.recover_stale_processing_jobs()
+    if recovered > 0:
+        print(f"[worker] Recovered {recovered} stale processing job(s) into queue")
 
     mode = (getattr(settings, "worker_mode", "all") or "all").strip().lower()
     run_scheduler = mode in {"all", "scheduler"}
@@ -2035,14 +2095,41 @@ def main() -> None:
     def _consumer_loop(consumer_id: int) -> None:
         nonlocal last_sync_check, processed_jobs
         while not stop_event.is_set():
-            try:
-                item = rds.blpop(QUEUE_NAME, timeout=5)
-            except Exception as e:
-                print(f"[worker] Redis BLPOP error (c{consumer_id}): {e}")
+            # Resource admission control check (prevent host OOM)
+            if not _check_system_resources_available(min_available_mb=settings.min_available_memory_mb):
                 time.sleep(1.0)
                 continue
 
-            if not item:
+            q_item = None
+            job_id = None
+
+            # 1. Try file queue first (interactive priority first, then batch)
+            try:
+                q_item = file_queue.dequeue(timeout_s=1.0)
+                if q_item is not None:
+                    job_id = q_item.job_id
+            except Exception as e:
+                print(f"[worker] File queue dequeue error (c{consumer_id}): {e}")
+
+            # 2. If no file job, check Redis queue if redis is connected
+            if not job_id and rds is not None:
+                try:
+                    r_item = rds.blpop(QUEUE_NAME, timeout=1)
+                    if r_item:
+                        _, raw = r_item
+                        try:
+                            payload = json.loads(raw)
+                            if isinstance(payload, dict):
+                                job_id = payload.get("job_id")
+                            elif isinstance(payload, str):
+                                job_id = payload
+                        except Exception:
+                            if isinstance(raw, str):
+                                job_id = raw
+                except Exception as e:
+                    pass
+
+            if not job_id:
                 # Only one consumer performs periodic repo-sync enqueue to avoid noisy duplication.
                 if consumer_id == 0:
                     now = time.monotonic()
@@ -2054,34 +2141,20 @@ def main() -> None:
                             pass
                 continue
 
-            _, raw = item
-            job_id = None
-            try:
-                payload = json.loads(raw)
-                if isinstance(payload, dict):
-                    job_id = payload.get("job_id")
-                elif isinstance(payload, str):
-                    job_id = payload
-            except Exception:
-                # Fall back to raw string payloads from older producers.
-                if isinstance(raw, str):
-                    job_id = raw
-
-            if not job_id:
-                print(f"[worker] Failed to parse job payload: 'job_id' (c{consumer_id})")
-                continue
-
             print(f"[worker] (c{consumer_id}) Processing job: {job_id[:8]}...")
 
             try:
                 _process_job(session_factory, rds, docker_client, job_id)
+                if q_item is not None:
+                    file_queue.mark_completed(q_item)
                 with processed_jobs_lock:
                     processed_jobs += 1
                     total = processed_jobs
                 print(f"[worker] (c{consumer_id}) Job {job_id[:8]}... completed (total: {total})")
             except Exception as e:
+                if q_item is not None:
+                    file_queue.mark_failed(q_item)
                 print(f"[worker] (c{consumer_id}) Job {job_id[:8]}... FAILED: {e}")
-                import traceback
                 traceback.print_exc()
 
             time.sleep(0.01)

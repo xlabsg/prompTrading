@@ -270,15 +270,15 @@ from strategy_sdk import *
         self.db.add(job)
         self.db.commit()
 
-        # Queue job in Redis
-        if self.redis:
-            import json
-            from control_plane.queue import QUEUE_NAME
-            self.redis.rpush(QUEUE_NAME, json.dumps({
-                "job_id": job.id,
-                "type": job.type.value,
-                "payload": job.payload,
-            }))
+        from control_plane.queue import enqueue_job
+        enqueue_job(
+            settings.workspaces_dir,
+            job.id,
+            job.type.value if hasattr(job.type, "value") else str(job.type),
+            job.payload,
+            priority="batch",
+            redis_client=self.redis,
+        )
 
         return job
 

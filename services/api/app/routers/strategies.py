@@ -30,7 +30,7 @@ from control_plane.models import (
     StrategyMember,
     StrategyVersion,
 )
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, enqueue_job
 from control_plane.workspaces import get_run_dir, init_strategy_workspace
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
 from app.deps import get_db, get_redis, get_session_factory
@@ -345,7 +345,7 @@ def generate_live_strategy(
         strategy.updated_at = datetime.now(timezone.utc)
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     # Return a placeholder response to satisfy the frontend contract
     # The frontend should be updated to handle this async flow better,
@@ -2315,7 +2315,7 @@ def generate_strategy(
     db.flush()
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(job)
     db.refresh(version)
@@ -2375,7 +2375,7 @@ def refine_strategy(
     db.flush()
 
     db.commit()
-    rds.rpush(QUEUE_NAME, json.dumps({"job_id": job.id}))
+    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(job)
     db.refresh(version)

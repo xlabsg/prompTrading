@@ -41,10 +41,8 @@ with session_scope(create_session_factory(engine)) as db:
         status="queued",
     )
     db.add(job)
-    db.commit()
-
-rds = redis.Redis.from_url(settings.redis_url, decode_responses=True)
-rds.rpush(QUEUE_NAME, json.dumps({"job_id": job_id}))
+from control_plane.queue import enqueue_job
+enqueue_job(settings.workspaces_dir, job_id, JobType.TEMPLATE_STABLE5_SCREENING.value, {"limit": limit}, priority="batch")
 
 print(f"Stable5 screening job queued: {job_id}")
 print("Watch worker logs:")

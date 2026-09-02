@@ -39,9 +39,8 @@ with session_scope(create_session_factory(engine)) as db:
     db.commit()
 
 # 添加到队列
-rds = redis.Redis.from_url(settings.redis_url, decode_responses=True)
-rds.rpush(QUEUE_NAME, job_id)
-rds.close()
+from control_plane.queue import enqueue_job
+enqueue_job(settings.workspaces_dir, job_id, 'TRENDING_SCRAPE', priority='batch')
 
 print(f'✅ Trending 抓取任务已创建: {job_id[:8]}...')
 print()
