@@ -437,8 +437,27 @@ def main() -> int:
     ensure_catalog_entry(tau_target)
     print(f"[agent] tau provider={tau_target.provider} model={tau_target.model}")
 
+    # Pre-flight DAG: Intent-aware routing, market regime diagnosis, and on-demand web research
+    enriched_prompt = prompt
+    try:
+        import asyncio
+        from agent.dag import DAGRunner, build_smart_strategy_dag
+        dag = build_smart_strategy_dag()
+        runner = DAGRunner()
+        dag_ctx = asyncio.run(runner.run(dag, {
+            "prompt": prompt,
+            "symbol": dataset.symbol or "BTC-USDT",
+            "interval": dataset.interval or "1h",
+        }))
+        if dag_ctx.get("enriched_prompt"):
+            enriched_prompt = dag_ctx.get("enriched_prompt")
+            track = dag_ctx.get("execution_track", "fast_track")
+            print(f"[agent] DAG intent routed to: {track} (enriched prompt length: {len(enriched_prompt)})")
+    except Exception as e:
+        print(f"[agent] DAG pre-flight warning: {e}")
+
     task = _build_agent_task(
-        prompt=prompt,
+        prompt=enriched_prompt,
         is_first_generation=is_first_generation,
         files=seeded,
         capabilities=platform_caps,
@@ -462,6 +481,22 @@ def main() -> int:
         agent_summary = session.summary
         code = _read_text(os.path.join(version_dir, "strategy.py"))
         _validate_strategy_code(code)
+
+        # Post-generation AST safety and lookahead bias audit
+        try:
+            from agent.tools import init_default_tools
+            tools = init_default_tools()
+            auditor = tools.require("ast_auditor")
+            audit_res = asyncio.run(auditor.run(code=code))
+            if audit_res.success and audit_res.data:
+                issues = audit_res.data.get("issues", [])
+                if issues:
+                    print(f"[agent] AST audit detected {len(issues)} issue(s): {issues}")
+                else:
+                    print("[agent] AST audit passed (0 lookahead bias or unsafe imports)")
+        except Exception as e:
+            print(f"[agent] AST audit warning: {e}")
+
     except Exception as exc:
         print(f"[agent] agent_failed: {exc}", file=sys.stderr)
         fallback_on_error = (
