@@ -28,6 +28,7 @@ dist/
 
 # Local agent & tooling scratch
 .shared/
+.playwright-mcp/
 .cursor/worktrees.json
 
 # Build & test artifacts
