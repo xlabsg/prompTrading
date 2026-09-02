@@ -45,7 +45,7 @@ fi
 source "$ENV_FILE"
 
 # Check required environment variables
-REQUIRED_VARS=("GITHUB_ORG" "POSTGRES_PASSWORD" "TRADING_API_ENCRYPTION_KEY")
+REQUIRED_VARS=("GITHUB_ORG" "TRADING_API_ENCRYPTION_KEY")
 for var in "${REQUIRED_VARS[@]}"; do
     if [ -z "${!var}" ]; then
         log_error "Required environment variable $var is not set in .env"

@@ -14,6 +14,27 @@ from app.settings import settings
 SESSION_COOKIE_NAME = "asp_session"
 
 
+DEV_USER_ID = "usr_local_dev"
+DEV_USER_EMAIL = "dev@local.test"
+
+
+def _get_or_create_dev_user(db: Session) -> User:
+    user = db.get(User, DEV_USER_ID)
+    if user is None:
+        user = db.execute(select(User).where(User.email == DEV_USER_EMAIL)).scalar_one_or_none()
+    if user is None:
+        user = User(
+            id=DEV_USER_ID,
+            email=DEV_USER_EMAIL,
+            name="Local Dev",
+            avatar_url="https://api.dicebear.com/7.x/bottts/svg?seed=localdev",
+            is_active=True,
+        )
+        db.add(user)
+        db.flush()
+    return user
+
+
 def create_session(db: Session, user: User) -> str:
     token = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(days=settings.auth_session_days)
@@ -26,6 +47,8 @@ def create_session(db: Session, user: User) -> str:
 def get_current_user_optional(request: Request, db: Session) -> User | None:
     token = request.cookies.get(SESSION_COOKIE_NAME)
     if not token:
+        if settings.dev_skip_auth:
+            return _get_or_create_dev_user(db)
         return None
     session = db.execute(
         select(UserSession)
@@ -33,9 +56,13 @@ def get_current_user_optional(request: Request, db: Session) -> User | None:
         .where(UserSession.expires_at > datetime.now(timezone.utc))
     ).scalar_one_or_none()
     if session is None:
+        if settings.dev_skip_auth:
+            return _get_or_create_dev_user(db)
         return None
     user = db.get(User, session.user_id)
     if user is None or not user.is_active:
+        if settings.dev_skip_auth:
+            return _get_or_create_dev_user(db)
         return None
     return user
 
@@ -60,8 +87,19 @@ def require_strategy_member(
         .where(StrategyMember.user_id == user.id)
     ).scalar_one_or_none()
     if member is None:
+        if settings.dev_skip_auth:
+            member = StrategyMember(
+                strategy_id=strategy_id,
+                user_id=user.id,
+                role=StrategyRole.OWNER,
+            )
+            db.add(member)
+            db.flush()
+            return member
         raise HTTPException(status_code=403, detail="not_authorized")
     if allowed_roles and member.role not in allowed_roles:
+        if settings.dev_skip_auth:
+            return member
         raise HTTPException(status_code=403, detail="not_authorized")
     return member
 

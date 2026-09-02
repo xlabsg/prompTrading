@@ -8,45 +8,12 @@
 #   3. Set IMAGE_TAG to desired version (default: latest)
 
 services:
-  # ==================== Infrastructure ====================
-  postgres:
-    image: postgres:18.1-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
-      POSTGRES_DB: app
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    volumes:
-      - ./data/pg:/var/lib/postgresql/data
-    networks:
-      - default
-    restart: unless-stopped
-
-  redis:
-    image: redis:8.4.0-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    volumes:
-      - ./data/redis:/data
-    networks:
-      - default
-    restart: unless-stopped
-
   # ==================== Backend API ====================
   api:
     image: ghcr.io/${GITHUB_ORG:-your-org}/prompt-trading-api:${IMAGE_TAG:-latest}
     environment:
       APP_LOG_DIR: /var/log/app
-      APP_DB_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app
-      APP_REDIS_URL: redis://redis:6379/0
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
       APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
@@ -96,10 +63,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
       worker-rpc:
         condition: service_started
     networks:
@@ -118,8 +81,7 @@ services:
     image: ghcr.io/${GITHUB_ORG:-your-org}/prompt-trading-worker:${IMAGE_TAG:-latest}
     environment:
       LOG_DIR: /var/log/app
-      APP_DB_URL: postgresql+psycopg://app:${POSTGRES_PASSWORD:-app}@postgres:5432/app
-      APP_REDIS_URL: redis://redis:6379/0
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_WORKSPACES_DIR: /workspaces
       GITHUB_APP_ID: ${GITHUB_APP_ID:-}
       GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY:-}
@@ -161,11 +123,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces
       - ./logs/worker:/var/log/app
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
     networks:
       - default
       - proxy

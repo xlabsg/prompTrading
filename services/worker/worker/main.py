@@ -97,7 +97,10 @@ def _wait_for_db(db_url: str, timeout_s: float = 90.0) -> None:
     raise RuntimeError(f"db_not_ready after {attempt} attempts") from last_err
 
 
-import psutil
+try:
+    import psutil
+except ImportError:
+    psutil = None
 from control_plane.queue import (
     QUEUE_NAME,
     job_log_channel,
@@ -109,6 +112,8 @@ from control_plane.queue import (
 
 
 def _check_system_resources_available(min_available_mb: int = 256) -> bool:
+    if psutil is None:
+        return True
     try:
         vm = psutil.virtual_memory()
         available_mb = vm.available / (1024 * 1024)
@@ -1740,9 +1745,6 @@ def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: doc
                 job.status = JobStatus.FAILED
                 job.error_message = err
             job.finished_at = _utcnow()
-    finally:
-        _mark_job_log_done(job_id)
-
             # Ensure related entities reflect failure even if the original transaction rolled back.
             run_id = None
             session_id = None
@@ -1778,6 +1780,8 @@ def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: doc
                         strat.chat_status = ChatStatus.DONE
                     strat.updated_at = _utcnow()
             db.flush()
+    finally:
+        _mark_job_log_done(job_id)
 
 
 def _run_scheduled_scrape(rds: redis.Redis) -> None:
@@ -2033,13 +2037,16 @@ def main() -> None:
     engine = create_db_engine(settings.app_db_url)
     session_factory = create_session_factory(engine)
     # Multiple workers/tests may start concurrently in e2e. Use an advisory lock to
-    # avoid DDL races (e.g., duplicate composite types for tables) during create_all.
+    # avoid DDL races (e.g., duplicate composite types for tables) during create_all on postgres.
     with engine.begin() as conn:
-        conn.execute(text("SELECT pg_advisory_lock(8811223344)"))
-        try:
+        if engine.dialect.name == "postgresql":
+            conn.execute(text("SELECT pg_advisory_lock(8811223344)"))
+            try:
+                Base.metadata.create_all(conn)
+            finally:
+                conn.execute(text("SELECT pg_advisory_unlock(8811223344)"))
+        else:
             Base.metadata.create_all(conn)
-        finally:
-            conn.execute(text("SELECT pg_advisory_unlock(8811223344)"))
 
     print("[worker] Connecting to Redis (optional)...")
     rds = _wait_for_redis(settings.app_redis_url, timeout_s=10.0)

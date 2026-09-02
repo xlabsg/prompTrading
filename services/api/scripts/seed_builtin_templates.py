@@ -2,62 +2,174 @@
 """
 初始化内置策略模板
 
-从 seed_templates.sql 导入内置模板并验证
+使用 SQLAlchemy ORM 幂等写入内置模板，兼容 SQLite 和 PostgreSQL
 """
 
 import os
 import sys
 
 # 添加项目路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(_script_dir, '..')))
+sys.path.insert(0, os.path.abspath(os.path.join(_script_dir, '../../../packages/control_plane')))
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.models import StrategyTemplate
-from sqlalchemy import text
+from control_plane.models import Base, StrategyTemplate
 from app.settings import settings
 
 
-def seed_templates():
-    """执行 seed_templates.sql 并验证"""
+BUILTIN_TEMPLATES = [
+    {
+        "id": "tmpl-divergence",
+        "name": "divergence",
+        "description": "Regular divergence with multi-indicator confirmation and S/R risk filter.",
+        "template_type": "builtin",
+        "prompt": (
+            "Regular divergence on confirmed pivots using MACD, histogram, and stochastic.\n"
+            "Optional VW-MACD, OBV, RSI, MFI, CCI confirmations.\n"
+            "Dynamic TP/SL based on support/resistance with minimum R:R filtering."
+        ),
+        "config_snapshot": {
+            "live_bar_interval": "1h",
+            "live_history_bars": 200,
+            "default_max_position_pct": 10.0,
+            "default_stop_loss_pct": 1.0,
+            "pivot_period": 10,
+            "pivot_confirm_bars": 1,
+            "min_confirmations": 3,
+            "min_risk_reward": 1.0,
+            "use_dynamic_tpsl": True,
+            "stop_loss_pct": 0.01,
+            "take_profit_pct": 0.02,
+            "cooldown_bars": 0,
+            "position_size_pct": 1.0,
+            "min_rsi_delta": 0.0,
+            "indicators": {
+                "macd_fast": 12,
+                "macd_slow": 26,
+                "macd_signal": 9,
+                "stochastic_k": 14,
+                "stochastic_d": 3,
+                "stochastic_smooth": 3,
+                "vw_macd_fast": 12,
+                "vw_macd_slow": 26,
+                "vw_macd_signal": 9,
+                "vw_macd_enabled": True,
+                "obv_enabled": True,
+                "rsi_enabled": False,
+                "rsi_period": 14,
+                "mfi_enabled": False,
+                "mfi_period": 14,
+                "cci_enabled": False,
+                "cci_period": 20,
+                "stochastic_zone_filter": {
+                    "enabled": False,
+                    "overbought": 70.0,
+                    "oversold": 30.0,
+                },
+            },
+        },
+        "code_snapshot": {
+            "module": "strategy_templates.templates.divergence",
+            "entrypoint": "create_live_strategy",
+        },
+        "author": "Stratsmith",
+        "tags": ["divergence", "rsi", "macd", "mean_reversion"],
+        "risk_level": "medium",
+        "trading_frequency": "intraday",
+        "complexity_score": 4,
+        "min_capital_usdt": 100.0,
+        "supported_exchanges": ["okx"],
+        "supported_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+        "is_public": True,
+        "is_featured": False,
+        "subscriber_count": 0,
+    },
+    {
+        "id": "tmpl-flow-right",
+        "name": "flow_right",
+        "description": "Order-flow momentum strategy with multi-window flow scoring and regime filters.",
+        "template_type": "builtin",
+        "prompt": (
+            "Order-flow momentum strategy with impulse/confirmation/context windows.\n"
+            "Uses flow imbalance, velocity, volatility, anomaly detection, and EMA regime filtering."
+        ),
+        "config_snapshot": {
+            "live_bar_interval": "1m",
+            "live_history_bars": 300,
+            "default_max_position_pct": 15.0,
+            "default_stop_loss_pct": 1.0,
+            "flow_windows": [10, 30, 60],
+            "window_weights": [1.0, 0.7, 0.5],
+            "min_score": 0.55,
+            "min_short_imbalance": 0.55,
+            "min_mid_imbalance": 0.45,
+            "min_long_imbalance": 0.35,
+            "min_total_notional": 150000,
+            "min_trade_count": 10,
+            "min_velocity_bps": 1.0,
+            "max_volatility_bps": 35.0,
+            "cooldown_ms": 1200,
+            "max_position_seconds": 45,
+            "signal_expiry_seconds": 3,
+            "anomaly_enabled": True,
+            "anomaly_min_score": 0.3,
+            "ms_confirm_enabled": True,
+            "ms_confirm_5m_bars": 5,
+            "ms_confirm_15m_bars": 15,
+            "ms_confirm_5m_min_imbalance": 0.1,
+            "ms_confirm_15m_min_imbalance": 0.1,
+            "ms_confirm_5m_min_volume_zscore": 0.3,
+            "ms_confirm_15m_min_volume_zscore": 0.3,
+            "trend_filter_enabled": True,
+            "trend_timeframe_minutes": 5,
+            "trend_ema_period": 50,
+            "trend_slope_lookback": 10,
+            "trend_price_buffer_pct": 0.05,
+            "trend_neutral_policy": "skip",
+            "trend_insufficient_policy": "skip",
+            "trend_max_entry_distance_pct": 0.0,
+        },
+        "code_snapshot": {
+            "module": "strategy_templates.templates.flow_right",
+            "entrypoint": "create_live_strategy",
+        },
+        "author": "Stratsmith",
+        "tags": ["order_flow", "momentum", "high_frequency"],
+        "risk_level": "high",
+        "trading_frequency": "high_frequency",
+        "complexity_score": 4,
+        "min_capital_usdt": 500.0,
+        "supported_exchanges": ["okx", "binance"],
+        "supported_symbols": ["BTC-USDT-SWAP", "ETH-USDT-SWAP"],
+        "is_public": True,
+        "is_featured": False,
+        "subscriber_count": 0,
+    },
+]
 
+
+def seed_templates():
+    """执行内置策略模板初始化"""
     print("📝 开始初始化内置模板...")
 
-    # 读取 SQL 文件
-    base_dir = os.path.dirname(__file__)
-    candidates = [
-        os.path.join(base_dir, '../migrations/seed_templates.sql'),
-        os.path.join(base_dir, '../../packages/control_plane/migrations/seed_templates.sql'),
-    ]
-    sql_path = next((p for p in candidates if os.path.exists(p)), None)
-
-    if not sql_path:
-        print("❌ 错误：SQL 文件不存在:")
-        for p in candidates:
-            print(f"   - {p}")
-        return False
-
-    with open(sql_path, 'r') as f:
-        sql = f.read()
-
-    # 执行 SQL
     engine = create_db_engine(settings.db_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
 
     try:
-        with engine.connect() as conn:
-            # 分割 SQL 语句并逐个执行
-            statements = [s.strip() for s in sql.split(';') if s.strip()]
+        with session_scope(session_factory) as db:
+            for tmpl_data in BUILTIN_TEMPLATES:
+                existing = db.query(StrategyTemplate).filter_by(id=tmpl_data["id"]).first()
+                if not existing:
+                    tmpl = StrategyTemplate(**tmpl_data)
+                    db.add(tmpl)
+                else:
+                    for key, val in tmpl_data.items():
+                        setattr(existing, key, val)
 
-            for statement in statements:
-                if statement:
-                    try:
-                        conn.execute(text(statement))
-                        conn.commit()
-                    except Exception as e:
-                        print(f"⚠️  警告：执行 SQL 时出错: {e}")
-                        # 继续执行其他语句
+            db.commit()
 
-        # 验证模板是否创建成功
-        with session_scope(create_session_factory(engine)) as db:
             template_count = db.query(StrategyTemplate).count()
             featured_count = db.query(StrategyTemplate).filter(
                 StrategyTemplate.is_featured == True
@@ -67,11 +179,6 @@ def seed_templates():
             print(f"   - 总模板数: {template_count}")
             print(f"   - 精选模板: {featured_count}")
 
-            if template_count == 0:
-                print(f"\n⚠️  警告：没有找到模板，请检查 SQL 文件")
-                return False
-
-            # 列出所有模板
             templates = db.query(StrategyTemplate).order_by(
                 StrategyTemplate.updated_at.desc()
             ).all()
@@ -96,3 +203,4 @@ def seed_templates():
 if __name__ == "__main__":
     success = seed_templates()
     sys.exit(0 if success else 1)
+

@@ -28,6 +28,7 @@ dependencies = [
     "APScheduler==3.11.0",
     "openai>=1.0.0",
     "langfuse>=2.0.0",
+    "psutil>=5.9.0",
 ]
 
 # Local packages are installed from ./packages by the Dockerfile.

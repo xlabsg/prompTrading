@@ -1671,6 +1671,78 @@ def _strip_ready_protocol_noise(text: str) -> str:
     return "\n".join(kept).strip()
 
 
+def _clean_summary_source_text(raw: str) -> str:
+    """Clean markdown and protocol noise to prepare text for summary."""
+    text = (raw or "").replace("[READY]", "")
+    json_start = text.find("```json")
+    if json_start != -1:
+        json_end = text.find("```", json_start + 7)
+        if json_end != -1:
+            text = text[:json_start] + text[json_end + 3:]
+    text = _strip_ready_protocol_noise(text)
+    lines = []
+    for line in text.splitlines():
+        trimmed = line.strip()
+        if trimmed.startswith("{") and trimmed.endswith("}"):
+            continue
+        if "```" in trimmed:
+            continue
+        if trimmed:
+            lines.append(trimmed)
+    return "\n".join(lines).strip()
+
+
+def _is_summary_noise(text: str) -> bool:
+    """Check if summary text contains protocol noise or raw JSON."""
+    if not text:
+        return True
+    s = text.strip()
+    if s.startswith("{") and s.endswith("}"):
+        return True
+    if "here is the json requested" in s.lower() or "below is the json" in s.lower():
+        return True
+    if '"summary"' in s:
+        return True
+    return False
+
+
+def _summarize_chat_reply(text: str) -> str:
+    """Summarize chat reply with retry, falling back to cleaned source."""
+    cleaned = _clean_summary_source_text(text)
+    api_key, base_url, model = _get_llm_config()
+    timeout_s = _get_llm_http_timeout_s()
+
+    if not api_key:
+        return cleaned or "已完成参数整理，请确认后生成策略。"
+
+    for _ in range(2):
+        try:
+            resp = requests.post(
+                f"{base_url.rstrip('/')}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": "You are a concise summarizer. Output only a short summary in JSON format: {\"summary\": \"...\"}"},
+                        {"role": "user", "content": f"Summarize this strategy reply briefly in Chinese: {cleaned}"},
+                    ],
+                    "response_format": {"type": "json_object"},
+                },
+                timeout=timeout_s,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            content = data["choices"][0]["message"]["content"]
+            parsed = json.loads(content)
+            summary = str(parsed.get("summary") or "").strip()
+            if summary and not _is_summary_noise(summary):
+                return summary
+        except Exception:
+            pass
+
+    return cleaned or "已完成参数整理，请确认后生成策略。"
+
+
 def _extract_first_json_object(text: str) -> str:
     raw = (text or "").strip()
     start_idx = raw.find("{")

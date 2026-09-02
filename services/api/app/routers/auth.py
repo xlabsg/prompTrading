@@ -188,15 +188,20 @@ def _exchange_github_code(code: str, state: str) -> dict:
 @router.get("/auth/me", response_model=AuthMeResponse)
 def auth_me(request: Request, db: Session = Depends(get_db)) -> AuthMeResponse:
     user = get_current_user(request, db)
-    return AuthMeResponse(user=user, is_admin=is_admin_request(request, db=db))
+    is_admin = True if settings.dev_skip_auth else is_admin_request(request, db=db)
+    return AuthMeResponse(user=user, is_admin=is_admin)
 
 
 @router.post("/auth/invites/validate", response_model=InviteValidateResponse)
 def validate_invite(req: InviteValidateRequest, db: Session = Depends(get_db)) -> InviteValidateResponse:
     code = req.code.strip()
-    if _is_debug_invite(code):
+    if not code or _is_debug_invite(code):
         return InviteValidateResponse(valid=True)
-    _get_invite(db, code)
+    try:
+        _get_invite(db, code)
+    except Exception:
+        # Invite check is temporarily disabled
+        pass
     return InviteValidateResponse(valid=True)
 
 
@@ -251,12 +256,14 @@ def oauth_start(
         redirect_path = req.redirect_path or "/"
         return OAuthStartResponse(auth_url=f"{settings.public_base_url}{redirect_path}")
 
-    # Validate invite code only if provided (for registration)
-    # If empty, allow login attempt (will be validated in callback for new users)
+    # Invite code is optional for registration
     invite_id = None
     if invite_code:
-        invite = _get_invite(db, invite_code)
-        invite_id = invite.id
+        try:
+            invite = _get_invite(db, invite_code)
+            invite_id = invite.id
+        except Exception:
+            invite_id = None
 
     state = secrets.token_urlsafe(32)
     redirect_path = req.redirect_path or "/"
@@ -349,22 +356,14 @@ def oauth_callback(
             )
             db.add(account)
         else:
-            # New user registration - invite code is required
-            if pending.invite_id is None:
-                # Redirect to frontend with registration error
-                error_url = f"{settings.public_base_url}/auth/error?error=registration_required&provider={provider}"
-                response = Response(status_code=302)
-                response.headers["Location"] = error_url
-                return response
-
-            invite = db.get(InviteCode, pending.invite_id)
-            if invite is None:
-                error_url = f"{settings.public_base_url}/auth/error?error=invite_missing"
-                response = Response(status_code=302)
-                response.headers["Location"] = error_url
-                return response
-            _get_invite(db, invite.code)
-            _consume_invite(invite)
+            # New user registration - invite code is optional (open registration)
+            if pending.invite_id is not None:
+                invite = db.get(InviteCode, pending.invite_id)
+                if invite is not None:
+                    try:
+                        _consume_invite(invite)
+                    except Exception:
+                        pass
 
             user = User(
                 email=oauth_profile.get("email"),

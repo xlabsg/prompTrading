@@ -3,20 +3,6 @@
 #   ./infra/compose/run_e2e.sh core
 services:
   # ==================== Infrastructure ====================
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: app
-      POSTGRES_PASSWORD: app
-      POSTGRES_DB: app
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U app -d app"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    volumes:
-      - pgdata_e2e:/var/lib/postgresql/data
-
   redis:
     image: redis:8.4.0-alpine
     command: ["redis-server", "--appendonly", "yes"]
@@ -34,7 +20,7 @@ services:
       context: ../../
       dockerfile: services/api/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
@@ -62,8 +48,6 @@ services:
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -78,7 +62,7 @@ services:
       context: ../../
       dockerfile: services/worker/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       WORKER_MODE: scheduler
@@ -100,8 +84,6 @@ services:
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -110,7 +92,7 @@ services:
       context: ../../
       dockerfile: services/worker/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       WORKER_MODE: consumer
@@ -143,8 +125,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces_e2e:/workspaces
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
 
@@ -192,7 +172,7 @@ services:
       context: ../../
       dockerfile: services/api/Dockerfile
     environment:
-      APP_DB_URL: postgresql+psycopg://app:app@postgres:5432/app
+      APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       APP_DEV_SKIP_SUBSCRIPTION_CHECK: "true"
@@ -218,8 +198,6 @@ services:
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       api:
@@ -230,6 +208,6 @@ services:
     command: ["pytest -m integration -v"]
 
 volumes:
-  pgdata_e2e: {}
   redisdata_e2e: {}
   workspaces_e2e: {}
+

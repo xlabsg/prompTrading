@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    app_db_url: str
+    app_db_url: str = "sqlite:////workspaces/app.db"
     app_redis_url: Optional[str] = None
     app_workspaces_dir: str = "/workspaces"
     log_dir: str = "/var/log/app"
@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     agent_cpu_limit: float = 1.0  # vCPU cores (0 = no limit)
     agent_memory_limit_mb: int = 1536  # 0 = no limit
     agent_pids_limit: int = 256
-    agent_read_only: bool = True
+    agent_read_only: bool = False
     agent_tmpfs_size_mb: int = 256
 
     # Number of queue consumer loops to run in parallel within a worker process.
