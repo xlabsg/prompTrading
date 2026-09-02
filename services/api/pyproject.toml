@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "stratsmith-api"
+name = "prompt-trading-api"
 version = "0.1.0"
-description = "Stratsmith FastAPI backend"
+description = "PromptTrading FastAPI backend"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi==0.115.6",

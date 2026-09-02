@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "youtube_processor"
 version = "0.1.0"
-description = "YouTube video audio transcription for Stratsmith"
+description = "YouTube video audio transcription for PromptTrading"
 requires-python = ">=3.10"
 dependencies = [
     "yt-dlp>=2024.1.0",

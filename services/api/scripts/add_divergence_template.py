@@ -35,7 +35,7 @@ def add_divergence_template() -> str:
             name="divergence",
             description="Regular RSI divergence on confirmed pivots (simplified migration from trading_view_script).",
             template_type=StrategyTemplateType.BUILTIN.value,
-            author="Stratsmith",
+            author="PromptTrading",
             tags=["divergence", "rsi", "mean_reversion"],
             risk_level="medium",
             trading_frequency="intraday",

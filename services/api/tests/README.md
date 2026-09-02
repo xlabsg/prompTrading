@@ -1,6 +1,6 @@
 # Integration Tests
 
-End-to-end integration tests for the Stratsmith API.
+End-to-end integration tests for the PromptTrading API.
 
 ## Prerequisites
 
@@ -209,7 +209,7 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: stratsmith
+          POSTGRES_DB: prompt-trading
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-
@@ -241,7 +241,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          APP_DB_URL: postgresql://postgres:postgres@localhost:5432/stratsmith
+          APP_DB_URL: postgresql://postgres:postgres@localhost:5432/prompt-trading
           APP_REDIS_URL: redis://localhost:6379/0
         run: |
           cd services/api

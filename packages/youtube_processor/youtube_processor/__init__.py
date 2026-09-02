@@ -1,4 +1,4 @@
-"""YouTube video audio transcription for Stratsmith."""
+"""YouTube video audio transcription for PromptTrading."""
 
 from youtube_processor.downloader import download_audio, get_video_info
 from youtube_processor.transcriber import transcribe_audio

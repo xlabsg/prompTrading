@@ -323,7 +323,7 @@ export LLM_API_KEY="your-api-key"
 docker compose restart worker
 
 # 检查镜像
-docker images | grep stratsmith
+docker images | grep prompt-trading
 ```
 
 ### 问题 3: 定时任务不执行

@@ -28,7 +28,7 @@ class FlowRightStrategy(BaseTemplateStrategy):
         name="flow_right",
         description="Order-flow momentum strategy with multi-window flow scoring and regime filters.",
         version="1.0.0",
-        author="Stratsmith",
+        author="PromptTrading",
         tags=["order_flow", "momentum", "high_frequency"],
         risk_level="high",
         trading_frequency="high_frequency",

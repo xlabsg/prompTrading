@@ -1,12 +1,12 @@
 ---
 name: integration-test
-description: Run end-to-end integration tests for the Stratsmith. Use when user asks to run, execute, or check integration tests. Supports running all tests, specific tests, with coverage, or in verbose mode. Automatically handles Docker Compose environment checks.
+description: Run end-to-end integration tests for the PromptTrading. Use when user asks to run, execute, or check integration tests. Supports running all tests, specific tests, with coverage, or in verbose mode. Automatically handles Docker Compose environment checks.
 tools: Bash, Read
 ---
 
 # Integration Test Runner
 
-Run end-to-end integration tests for the Stratsmith. Tests validate the complete workflow from strategy generation to backtesting using real Docker containers.
+Run end-to-end integration tests for the PromptTrading. Tests validate the complete workflow from strategy generation to backtesting using real Docker containers.
 
 ## When to Use
 
@@ -128,7 +128,7 @@ If tests fail, check:
    from control_plane.models import Job
    from sqlalchemy import select, desc
 
-   engine = create_db_engine('postgresql://postgres:postgres@db:5432/stratsmith')
+   engine = create_db_engine('postgresql://postgres:postgres@db:5432/prompt-trading')
    session_factory = create_session_factory(engine)
 
    with session_factory() as db:
@@ -164,7 +164,7 @@ docker compose -f docker-compose.dev.yml logs worker | grep "Processing job"
 docker images | grep backtest
 
 # Check network
-docker network inspect stratsmith_dev
+docker network inspect prompt-trading_dev
 ```
 
 ### Issue: "Job failed"
@@ -249,7 +249,7 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_DB: stratsmith
+          POSTGRES_DB: prompt-trading
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
         options: >-

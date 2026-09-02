@@ -17,12 +17,12 @@
 
 | 镜像 | 用途 | 镜像地址 |
 |------|------|----------|
-| api | FastAPI 后端服务 | `ghcr.io/[your-org]/stratsmith-api` |
-| worker | 后台任务处理器 | `ghcr.io/[your-org]/stratsmith-worker` |
-| web | React 前端应用 | `ghcr.io/[your-org]/stratsmith-web` |
-| agent | 策略生成容器 | `ghcr.io/[your-org]/stratsmith-agent` |
-| backtest | 回测执行容器 | `ghcr.io/[your-org]/stratsmith-backtest` |
-| dev | 开发环境容器 | `ghcr.io/[your-org]/stratsmith-dev` |
+| api | FastAPI 后端服务 | `ghcr.io/[your-org]/prompt-trading-api` |
+| worker | 后台任务处理器 | `ghcr.io/[your-org]/prompt-trading-worker` |
+| web | React 前端应用 | `ghcr.io/[your-org]/prompt-trading-web` |
+| agent | 策略生成容器 | `ghcr.io/[your-org]/prompt-trading-agent` |
+| backtest | 回测执行容器 | `ghcr.io/[your-org]/prompt-trading-backtest` |
+| dev | 开发环境容器 | `ghcr.io/[your-org]/prompt-trading-dev` |
 
 ### 镜像标签策略
 
@@ -73,7 +73,7 @@ docker compose -f docker-compose.prod.yml up -d
 ```bash
 docker buildx build \
   --platform linux/amd64 \
-  -t ghcr.io/your-org/stratsmith-api:test \
+  -t ghcr.io/your-org/prompt-trading-api:test \
   -f services/api/Dockerfile \
   .
 ```
