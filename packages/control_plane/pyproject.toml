@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "control_plane"
+version = "0.1.0"
+description = "Shared database models, enums, and strategy version/workspace helpers"
+requires-python = ">=3.13"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "pandas>=1.5",
+    "numpy>=1.24",
+]
+
+[tool.setuptools.packages.find]
+include = ["control_plane*"]
+exclude = ["tests*", "migrations*"]

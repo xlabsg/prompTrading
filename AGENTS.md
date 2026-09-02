@@ -14,9 +14,9 @@ no need write README md docs
 - `infra/compose`: Docker Compose manifests, `.env`, and `update.sh` helpers that orchestrate containers.
 
 ## Build, Test, and Development Commands
-- API: `cd services/api && pip install -r requirements.txt && uvicorn app.main:app --reload` for rapid iteration; Compose will start it automatically via `./infra/compose/update.sh`.
+- API: `cd services/api && pip install -e '.[test]' && uvicorn app.main:app --reload` for rapid iteration; Compose will start it automatically via `./infra/compose/update.sh`.
 - Web: `cd apps/web && npm install && npm run dev` launches Vite on `localhost:5173`; `npm run build` outputs production assets.
-- Worker: `cd services/worker && pip install -r requirements.txt && python worker/main.py` to replay tasks locally.
+- Worker: `cd services/worker && pip install -e . && python worker/main.py` to replay tasks locally.
 - Full stack: `./infra/compose/update.sh` rebuilds images, applies migrations, and restarts containers.
 - Tests: `cd packages/okx_sdk && pytest -q` for SDK validation; run `services/api/setup_and_test.sh` inside the API container for smoke checks.
 

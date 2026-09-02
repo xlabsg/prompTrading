@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import Base, InviteCode
 from app.routers import backtests, internal, jobs, markets, portfolio, sandbox, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops
+from app.routers import strategy_accounts, strategy_members, strategy_workspace
 from app.routers import auth as auth_router
 from app.routers import billing as billing_router
 from app.routers import repos as repos_router
@@ -252,6 +253,9 @@ app.add_middleware(
 )
 
 app.include_router(strategies.router, prefix="/api", tags=["strategies"])
+app.include_router(strategy_members.router, prefix="/api", tags=["strategies"])
+app.include_router(strategy_accounts.router, prefix="/api", tags=["strategies"])
+app.include_router(strategy_workspace.router, prefix="/api", tags=["strategies"])
 app.include_router(strategies_import.router, prefix="/api", tags=["import"])
 app.include_router(backtests.router, prefix="/api", tags=["backtests"])
 app.include_router(trading.router, prefix="/api", tags=["trading"])
