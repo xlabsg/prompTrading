@@ -6,6 +6,8 @@ from typing import Optional
 import pandas as pd
 import requests
 
+from data.cache import cached_fetch
+
 
 @dataclass(frozen=True)
 class CandlesRequest:
@@ -114,7 +116,7 @@ def _fetch_page(
     return _parse_okx_payload(resp.json())
 
 
-def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
+def _fetch_candles_uncached(req: CandlesRequest) -> pd.DataFrame:
     """Fetch OHLCV candles from OKX public API (v5 market/candles).
 
     Returns DataFrame with columns: timestamp (ms), open, high, low, close, volume.
@@ -218,5 +220,38 @@ def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
 
     # Keep at most total_limit bars (newest within any filtered range).
     if len(df) > total_limit:
+        df = df.tail(total_limit).reset_index(drop=True)
+    return df
+
+
+def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
+    """Cache-aware wrapper around the OKX candles API.
+
+    Bars are cached per (okx, inst_id, bar); `limit` is applied after slicing so
+    the cache key stays independent of how many bars a given call wants.
+    """
+
+    def _fetch(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
+        return _fetch_candles_uncached(
+            CandlesRequest(
+                inst_id=req.inst_id,
+                bar=req.bar,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                limit=req.limit,
+            )
+        )
+
+    df = cached_fetch(
+        exchange="okx",
+        symbol=req.inst_id,
+        interval=req.bar,
+        start_ms=req.start_ms,
+        end_ms=req.end_ms,
+        fetch=_fetch,
+        interval_ms=_bar_ms(req.bar),
+    )
+    total_limit = int(req.limit)
+    if total_limit > 0 and len(df) > total_limit:
         df = df.tail(total_limit).reset_index(drop=True)
     return df

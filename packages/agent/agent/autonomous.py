@@ -69,6 +69,8 @@ class AutonomousAgent:
         skill_registry: SkillRegistry | None = None,
         system_prompt: str | None = None,
         progress_callback: Callable[[dict[str, Any]], None] | None = None,
+        backtest_dataset: Any = None,
+        backtest_budget: Any = None,
     ):
         self.workspace_root = workspace_root
         self.tools = FileSystemTools(workspace_root)
@@ -76,6 +78,10 @@ class AutonomousAgent:
         self.config = config or AgentConfig()
         self.skills = skill_registry or DEFAULT_SKILLS
         self.progress_callback = progress_callback
+        # One dataset and one run budget for the whole session, so every
+        # backtest call decrements the same counter.
+        self.backtest_dataset = backtest_dataset
+        self.backtest_budget = backtest_budget
 
         # Initialize history with system prompt
         self.system_prompt = system_prompt or SYSTEM_PROMPT
@@ -441,6 +447,8 @@ class AutonomousAgent:
             tools=self.tools,
             workspace_root=self.workspace_root,
             history=self.history,
+            backtest_dataset=self.backtest_dataset,
+            backtest_budget=self.backtest_budget,
         )
 
         result = self.skills.execute_skill_tool(tool_name, tool_args, context)

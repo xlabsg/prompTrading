@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stratsmith-worker"
+version = "0.1.0"
+description = "Stratsmith background job processor"
+requires-python = ">=3.13"
+dependencies = [
+    "docker==7.1.0",
+    "fastapi==0.115.6",
+    "uvicorn[standard]==0.34.0",
+    "redis==5.2.1",
+    "requests==2.32.3",
+    "numpy==2.2.1",
+    "pandas==2.2.3",
+    "TA-Lib==0.6.8",
+    "yfinance==0.2.54",
+    "pyarrow>=15.0.0",
+    "PyYAML==6.0.2",
+    "PyJWT==2.10.1",
+    "cryptography==43.0.3",
+    "sqlalchemy==2.0.36",
+    "psycopg[binary]==3.2.3",
+    "pydantic==2.10.4",
+    "pydantic-settings==2.7.0",
+    "APScheduler==3.11.0",
+    # smoke_validation runs LLM calls and traces them
+    "openai>=1.0.0",
+    "langfuse>=2.0.0",
+]
+
+# Local packages are installed from ./packages by the Dockerfile.
+
+[tool.setuptools]
+packages = []

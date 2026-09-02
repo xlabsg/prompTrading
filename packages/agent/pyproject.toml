@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent"
+version = "0.1.0"
+description = "AutonomousAgent: the coding agent that writes and iterates on strategies"
+requires-python = ">=3.13"
+dependencies = [
+    "openai>=1.0.0",
+    "pandas>=1.5",
+    "numpy>=1.24",
+    "requests>=2.31",
+]
+
+# Sibling packages required at runtime but installed from this repo, not PyPI:
+#   backtest      - in-loop backtesting engine
+#   data          - market data providers and cache
+#   code_editor   - fuzzy matching behind agent.editor
+# They are deliberately not listed as dependencies: names like "data" and
+# "backtest" resolve to unrelated projects on PyPI.
+
+[project.optional-dependencies]
+observability = ["langfuse>=2.0.0"]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["agent*"]
+exclude = ["tests*"]

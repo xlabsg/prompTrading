@@ -1,7 +1,15 @@
+"""Change-spec adapter over the shared `code_editor` fuzzy matcher.
+
+Text matching lives in `code_editor.core.editor.replace`, which carries the
+progressive fallback strategies (line-trimmed, block-anchor, whitespace- and
+indentation-flexible, ...). This module only maps change-spec operations onto it.
+"""
+
 import re
-import difflib
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, Dict, Any
+from typing import Optional, Dict, Any
+
+from code_editor.core.editor import EditError, replace as fuzzy_replace
 
 @dataclass
 class EditResult:
@@ -59,69 +67,16 @@ class CodeEditor:
         return re.sub(r'\s+', ' ', text).strip()
 
     def _apply_replace(self, content: str, old_text: str, new_text: str) -> str:
-        # 1. Try Exact Match
-        if old_text in content:
-            # Check uniqueness
-            count = content.count(old_text)
-            if count > 1:
-                # If ambiguous, we might need more context, but for now we replace the first one
-                # or raise error depending on policy. Claude Code usually asks for context.
-                # Here we assume the LLM target is the first occurrence or unique.
-                pass
-            return content.replace(old_text, new_text, 1)
-
-        # 2. Try Line-based Fuzzy Match (Ignore indentation/trailing whitespace)
-        # Split into lines
-        content_lines = content.splitlines()
-        old_lines = old_text.splitlines()
-
-        # Clean up empty lines at start/end of search block
-        while old_lines and not old_lines[0].strip(): old_lines.pop(0)
-        while old_lines and not old_lines[-1].strip(): old_lines.pop()
-
-        if not old_lines:
+        """Replace `old_text` using the shared fuzzy matcher."""
+        if not old_text:
             raise ValueError("old_text is empty")
-
-        # Find match index
-        match_idx = -1
-        best_ratio = 0.0
-
-        # Simple sliding window search with normalization
-        norm_old = [self._normalize(l) for l in old_lines]
-        search_len = len(norm_old)
-
-        for i in range(len(content_lines) - search_len + 1):
-            window = content_lines[i : i + search_len]
-            norm_window = [self._normalize(l) for l in window]
-
-            if norm_window == norm_old:
-                match_idx = i
-                break
-
-        if match_idx != -1:
-            # Found fuzzy match based on content
-            # Reconstruct new content
-            # We assume new_text indentation matches the context of replacement,
-            # OR we try to preserve original indentation if new_text is unindented.
-
-            # Simple replacement for now
-            # Handle newlines carefully
-            pre = "\n".join(content_lines[:match_idx])
-            post = "\n".join(content_lines[match_idx + search_len:])
-
-            # Ensure we have newlines between blocks if they existed
-            if match_idx > 0: pre += "\n"
-            if match_idx + search_len < len(content_lines): post = "\n" + post
-
-            return pre + new_text + post
-
-        # 3. Fallback: Difflib (Costly but powerful)
-        # If the difference is minor (typo, slightly different repr)
-        # TODO: Implement full fuzzy patch if needed.
-
-        # Construct helpful error message
-        snippet = old_text[:200] + "..." if len(old_text) > 200 else old_text
-        raise ValueError(f"old_text not found in file. Preview: {snippet!r}")
+        if old_text == new_text:
+            return content
+        try:
+            return fuzzy_replace(content, old_text, new_text)
+        except EditError as e:
+            snippet = old_text[:200] + "..." if len(old_text) > 200 else old_text
+            raise ValueError(f"{e} Preview: {snippet!r}") from e
 
     def _apply_insert(self, content: str, anchor: str, insert_text: str, position: str = "after") -> str:
         if anchor in content:
