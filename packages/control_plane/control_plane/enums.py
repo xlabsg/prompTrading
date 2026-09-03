@@ -6,8 +6,6 @@ class JobType(str, Enum):
     GENERATE_AND_BACKTEST = "generate_and_backtest"
     REFINE_STRATEGY = "refine_strategy"
     BACKTEST = "backtest"
-    START_SANDBOX = "start_sandbox"
-    STOP_SANDBOX = "stop_sandbox"
     REPO_IMPORT = "repo_import"
     REPO_SYNC = "repo_sync"
     TRENDING_SCRAPE = "trending_scrape"
@@ -29,13 +27,6 @@ class BacktestStatus(str, Enum):
     QUEUED = "queued"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
-    FAILED = "failed"
-
-
-class SandboxStatus(str, Enum):
-    STARTING = "starting"
-    RUNNING = "running"
-    STOPPED = "stopped"
     FAILED = "failed"
 
 

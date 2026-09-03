@@ -22,7 +22,6 @@
 | web | React 前端应用 | `ghcr.io/[your-org]/prompt-trading-web` |
 | agent | 策略生成容器 | `ghcr.io/[your-org]/prompt-trading-agent` |
 | backtest | 回测执行容器 | `ghcr.io/[your-org]/prompt-trading-backtest` |
-| dev | 开发环境容器 | `ghcr.io/[your-org]/prompt-trading-dev` |
 
 ### 镜像标签策略
 
