@@ -58,12 +58,12 @@ def trigger_trending_scrape(
         enqueue_job(settings.workspaces_dir, job_id, "TRENDING_SCRAPE", priority="batch")
 
         print(f"✅ Trending 抓取任务已创建: {job_id[:8]}...")
-        print(f"\n任务配置:")
+        print("\n任务配置:")
         print(f"   - 最大抓取: {max_count}")
         print(f"   - 自动回测: {auto_backtest}")
         print(f"   - 回测数量: {backtest_top_n}")
-        print(f"\n等待 Worker 处理...")
-        print(f"查看日志: docker compose logs -f worker")
+        print("\n等待 Worker 处理...")
+        print("查看日志: docker compose logs -f worker")
 
         return True
 

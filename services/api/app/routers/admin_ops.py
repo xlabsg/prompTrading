@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -11,9 +12,10 @@ from sqlalchemy.orm import Session
 
 from app.admin import require_admin
 from app.deps import get_db, get_redis
+from app.settings import settings
 from control_plane.enums import JobStatus, JobType
 from control_plane.models import Job, StrategyTemplate, TradingViewTrendingStrategy
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import QUEUE_NAME, get_file_queue, request_cancel_job
 
 router = APIRouter()
 
@@ -77,9 +79,6 @@ class AdminTrendingStrategiesResponse(BaseModel):
 
 class AdminDeleteTrendingStrategyRequest(BaseModel):
     tradingview_id: str
-
-
-from control_plane.queue import QUEUE_NAME, get_file_queue, request_cancel_job
 
 @router.get("/admin/queue", response_model=AdminQueueResponse)
 def admin_queue(

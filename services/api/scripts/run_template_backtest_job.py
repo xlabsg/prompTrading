@@ -336,7 +336,7 @@ class TemplateBacktestScheduler:
             # Update existing record
             existing.metrics = metrics
             existing.status = "succeeded"
-            print(f"  Updated existing record")
+            print("  Updated existing record")
         else:
             # Create new record
             run = TemplatePerformanceRun(
@@ -350,7 +350,7 @@ class TemplateBacktestScheduler:
                 status="succeeded",
             )
             db.add(run)
-            print(f"  Created new record")
+            print("  Created new record")
 
         db.commit()
 
@@ -399,7 +399,7 @@ def run_scheduled_backtests():
         ]
         avg_return = float(np.mean(returns)) if returns else 0.0
         avg_trades = float(np.mean(trades)) if trades else 0.0
-        print(f"\nAverage metrics across successful runs:")
+        print("\nAverage metrics across successful runs:")
         print(f"  Avg Return: {_fmt_percent(avg_return)}")
         print(f"  Avg Trades: {avg_trades:.0f}")
 

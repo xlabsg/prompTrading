@@ -60,7 +60,7 @@ def check_templates():
             return False
 
         # 列出模板
-        print(f"\n模板列表:")
+        print("\n模板列表:")
         templates = db.query(StrategyTemplate).order_by(
             StrategyTemplate.updated_at.desc()
         ).limit(10).all()
@@ -104,7 +104,7 @@ def check_trending():
             return True
 
         # 列出 Top 策略
-        print(f"\nTop 5 策略:")
+        print("\nTop 5 策略:")
         top_strategies = db.query(TradingViewTrendingStrategy).order_by(
             TradingViewTrendingStrategy.scraped_at.desc()
         ).limit(5).all()

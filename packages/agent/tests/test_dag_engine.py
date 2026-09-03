@@ -64,7 +64,9 @@ class TestDAGEngine(unittest.TestCase):
         self.assertFalse(should_trigger_deep_research("implement a VWAP mean reversion strategy"))
 
         # Classifier delegation test: semantic model / mock cleanly decides
-        research_classifier = lambda p: ("research" in p.lower() or "调研" in p, "mock query")
+        def research_classifier(p: str) -> tuple[bool, str]:
+            return ("research" in p.lower() or "调研" in p, "mock query")
+
         self.assertTrue(should_trigger_deep_research("research the Hull Moving Average formula", classifier=research_classifier))
         self.assertTrue(should_trigger_deep_research("请调研最新波动率通道突破策略", classifier=research_classifier))
         self.assertFalse(should_trigger_deep_research("write a simple EMA crossover", classifier=research_classifier))

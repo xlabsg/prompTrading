@@ -621,6 +621,7 @@ async def unsubscribe_template(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     # Get template for counter update
+    template = db.get(StrategyTemplate, template_id)
     strategy = db.query(Strategy).filter_by(id=subscription.strategy_id).first()
 
     # Delete the subscription and associated strategy

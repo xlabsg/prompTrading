@@ -41,7 +41,7 @@ def setup_trending_schedule():
 
             db.flush()
 
-            print(f"✅ Trending 定时任务配置完成:")
+            print("✅ Trending 定时任务配置完成:")
             print(f"   - 启用: {schedule.enabled}")
             print(f"   - Cron: {schedule.cron_expression} (每 6 小时)")
             print(f"   - 抓取类型: {schedule.source_types}")

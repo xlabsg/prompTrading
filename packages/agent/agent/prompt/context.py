@@ -14,6 +14,8 @@ import ast
 import re
 from typing import Any
 
+from agent.prompt.indicator_docs import build_indicator_docs
+
 
 # Language-specific keywords for improved detection
 _ZH_KEYWORDS = [

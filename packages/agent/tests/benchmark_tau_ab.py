@@ -262,7 +262,7 @@ def run_ab_experiment():
     print("================================================================================\n")
 
     df = generate_simulated_market(1500)
-    print(f"📊 模拟回测数据集构建完成: 1500 bars (1h周期), 含牛市冲刺与回撤震荡行情。\n")
+    print("📊 模拟回测数据集构建完成: 1500 bars (1h周期), 含牛市冲刺与回撤震荡行情。\n")
 
     results = []
     for case in BENCHMARK_CASES:

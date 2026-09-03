@@ -206,7 +206,7 @@ def cmd_check(args: argparse.Namespace) -> int:
     # 2. Check generate_signals entry point
     has_fn = any(isinstance(n, ast.FunctionDef) and n.name == "generate_signals" for n in tree.body)
     if not has_fn:
-        print(f"[pt-quant] ❌ Missing required entry point: def generate_signals(data, params)")
+        print("[pt-quant] ❌ Missing required entry point: def generate_signals(data, params)")
         return 1
 
     # 3. Scan for lookahead and prohibited imports

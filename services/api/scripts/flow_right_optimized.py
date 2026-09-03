@@ -272,7 +272,7 @@ class FlowRightBacktest:
         print(f"Symbol: {self.symbol}")
         print(f"Interval: {self.interval}")
         print(f"Days: {days}")
-        print(f"\nParameters:")
+        print("\nParameters:")
         print(f"  Score Threshold: {self.score_threshold}")
         print(f"  Min Confidence: {self.min_confidence}")
         print(f"  ATR Period: {self.atr_period}")
