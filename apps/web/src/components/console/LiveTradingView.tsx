@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Strategy } from "@/pages/Console";
 import { Button } from "@/components/ui/button";
@@ -15,15 +15,12 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import {
-    Radio,
     Shield,
     Zap,
     Play,
     Square,
     RefreshCw,
     Activity,
-    CheckCircle2,
-    AlertCircle,
     Clock,
     Wallet,
     TrendingUp,
@@ -47,7 +44,7 @@ interface LiveTradingViewProps {
     onNavigateToChat?: (message?: string) => void;
 }
 
-export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTradingViewProps) => {
+export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
     const { t } = useTranslation();
     const queryClient = useQueryClient();
 
@@ -57,12 +54,12 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
     const [interval, setInterval] = useState("1m");
     const [maxPositionPct, setMaxPositionPct] = useState("10");
     const [stopLossPct, setStopLossPct] = useState("2");
-    const [leverage, setLeverage] = useState("1");
+    const [leverage] = useState("1");
     const [showConfigDrawer, setShowConfigDrawer] = useState(false);
     const [liveLogs, setLiveLogs] = useState<LogEntry[]>([]);
 
     // Fetch exchange accounts for strategy (paper account is auto-created by API)
-    const { data: accounts = [], isLoading: isLoadingAccounts } = useQuery({
+    const { data: accounts = [] } = useQuery({
         queryKey: ["exchange-accounts", strategy?.id],
         queryFn: () => strategy?.id ? exchangeAccountsApi.list(strategy.id) : Promise.resolve([]),
         enabled: Boolean(strategy?.id),
@@ -148,7 +145,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
             if (!strategy?.id) throw new Error("Strategy not found");
             const accountId = selectedAccountId || paperAccount?.id;
             if (!accountId) {
-                throw new Error("Please select or add an exchange account first");
+                throw new Error(t("liveTradingView.pleaseSelectAccount"));
             }
 
             // Save config first
@@ -166,13 +163,13 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
             return tradingApi.startTrading(strategy.id, accountId);
         },
         onSuccess: () => {
-            toast.success(selectedMode === "paper" ? "模拟盘交易已启动" : "实盘交易已启动");
+            toast.success(selectedMode === "paper" ? t("liveTradingView.toastPaperStarted") : t("liveTradingView.toastLiveStarted"));
             queryClient.invalidateQueries({ queryKey: ["trading-status", strategy?.id] });
             refetchStatus();
         },
         onError: (err: any) => {
-            const detail = err?.message || "启动失败，请检查配置或凭据";
-            toast.error(`启动交易失败: ${detail}`);
+            const detail = err?.message || t("liveTradingView.toastStartFailed");
+            toast.error(`${t("liveTradingView.toastStartFailed")}: ${detail}`);
         },
     });
 
@@ -183,19 +180,19 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
             return tradingApi.stopTrading(strategy.id);
         },
         onSuccess: () => {
-            toast.success("交易会话已停止");
+            toast.success(t("liveTradingView.toastStopped"));
             queryClient.invalidateQueries({ queryKey: ["trading-status", strategy?.id] });
             refetchStatus();
         },
         onError: (err: any) => {
-            toast.error(`停止交易失败: ${err?.message || "未知错误"}`);
+            toast.error(`${t("liveTradingView.toastStopFailed")}: ${err?.message || "Error"}`);
         },
     });
 
     if (!strategy) {
         return (
             <div className="h-full flex items-center justify-center text-muted-foreground">
-                请先选择一个策略
+                {t("liveTradingView.selectStrategyPrompt")}
             </div>
         );
     }
@@ -214,17 +211,17 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 {isRunning ? (
                                     <Badge className="bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/30 gap-1.5 py-0.5 px-2.5">
                                         <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                        <span>运行中 ({tradingStatus?.session?.exchange_account_id ? (selectedMode === "paper" ? "模拟盘" : "实盘") : "执行中"})</span>
+                                        <span>{t("liveTradingView.running")} ({selectedMode === "paper" ? "Paper" : "Live"})</span>
                                     </Badge>
                                 ) : (
                                     <Badge variant="outline" className="text-muted-foreground gap-1.5 py-0.5 px-2.5">
                                         <span className="w-2 h-2 rounded-full bg-muted-foreground/50" />
-                                        <span>已就绪 / 未启动</span>
+                                        <span>{t("liveTradingView.ready")}</span>
                                     </Badge>
                                 )}
                             </div>
                             <p className="text-xs text-muted-foreground">
-                                实时将策略信号转化为交易委托，并通过侵入式风控引擎校验执行。
+                                {t("liveTradingView.subtitle")}
                             </p>
                         </div>
 
@@ -243,7 +240,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 className="gap-1.5 text-xs"
                             >
                                 <RefreshCw size={13} className={cn(isLoadingStatus && "animate-spin")} />
-                                <span>刷新</span>
+                                <span>{t("liveTradingView.refresh")}</span>
                             </Button>
 
                             {isRunning ? (
@@ -255,7 +252,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                     className="gap-1.5 text-xs shadow"
                                 >
                                     {stopMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Square size={14} />}
-                                    <span>停止交易</span>
+                                    <span>{t("liveTradingView.stopTrading")}</span>
                                 </Button>
                             ) : (
                                 <Button
@@ -266,7 +263,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                     className="gap-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white shadow"
                                 >
                                     {startMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                                    <span>{selectedMode === "paper" ? "启动模拟盘交易 (Paper)" : "启动实盘交易"}</span>
+                                    <span>{selectedMode === "paper" ? t("liveTradingView.startPaperTrading") : t("liveTradingView.startLiveTrading")}</span>
                                 </Button>
                             )}
                         </div>
@@ -283,10 +280,10 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                             <div>
                                 <CardTitle className="text-base font-semibold flex items-center gap-2">
                                     <Activity className="w-4 h-4 text-primary" />
-                                    <span>运行模式与参数配置</span>
+                                    <span>{t("liveTradingView.modeConfigTitle")}</span>
                                 </CardTitle>
                                 <CardDescription className="text-xs">
-                                    选择以零风险模拟盘还是交易所实盘运行此策略
+                                    {t("liveTradingView.modeConfigSubtitle")}
                                 </CardDescription>
                             </div>
                             <Button
@@ -296,7 +293,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 className="text-xs gap-1"
                             >
                                 <Settings size={13} />
-                                <span>{showConfigDrawer ? "收起参数" : "调整风控参数"}</span>
+                                <span>{showConfigDrawer ? t("liveTradingView.collapseParams") : t("liveTradingView.adjustRiskParams")}</span>
                             </Button>
                         </div>
                     </CardHeader>
@@ -318,14 +315,14 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex items-center gap-2">
                                         <Zap className="w-4 h-4 text-emerald-500" />
-                                        <span className="font-semibold text-sm">Paper Trading (模拟盘)</span>
+                                        <span className="font-semibold text-sm">{t("liveTradingView.paperTradingTitle")}</span>
                                     </div>
                                     <Badge variant="secondary" className="text-[10px] bg-emerald-500/10 text-emerald-600 border-0">
-                                        推荐 / 免费
+                                        {t("liveTradingView.paperBadge")}
                                     </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                    免配置 API Key，直连 OKX 实时公共行情，本地撮合零资金风险。
+                                    {t("liveTradingView.paperTradingDesc")}
                                 </p>
                             </button>
 
@@ -344,14 +341,14 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 <div className="flex items-center justify-between w-full">
                                     <div className="flex items-center gap-2">
                                         <Shield className="w-4 h-4 text-primary" />
-                                        <span className="font-semibold text-sm">Live Exchange (实盘交易)</span>
+                                        <span className="font-semibold text-sm">{t("liveTradingView.liveExchangeTitle")}</span>
                                     </div>
                                     <Badge variant="outline" className="text-[10px]">
-                                        真实资金
+                                        {t("liveTradingView.liveBadge")}
                                     </Badge>
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
-                                    支持 OKX / Binance，通过 9 项风控守则与动态止盈止损执行。
+                                    {t("liveTradingView.liveExchangeDesc")}
                                 </p>
                             </button>
                         </div>
@@ -361,7 +358,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                             <div className="p-3 rounded-lg border border-primary/20 bg-primary/5 flex items-center justify-between gap-3">
                                 <div className="flex items-center gap-2">
                                     <Wallet size={16} className="text-primary" />
-                                    <span className="text-xs font-medium">交易所实盘账户：</span>
+                                    <span className="text-xs font-medium">{t("liveTradingView.exchangeAccountLabel")}</span>
                                     {liveAccounts.length > 0 ? (
                                         <Select
                                             value={selectedAccountId}
@@ -369,7 +366,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                             disabled={isRunning}
                                         >
                                             <SelectTrigger className="h-8 text-xs w-48">
-                                                <SelectValue placeholder="选择实盘账户" />
+                                                <SelectValue placeholder={t("liveTradingView.selectAccountPlaceholder")} />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {liveAccounts.map((acc) => (
@@ -381,14 +378,14 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                         </Select>
                                     ) : (
                                         <span className="text-xs text-amber-600 dark:text-amber-400">
-                                            暂无绑定的实盘账户
+                                            {t("liveTradingView.noAccountsBound")}
                                         </span>
                                     )}
                                 </div>
 
                                 <ExchangeAccountsDialog strategyId={strategy.id}>
                                     <Button variant="outline" size="sm" className="h-7 text-xs">
-                                        管理账户
+                                        {t("liveTradingView.manageAccountsBtn")}
                                     </Button>
                                 </ExchangeAccountsDialog>
                             </div>
@@ -398,7 +395,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                         {showConfigDrawer && (
                             <div className="p-4 rounded-xl border border-border bg-muted/20 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-muted-foreground">交易标的</Label>
+                                    <Label className="text-xs text-muted-foreground">{t("liveTradingView.symbolLabel")}</Label>
                                     <Input
                                         value={symbol}
                                         onChange={(e) => setSymbol(e.target.value)}
@@ -408,7 +405,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-muted-foreground">K线周期</Label>
+                                    <Label className="text-xs text-muted-foreground">{t("liveTradingView.intervalLabel")}</Label>
                                     <Select value={interval} onValueChange={setInterval} disabled={isRunning}>
                                         <SelectTrigger className="h-8 text-xs">
                                             <SelectValue />
@@ -421,7 +418,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                     </Select>
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-muted-foreground">单笔最大仓位 %</Label>
+                                    <Label className="text-xs text-muted-foreground">{t("liveTradingView.maxPositionPctLabel")}</Label>
                                     <Input
                                         type="number"
                                         value={maxPositionPct}
@@ -433,7 +430,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                     />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs text-muted-foreground">硬止损百分比 %</Label>
+                                    <Label className="text-xs text-muted-foreground">{t("liveTradingView.stopLossPctLabel")}</Label>
                                     <Input
                                         type="number"
                                         value={stopLossPct}
@@ -454,16 +451,16 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                     <CardHeader className="pb-3">
                         <CardTitle className="text-base font-semibold flex items-center gap-2">
                             <TrendingUp className="w-4 h-4 text-primary" />
-                            <span>会话统计概览</span>
+                            <span>{t("liveTradingView.sessionSummaryTitle")}</span>
                         </CardTitle>
                         <CardDescription className="text-xs">
-                            当前交易会话的运行指标
+                            {t("liveTradingView.sessionSummarySubtitle")}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3 pt-1">
                         <div className="grid grid-cols-2 gap-2">
                             <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                                <div className="text-[11px] text-muted-foreground">总盈亏 (USD)</div>
+                                <div className="text-[11px] text-muted-foreground">{t("liveTradingView.totalPnlLabel")}</div>
                                 <div className={cn(
                                     "text-lg font-bold font-mono mt-0.5",
                                     (tradingStatus?.total_pnl || 0) >= 0 ? "text-emerald-500" : "text-red-500"
@@ -473,7 +470,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                 </div>
                             </div>
                             <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
-                                <div className="text-[11px] text-muted-foreground">累计成交笔数</div>
+                                <div className="text-[11px] text-muted-foreground">{t("liveTradingView.filledTradesLabel")}</div>
                                 <div className="text-lg font-bold font-mono mt-0.5 text-foreground">
                                     {tradingStatus?.trade_count || activeOrders.length || 0}
                                 </div>
@@ -482,11 +479,11 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
 
                         <div className="p-3 rounded-lg bg-muted/30 border border-border/50 text-xs space-y-1.5">
                             <div className="flex justify-between">
-                                <span className="text-muted-foreground">当前持仓标的:</span>
-                                <span className="font-mono font-medium">{activePositions.length ? activePositions.map(p => p.symbol).join(", ") : "空仓 (Flat)"}</span>
+                                <span className="text-muted-foreground">{t("liveTradingView.activePositionsLabel")}</span>
+                                <span className="font-mono font-medium">{activePositions.length ? activePositions.map(p => p.symbol).join(", ") : t("liveTradingView.flatPosition")}</span>
                             </div>
                             <div className="flex justify-between">
-                                <span className="text-muted-foreground">会话持续状态:</span>
+                                <span className="text-muted-foreground">{t("liveTradingView.sessionStatusLabel")}</span>
                                 <span className="font-medium text-foreground capitalize">{tradingStatus?.status || "stopped"}</span>
                             </div>
                         </div>
@@ -502,10 +499,10 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Shield size={16} className="text-primary" />
-                                <span className="font-semibold text-sm">当前持仓与近期订单</span>
+                                <span className="font-semibold text-sm">{t("liveTradingView.positionsOrdersTitle")}</span>
                             </div>
                             <Badge variant="outline" className="text-[11px]">
-                                {activePositions.length} 持仓 / {activeOrders.length} 订单
+                                {activePositions.length} / {activeOrders.length}
                             </Badge>
                         </div>
                     </CardHeader>
@@ -514,7 +511,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                             {activePositions.length === 0 && activeOrders.length === 0 ? (
                                 <div className="h-48 flex flex-col items-center justify-center text-muted-foreground gap-2 text-xs">
                                     <Clock size={24} className="opacity-40" />
-                                    <span>暂无活动中的持仓或委托订单</span>
+                                    <span>{t("liveTradingView.noPositionsOrOrders")}</span>
                                 </div>
                             ) : (
                                 <div className="p-4 space-y-3">
@@ -528,7 +525,7 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                                                     </Badge>
                                                 </div>
                                                 <div className="text-muted-foreground text-[11px]">
-                                                    入场价: {pos.entry_price} | 标记价: {pos.current_price}
+                                                    {t("liveTradingView.entryPriceLabel")}: {pos.entry_price} | {t("liveTradingView.markPriceLabel")}: {pos.current_price}
                                                 </div>
                                             </div>
                                             <div className="text-right">
@@ -568,17 +565,17 @@ export const LiveTradingView = ({ strategy, onNavigateToPortfolio }: LiveTrading
                     <CardHeader className="py-3 px-4 border-b border-border flex flex-row items-center justify-between">
                         <div className="flex items-center gap-2">
                             <FileText size={16} className="text-primary" />
-                            <span className="font-semibold text-sm">交易引擎实时日志</span>
+                            <span className="font-semibold text-sm">{t("liveTradingView.engineLogsTitle")}</span>
                         </div>
                         <span className="text-[11px] text-muted-foreground font-mono">
-                            {liveLogs.length} 条记录
+                            {liveLogs.length} {t("liveTradingView.recordsCount")}
                         </span>
                     </CardHeader>
                     <CardContent className="p-0 flex-1 min-h-0 bg-muted/10 font-mono text-xs">
                         <ScrollArea className="h-full p-4">
                             {liveLogs.length === 0 ? (
                                 <div className="h-48 flex items-center justify-center text-muted-foreground text-xs">
-                                    暂无引擎事件日志
+                                    {t("liveTradingView.noEngineLogs")}
                                 </div>
                             ) : (
                                 <div className="space-y-2">
