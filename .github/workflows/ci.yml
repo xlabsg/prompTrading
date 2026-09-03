@@ -43,12 +43,15 @@ jobs:
 
       - name: Run Backend Tests
         env:
+          APP_WORKSPACES_DIR: /tmp/workspaces
+          APP_DB_URL: sqlite:////tmp/workspaces/app.db
           WORKSPACES_DIR: /tmp/workspaces
-          DB_URL: sqlite:////tmp/app.db
+          DB_URL: sqlite:////tmp/workspaces/app.db
           JWT_SECRET: ci-testing-jwt-secret-key-1234567890
           OPENAI_API_KEY: mock-test-key
           DEEPSEEK_API_KEY: mock-test-key
         run: |
+          sudo mkdir -p /workspaces && sudo chmod 777 /workspaces
           mkdir -p /tmp/workspaces
           pytest -v packages/control_plane
           pytest -v services/api
