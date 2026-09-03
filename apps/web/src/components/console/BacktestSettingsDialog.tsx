@@ -79,7 +79,6 @@ const BacktestSettingsDialog = ({
                             <SelectContent>
                                 <SelectItem value="OKX">OKX</SelectItem>
                                 <SelectItem value="Binance">Binance</SelectItem>
-                                <SelectItem value="Bybit">Bybit</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
