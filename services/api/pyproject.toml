@@ -8,24 +8,24 @@ version = "0.1.0"
 description = "PrompTrading FastAPI backend"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi==0.115.6",
-    "uvicorn[standard]==0.34.0",
+    "fastapi>=0.115.11",
+    "uvicorn[standard]>=0.34.2",
     # >=2.11 is tau-ai's floor; the API image installs both.
-    "pydantic>=2.11,<3",
-    "pydantic-settings==2.7.0",
-    "sqlalchemy==2.0.36",
-    "psycopg[binary]==3.2.3",
-    "redis==5.2.1",
-    "stripe==11.2.0",
-    "requests==2.32.3",
-    "httpx>=0.27.0",
-    "PyJWT==2.10.1",
-    "pyyaml==6.0.2",
-    "cryptography>=42.0.0",
-    "pandas>=1.5",
-    "pyarrow>=15.0.0",
-    "websockets>=12.0",
-    "openai>=1.0.0",
+    "pydantic>=2.11.0,<3",
+    "pydantic-settings>=2.8.1",
+    "sqlalchemy>=2.0.38",
+    "psycopg[binary]>=3.2.5",
+    "redis>=5.2.1",
+    "stripe>=11.2.0",
+    "requests>=2.32.3",
+    "httpx>=0.28.1",
+    "PyJWT>=2.10.1",
+    "pyyaml>=6.0.2",
+    "cryptography>=44.0.1",
+    "pandas>=2.2.3",
+    "pyarrow>=19.0.0",
+    "websockets>=15.0",
+    "openai>=1.65.0",
     # Coding agent runtime for the chat refine and overview flows. Pinned to the
     # same version as the agent image: the RPC surface is the contract.
     "tau-ai==0.4.1",
@@ -33,9 +33,9 @@ dependencies = [
 
 [project.optional-dependencies]
 test = [
-    "pytest==8.0.0",
-    "pytest-timeout==2.2.0",
-    "pytest-cov==4.1.0",
+    "pytest>=8.0.0",
+    "pytest-timeout>=2.2.0",
+    "pytest-cov>=4.1.0",
 ]
 
 # Local packages (okx_sdk, risk_engine, tradingview_scraper,

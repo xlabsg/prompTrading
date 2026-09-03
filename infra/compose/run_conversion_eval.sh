@@ -51,7 +51,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "[eval] Bringing up stack (mode=$MODE, consumers=$CONSUMERS)..."
-dc up -d --build --remove-orphans redis api agent-image backtest-image dev-image worker-scheduler
+dc up -d --build --remove-orphans api agent-image backtest-image dev-image worker-scheduler
 dc up -d --build --remove-orphans --scale worker-consumer="$CONSUMERS" worker-consumer
 
 echo "[eval] Waiting for API health..."
@@ -67,9 +67,6 @@ if [[ "$ok" != "1" ]]; then
   echo "[eval] API health check failed" >&2
   exit 1
 fi
-
-echo "[eval] Clearing Redis queue (best-effort)..."
-dc exec -T redis redis-cli DEL ai_strategy_jobs >/dev/null || true
 
 ART_DIR="${EVAL_ARTIFACTS_DIR:-.e2e_artifacts}"
 mkdir -p "$ART_DIR"

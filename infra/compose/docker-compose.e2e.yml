@@ -2,18 +2,6 @@
 # Usage:
 #   ./infra/compose/run_e2e.sh core
 services:
-  # ==================== Infrastructure ====================
-  redis:
-    image: redis:8.4.0-alpine
-    command: ["redis-server", "--appendonly", "yes"]
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 2s
-      timeout: 3s
-      retries: 30
-    volumes:
-      - redisdata_e2e:/data
-
   # ==================== Backend API ====================
   api:
     build:
@@ -21,7 +9,6 @@ services:
       dockerfile: services/api/Dockerfile
     environment:
       APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
-      APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
       APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
@@ -45,11 +32,13 @@ services:
       # LLM request timeouts (seconds)
       LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
       LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+      APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
+      APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
-      redis:
-        condition: service_healthy
+      worker-rpc:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz', timeout=2); raise SystemExit(0 if 200 <= r.status < 300 else 1)"]
       interval: 10s
@@ -63,7 +52,6 @@ services:
       dockerfile: services/worker/Dockerfile
     environment:
       APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
-      APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       WORKER_MODE: scheduler
       WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
@@ -83,9 +71,6 @@ services:
       STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
     volumes:
       - workspaces_e2e:/workspaces
-    depends_on:
-      redis:
-        condition: service_healthy
 
   worker-consumer:
     build:
@@ -93,7 +78,6 @@ services:
       dockerfile: services/worker/Dockerfile
     environment:
       APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
-      APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       WORKER_MODE: consumer
       WORKER_DOCKER_NETWORK: ${COMPOSE_PROJECT_NAME:-ai_strategy_e2e}_default
@@ -119,14 +103,24 @@ services:
       # Fail-fast timeout for strategy name generation (seconds)
       STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
       # Schedulers disabled here (safety; mode already prevents starting them)
-      TRENDING_SCHEDULER_ENABLED: "false"
-      TEMPLATE_PERFORMANCE_SCHEDULER_ENABLED: "false"
+      CONTAINER_HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-http://host.docker.internal:6152}
+      CONTAINER_HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-http://host.docker.internal:6152}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces_e2e:/workspaces
-    depends_on:
-      redis:
-        condition: service_healthy
+
+  worker-rpc:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+    command: ["uvicorn", "worker.rpc_server:app", "--host", "0.0.0.0", "--port", "8010"]
+    expose:
+      - "8010"
+    volumes:
+      - workspaces_e2e:/workspaces
 
   # ==================== Frontend (optional) ====================
   web:
@@ -173,7 +167,6 @@ services:
       dockerfile: services/api/Dockerfile
     environment:
       APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
-      APP_REDIS_URL: redis://redis:6379/0
       APP_WORKSPACES_DIR: /workspaces
       APP_DEV_SKIP_SUBSCRIPTION_CHECK: "true"
       E2E_API_BASE_URL: ${E2E_API_BASE_URL:-http://api:8000}
@@ -198,8 +191,6 @@ services:
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
-      redis:
-        condition: service_healthy
       api:
         condition: service_healthy
       worker-consumer:
@@ -208,6 +199,5 @@ services:
     command: ["pytest -m integration -v"]
 
 volumes:
-  redisdata_e2e: {}
   workspaces_e2e: {}
 

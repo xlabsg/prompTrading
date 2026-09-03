@@ -67,7 +67,7 @@ trap cleanup EXIT
 echo "[e2e] Bringing up stack (mode=$MODE, consumers=$CONSUMERS)..."
 
 # Build and start infra + workers; runner will be invoked as a one-shot.
-dc up -d --build --remove-orphans redis api agent-image backtest-image dev-image worker-scheduler
+dc up -d --build --remove-orphans api agent-image backtest-image dev-image worker-scheduler
 dc up -d --build --remove-orphans --scale worker-consumer="$CONSUMERS" worker-consumer
 
 if [[ "$MODE" == "extended" ]]; then
@@ -89,9 +89,6 @@ if [[ "$ok" != "1" ]]; then
   echo "[e2e] API health check failed" >&2
   exit 1
 fi
-
-echo "[e2e] Clearing Redis queue (best-effort)..."
-dc exec -T redis redis-cli DEL ai_strategy_jobs >/dev/null || true
 
 PYTEST_CMD="pytest -m integration -v"
 if [[ "$MODE" == "core" ]]; then
