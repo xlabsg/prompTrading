@@ -977,6 +977,35 @@ const BacktestView = ({
                                                     </span>
                                                 </div>
                                             )}
+                                            {selectedRun.metrics.deflated_sharpe_ratio !== undefined && (
+                                                <div className="flex justify-between py-2 items-center">
+                                                    <span className="text-muted-foreground flex items-center gap-1.5">
+                                                        Deflated Sharpe (DSR)
+                                                        <Badge variant="outline" className={cn("text-[10px] px-1.5 py-0", (selectedRun.metrics.deflated_sharpe_ratio || 0) >= 0.8 ? "text-green-600 border-green-500/30" : "text-amber-600 border-amber-500/30")}>
+                                                            {(selectedRun.metrics.deflated_sharpe_ratio || 0) >= 0.8 ? "Robust" : "Overfit Risk"}
+                                                        </Badge>
+                                                    </span>
+                                                    <span className="font-medium">
+                                                        {((selectedRun.metrics.deflated_sharpe_ratio || 0) * 100).toFixed(1)}%
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {selectedRun.metrics.p_value !== undefined && (
+                                                <div className="flex justify-between py-2 items-center">
+                                                    <span className="text-muted-foreground">Monte Carlo Permutation (p-val)</span>
+                                                    <span className={cn("font-medium", (selectedRun.metrics.p_value || 0) <= 0.05 ? "text-green-600" : "text-amber-600")}>
+                                                        {selectedRun.metrics.p_value?.toFixed(3)} {(selectedRun.metrics.p_value || 0) <= 0.05 ? "(p < 0.05)" : ""}
+                                                    </span>
+                                                </div>
+                                            )}
+                                            {selectedRun.metrics.robustness_score !== undefined && (
+                                                <div className="flex justify-between py-2 items-center">
+                                                    <span className="text-muted-foreground font-medium">Robustness Score</span>
+                                                    <span className="font-semibold text-primary">
+                                                        {selectedRun.metrics.robustness_score?.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div></CardContent></Card>
                                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                             <Card><CardHeader className="pb-2"><CardTitle className="text-base flex items-center justify-between gap-2"><span>{t("backtest.charts.equityCurve")}</span><span className="text-[11px] font-normal text-muted-foreground">{candleAligned ? `timeline: candles (${candleBarCount} bars)` : "timeline: equity"}</span></CardTitle></CardHeader><CardContent>

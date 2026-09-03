@@ -55,6 +55,60 @@ def generate_signals(data: pd.DataFrame, params: dict) -> dict:
         self.assertFalse(ok)
         self.assertIn("missing required key 'target_weights'", err)
 
+    def test_dry_run_catches_lookahead_bias_shift(self):
+        peeking_code = """
+import pandas as pd
+import numpy as np
+
+def generate_signals(data: pd.DataFrame, params: dict) -> dict:
+    data['future_close'] = data['close'].shift(-1)
+    target_weights = np.where(data['future_close'] > data['close'], 1.0, 0.0)
+    return {
+        'target_weights': target_weights,
+        'weight_reason': [''] * len(data),
+    }
+"""
+        ok, err = dry_run_strategy(peeking_code, strict_lookahead=True)
+        self.assertFalse(ok)
+        self.assertIn("LookaheadBiasError", err)
+        self.assertIn("Negative shift", err)
+
+    def test_dry_run_catches_centered_rolling(self):
+        centered_code = """
+import pandas as pd
+import numpy as np
+
+def generate_signals(data: pd.DataFrame, params: dict) -> dict:
+    data['sma'] = data['close'].rolling(10, center=True).mean()
+    target_weights = np.where(data['close'] > data['sma'], 1.0, 0.0)
+    return {
+        'target_weights': target_weights,
+        'weight_reason': [''] * len(data),
+    }
+"""
+        ok, err = dry_run_strategy(centered_code, strict_lookahead=True)
+        self.assertFalse(ok)
+        self.assertIn("LookaheadBiasError", err)
+        self.assertIn("Rolling with center=True", err)
+
+
+    def test_lint_and_heal_alpha_library(self):
+        code = """
+import pandas as pd
+
+def generate_signals(data: pd.DataFrame, params: dict) -> dict:
+    st = calc_supertrend(data, period=10, multiplier=3.0)
+    target_weights = st['trend_direction']
+    return {
+        'target_weights': target_weights,
+        'weight_reason': ['supertrend'] * len(data),
+    }
+"""
+        healed, fixes = lint_and_heal_strategy_code(code)
+        self.assertIn("from backtest.alpha_library import calc_supertrend", healed)
+        ok, err = dry_run_strategy(healed)
+        self.assertTrue(ok, f"Dry run failed: {err}")
+
 
 if __name__ == "__main__":
     unittest.main()

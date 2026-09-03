@@ -36,6 +36,9 @@ DEFAULT_SLIPPAGE_BPS = 2.0
 REPORTED_METRICS = (
     "total_return",
     "sharpe_ratio",
+    "deflated_sharpe_ratio",
+    "p_value",
+    "robustness_score",
     "max_drawdown",
     "win_rate",
     "profit_factor",
@@ -303,6 +306,41 @@ def run_agent_backtest(
         return False, f"Backtest engine error: {type(e).__name__}: {e}", None
 
     metrics = dict(result.metrics)
+
+    robustness_diagnostics = []
+    try:
+        from backtest.robustness import evaluate_strategy_robustness
+
+        equity_series = result.equity.get("equity") if hasattr(result.equity, "get") else None
+        if equity_series is not None and len(equity_series) > 1:
+            rets = equity_series.pct_change().dropna().values
+            rob = evaluate_strategy_robustness(
+                returns=rets,
+                observed_sharpe=float(metrics.get("sharpe_ratio", 0.0) or 0.0),
+                max_drawdown=float(metrics.get("max_drawdown", 0.0) or 0.0),
+                num_trades=int(metrics.get("total_trades", 0) or 0),
+                trials_count=1,
+            )
+            metrics["deflated_sharpe_ratio"] = rob.deflated_sharpe_ratio
+            metrics["p_value"] = rob.p_value
+            metrics["robustness_score"] = rob.robustness_score
+            metrics["is_robust"] = rob.is_robust
+            robustness_diagnostics = list(rob.diagnostics)
+
+            # In multi-run sessions, warn the agent about multiple testing degradation
+            if budget.runs_used > 0:
+                from backtest.robustness import compute_dsr
+                multi_dsr, _, _ = compute_dsr(
+                    returns=rets,
+                    observed_sharpe=float(metrics.get("sharpe_ratio", 0.0) or 0.0),
+                    trials_count=budget.runs_used + 1,
+                )
+                robustness_diagnostics.append(
+                    f"Multiple testing warning: across {budget.runs_used + 1} iterations, effective DSR adjusts to {multi_dsr:.4f}."
+                )
+    except Exception:
+        pass
+
     previous_best = budget.best_score()
     budget.record(metrics)
 
@@ -311,6 +349,10 @@ def run_agent_backtest(
         f"Backtest #{budget.runs_used} on {dataset.describe()} ({len(data)} bars):",
         _format_metrics(metrics),
     ]
+    if robustness_diagnostics:
+        report.append("  Robustness diagnostics:")
+        for diag in robustness_diagnostics:
+            report.append(f"    * {diag}")
 
     if isinstance(score, (int, float)) and previous_best is not None:
         delta = score - previous_best
