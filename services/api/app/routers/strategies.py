@@ -10,6 +10,7 @@ import threading
 from datetime import datetime, timezone
 
 import json
+import hashlib
 import requests
 import sqlite3
 
@@ -31,7 +32,7 @@ from control_plane.models import (
     StrategyVersion,
 )
 from control_plane.queue import QUEUE_NAME, enqueue_job
-from control_plane.workspaces import get_run_dir, init_strategy_workspace
+from control_plane.workspaces import get_run_dir, git_commit, init_strategy_workspace
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
 from app.deps import get_db, get_redis, get_session_factory
 from app.services.worker_rpc import call_worker_rpc
@@ -569,6 +570,75 @@ Based on your analysis:
 Always be specific and actionable in your recommendations.
 """
 
+STRATEGY_QA_SYSTEM_PROMPT = """You are an expert quantitative trading strategy assistant.
+The user's trading strategy has already been generated and is stored in their workspace.
+Your task is to answer questions, explain the strategy's logic, indicators, signal generation rules, risk management, and analyze backtest results.
+
+Guidelines:
+1. Answer clearly, accurately, and concisely in well-structured markdown.
+2. Reference the actual strategy code and backtest results provided in the context.
+3. This is an informational conversation. Do NOT output [READY] or [REFINE] tags, and do NOT emit raw JSON configuration blocks.
+4. If the user asks for suggestions or optimizations, provide concrete recommendations. If they want to apply code modifications, explain that they can confirm with an explicit modification instruction (such as '把止损调整为 3%').
+"""
+
+
+def _classify_done_chat_intent(message: str) -> str:
+    """Classify user intent when strategy is in DONE status.
+
+    Returns:
+        'refine': User explicitly requests code modification, parameter change, or strategy tuning.
+        'chat': User is asking questions, requesting explanation, inspecting code/backtests, or conversing.
+    """
+    cleaned = (message or "").strip().lower()
+    if not cleaned:
+        return "chat"
+
+    # 1. Check strong question/explanation prefixes and patterns
+    qa_starters = (
+        "为什么", "怎么", "如何", "什么是", "解释", "描述", "说明", "讲讲", "分析",
+        "介绍", "总结", "读一下", "看一下", "看下", "有何", "原理", "逻辑", "告诉我",
+        "查一下", "帮我分析", "帮我看看", "表现如何", "怎么样", "为啥", "给我描述",
+        "给我讲讲", "给我解释", "给我看看",
+        "why", "how", "what", "explain", "describe", "analyze", "summary",
+        "summarize", "tell me", "show me", "check", "inspect", "overview",
+    )
+
+    qa_anywhere = (
+        "描述一下", "描述该", "描述这个", "解释一下", "说明一下", "讲讲", "原理是什么",
+        "逻辑是什么", "怎么算的", "什么原理", "为什么会", "表现怎么样", "回测情况",
+    )
+
+    if any(cleaned.startswith(prefix) for prefix in qa_starters) or any(phrase in cleaned for phrase in qa_anywhere):
+        return "chat"
+
+    if cleaned.endswith("？") or cleaned.endswith("?"):
+        qa_question_signals = ("吗", "能不能", "可以吗", "怎么", "如何", "是否", "可不可以", "行不行", "can we", "can you", "is it possible", "how to")
+        if any(sig in cleaned for sig in qa_question_signals):
+            return "chat"
+
+    # 2. Modification verbs / action patterns
+    chinese_modify_patterns = [
+        r"(?:把|将).*(?:改|调|设|换)",
+        r"(?:改成|改为|修改|调整为|重命名为|替换为|重写|设为|设置为)",
+        r"(?:增加|添加|加上|引入|新建).*(?:指标|条件|规则|过滤|止损|止盈|仓位|逻辑|参数)",
+        r"(?:删除|去掉|移除|去除).*(?:指标|条件|规则|过滤|做空|做多|止损|止盈|逻辑)",
+        r"(?:优化|修改|重写|调整).*(?:代码|策略|入场|出场|信号|止损|止盈|参数)",
+    ]
+    english_modify_patterns = [
+        r"(?:\b|^)(?:change|modify|update|tune|adjust|rewrite|refactor)(?:\b|$)",
+        r"(?:\b|^)(?:set|switch)\s+.*\s+(?:to|into)(?:\b|$)",
+        r"(?:\b|^)(?:add|insert|include)\s+.*(?:\b)(?:filter|indicator|stop loss|take profit|rule|condition|parameter|logic)(?:\b|$)",
+        r"(?:\b|^)(?:remove|delete|drop)\s+.*(?:\b)(?:short|long|filter|indicator|rule|condition|logic)(?:\b|$)",
+    ]
+
+    has_modify_intent = any(re.search(pat, cleaned) for pat in (chinese_modify_patterns + english_modify_patterns))
+    if has_modify_intent:
+        return "refine"
+
+    # Default safely to chat
+    return "chat"
+
+
 STRATEGY_NAME_MAX_CHARS = 20
 
 
@@ -874,31 +944,50 @@ def _build_refine_history_context(
     return context
 
 
-def _build_autonomous_refine_task(user_message: str, history_context: str = "") -> str:
-    context_block = ""
+def _build_strategy_agent_task(
+    user_message: str,
+    history_context: str = "",
+    backtest_context: str = "",
+) -> str:
+    parts: list[str] = []
     if history_context:
-        context_block = (
-            "Recent conversation context (treat as previously agreed constraints unless the latest request overrides):\n"
-            f"{history_context}\n\n"
-        )
-
-    return (
-        f"{context_block}"
-        "Refine the existing strategy according to this latest request:\n"
-        f"{user_message}\n\n"
-        "Requirements:\n"
-        "1. Update `strategy.py` directly in the workspace.\n"
-        "2. Keep `generate_signals(data, params)` available and runnable.\n"
-        "3. **CRITICAL** - Return format MUST include:\n"
-        "   - `target_weights`: float array, length n, range [-1, 1]\n"
-        "   - `weight_reason`: str list, length n (use short strings like 'regime_long', 'reduce_risk')\n"
-        "   - 2-6 debug fields (indicators, conditions) as bar-aligned arrays\n"
-        "   - Use `.to_numpy()` for pandas Series, NOT raw Series\n"
-        "4. Update `overview.md` so Summary, Trading Board, and Flow Animation stay consistent.\n"
-        "5. Keep Flow Animation with a mermaid graph; add optional g6 weighted graph if useful.\n"
-        "6. Verify syntax before completion.\n"
-        "7. Finish only after changes are written to disk."
+        parts.append(f"Recent context:\n{history_context}")
+    if backtest_context:
+        parts.append(f"Latest backtest context:\n{backtest_context}")
+    parts.append(f"User message:\n{user_message}")
+    parts.append(
+        "Instructions:\n"
+        "1. If the user is asking questions, seeking explanations, or analyzing the strategy/backtest: "
+        "inspect workspace files (e.g. strategy.py, overview.md) and answer clearly in your final response. "
+        "Do NOT modify any files.\n"
+        "2. If the user explicitly requests code or parameter changes: modify strategy.py accordingly.\n\n"
+        "Safety constraints:\n"
+        "- `generate_signals(data, params)` must remain runnable, deterministic, and return target_weights (values in [-1, 1]) and weight_reason.\n"
+        "- No unauthorized network requests, external file I/O, or destructive commands."
     )
+    return "\n\n".join(parts)
+
+
+def _build_autonomous_refine_task(user_message: str, history_context: str = "") -> str:
+    """Backwards-compatible alias for _build_strategy_agent_task."""
+    return _build_strategy_agent_task(user_message, history_context=history_context)
+
+
+def _snapshot_workspace_fingerprint(strategy_dir: str) -> dict[str, str]:
+    fingerprint: dict[str, str] = {}
+    if not os.path.isdir(strategy_dir):
+        return fingerprint
+    for root, _, files in os.walk(strategy_dir):
+        if ".git" in root or "__pycache__" in root:
+            continue
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            try:
+                with open(path, "rb") as f:
+                    fingerprint[os.path.relpath(path, strategy_dir)] = hashlib.sha256(f.read()).hexdigest()
+            except OSError:
+                continue
+    return fingerprint
 
 
 def _tau_extension_path() -> str:
@@ -944,6 +1033,7 @@ def _run_autonomous_refine(
     *,
     chat_history: list[dict[str, Any]] | None = None,
     on_progress: Callable[[dict[str, Any]], None] | None = None,
+    backtest_context: str = "",
 ) -> dict[str, Any]:
     from agent import tau_driver
     from agent.tau_config import ensure_catalog_entry, resolve_provider
@@ -961,8 +1051,16 @@ def _run_autonomous_refine(
         chat_history,
         latest_user_message=user_message,
     )
+    task_prompt = _build_strategy_agent_task(
+        user_message,
+        history_context=history_context,
+        backtest_context=backtest_context,
+    )
+
+    before_fp = _snapshot_workspace_fingerprint(strategy_dir)
+
     session = tau_driver.run_session(
-        task=_build_autonomous_refine_task(user_message, history_context),
+        task=task_prompt,
         workspace=strategy_dir,
         provider=target.provider,
         model=target.model,
@@ -972,10 +1070,14 @@ def _run_autonomous_refine(
         env=target.credential_env(),
     )
 
+    after_fp = _snapshot_workspace_fingerprint(strategy_dir)
+    files_changed = before_fp != after_fp
+
     return {
-        "agent_summary": session.summary,
-        "history_length": session.turns,
+        "agent_summary": getattr(session, "summary", ""),
+        "history_length": getattr(session, "turns", 0),
         "refine_context_chars": len(history_context),
+        "files_changed": files_changed,
     }
 
 
@@ -990,6 +1092,9 @@ def _persist_autonomous_refine_result(
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
+
+    strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
+    git_commit(strategy_dir, f"Refine strategy: {prompt[:60]}")
 
     strategy.chat_history = final_history
     strategy.chat_status = ChatStatus.DONE
@@ -1246,29 +1351,6 @@ def _extract_chat_completion_text(data: Any, *, phase: str) -> str:
     return ""
 
 
-def _strip_tool_messages(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """
-    Remove tool-specific conversation parts for providers that reject tool traces.
-    """
-    cleaned: list[dict[str, Any]] = []
-    for msg in messages:
-        role = str(msg.get("role") or "")
-        if role == "tool":
-            continue
-        if role == "assistant" and msg.get("tool_calls"):
-            content = str(msg.get("content") or "").strip()
-            if content:
-                cleaned.append({"role": "assistant", "content": content})
-            continue
-        cleaned.append(
-            {
-                "role": role,
-                "content": str(msg.get("content") or ""),
-            }
-        )
-    return cleaned
-
-
 def _call_chat_llm(messages: list[dict], system_prompt: str = CHAT_SYSTEM_PROMPT, json_mode: bool = False) -> str:
     """Call LLM for conversation (non-streaming).
 
@@ -1312,200 +1394,6 @@ def _call_chat_llm(messages: list[dict], system_prompt: str = CHAT_SYSTEM_PROMPT
     resp.raise_for_status()
     data = resp.json()
     return _extract_chat_completion_text(data, phase="chat")
-
-
-_CHAT_TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_latest_backtest",
-            "description": "Read the latest backtest artifacts (metrics, trades, logs) for this strategy.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "max_trades": {"type": "integer", "description": "Max trades to return (default 10)"},
-                    "max_log_lines": {"type": "integer", "description": "Max log lines to return (default 30)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_files",
-            "description": "List available strategy files in the working directory.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_code",
-            "description": "Read the current strategy.py file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "max_chars": {"type": "integer", "description": "Max characters to return (default 8000)"},
-                },
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_file",
-            "description": "Read a specific strategy file (safe allowlist).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {"type": "string", "description": "Filename (e.g., strategy_spec.yaml)"},
-                    "max_chars": {"type": "integer", "description": "Max characters to return (default 8000)"},
-                },
-                "required": ["name"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_params_schema",
-            "description": "Read params_schema.json for the current strategy.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_meta",
-            "description": "Read strategy_meta.json for the current strategy.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_strategy_protocol",
-            "description": "Read strategy_protocol.json for the current strategy.",
-            "parameters": {"type": "object", "properties": {}},
-        },
-    },
-]
-
-
-def _call_chat_llm_with_tools(
-    messages: list[dict],
-    *,
-    system_prompt: str,
-    tools: list[dict],
-    tool_handlers: dict[str, Any],
-    json_mode: bool = False,
-    max_tokens: int = 4096,
-    temperature: float = 0.7,
-    max_steps: int = 3,
-) -> str:
-    api_key, base_url, model = _get_llm_config()
-    full_messages = [{"role": "system", "content": system_prompt}] + messages
-    last_message: dict[str, Any] | None = None
-    last_had_tool_calls = False
-
-    for _ in range(max_steps):
-        payload: dict[str, Any] = {
-            "model": model,
-            "messages": full_messages,
-            "max_tokens": int(max_tokens),
-            "temperature": float(temperature),
-            "tools": tools,
-            "tool_choice": "auto",
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-
-        try:
-            resp = requests.post(
-                f"{base_url}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-                timeout=_get_llm_http_timeout_s(),
-            )
-            if resp.status_code >= 400:
-                _log_llm_http_error(
-                    phase="chat_with_tools",
-                    base_url=base_url,
-                    model=model,
-                    payload=payload,
-                    resp=resp,
-                )
-            resp.raise_for_status()
-        except requests.RequestException:
-            # Fallback: provider may not support tools.
-            fallback_messages = _strip_tool_messages(full_messages[1:])
-            logger.warning(
-                "[llm] tools fallback enabled model=%s url=%s kept_messages=%s",
-                model,
-                f"{base_url.rstrip('/')}/chat/completions",
-                len(fallback_messages),
-            )
-            return _call_chat_llm(fallback_messages, system_prompt=system_prompt, json_mode=json_mode)
-
-        data = resp.json()
-        message = data.get("choices", [{}])[0].get("message", {}) or {}
-        last_message = message
-        tool_calls = message.get("tool_calls") or []
-        last_had_tool_calls = bool(tool_calls)
-
-        if not tool_calls:
-            return str(message.get("content") or "")
-
-        # Append assistant tool call message
-        full_messages.append(
-            {
-                "role": "assistant",
-                "content": message.get("content") or "",
-                "tool_calls": tool_calls,
-            }
-        )
-
-        # Execute each tool call
-        for call in tool_calls:
-            call_id = call.get("id") or ""
-            fn = call.get("function") or {}
-            name = fn.get("name") or ""
-            raw_args = fn.get("arguments") or "{}"
-            try:
-                args = json.loads(raw_args) if isinstance(raw_args, str) else dict(raw_args or {})
-            except Exception:
-                args = {}
-            handler = tool_handlers.get(name)
-            if not handler:
-                result = {"error": f"unknown_tool:{name}"}
-            else:
-                result = handler(args)
-            if not isinstance(result, str):
-                result = json.dumps(result, ensure_ascii=False)
-            full_messages.append(
-                {
-                    "role": "tool",
-                    "tool_call_id": call_id,
-                    "name": name,
-                    "content": result,
-                }
-            )
-
-    # Max steps reached; force a final non-tool response if we were still using tools.
-    if last_had_tool_calls:
-        full_messages.append(
-            {
-                "role": "user",
-                "content": "Please provide the final response now. Do not call tools.",
-            }
-        )
-        return _call_chat_llm(_strip_tool_messages(full_messages[1:]), system_prompt=system_prompt, json_mode=json_mode)
-
-    # Otherwise return last content (may be empty, but no tool loop pending).
-    return str((last_message or {}).get("content") or "")
 
 
 def _call_chat_llm_stream(messages: list[dict], system_prompt: str = CHAT_SYSTEM_PROMPT, json_mode: bool = False) -> Generator[str, None, None]:
@@ -1850,47 +1738,21 @@ def chat_with_strategy(
     if strategy.chat_history is None:
         strategy.chat_history = []
     
-    # Determine whether we are refining an existing strategy (code already generated).
-    is_refinement_mode = strategy.chat_status == ChatStatus.DONE
+    # If strategy code has already been generated, classify intent into Q&A or refine
+    is_refinement_mode = False
+    is_done_qa_mode = False
+    if strategy.chat_status == ChatStatus.DONE:
+        if _classify_done_chat_intent(req.message) == "refine":
+            is_refinement_mode = True
+        else:
+            is_done_qa_mode = True
 
     user_message = req.message
 
     # Add user message
     history = list(strategy.chat_history)
     history.append({"role": "user", "content": user_message})
-    llm_history = _append_language_to_history(history, user_message)
-    llm_history = _sanitize_llm_messages(llm_history)
 
-    def _tool_get_latest_backtest(args: dict[str, Any]) -> dict[str, Any]:
-        payload = _get_latest_backtest_payload(
-            db,
-            strategy_id,
-            max_trades=int(args.get("max_trades") or 10),
-            max_log_lines=int(args.get("max_log_lines") or 30),
-        )
-        if not payload:
-            return {"error": "backtest_not_found"}
-        return payload
-
-    def _build_tool_handlers() -> dict[str, Any]:
-        return {
-            "get_latest_backtest": _tool_get_latest_backtest,
-            "get_strategy_files": lambda _args: {"files": _list_strategy_files(strategy_id)},
-            "get_strategy_code": lambda args: _read_strategy_text(
-                strategy_id,
-                "strategy.py",
-                max_chars=int(args.get("max_chars") or 8000),
-            ),
-            "get_strategy_file": lambda args: _read_strategy_text(
-                strategy_id,
-                str(args.get("name") or ""),
-                max_chars=int(args.get("max_chars") or 8000),
-            ),
-            "get_strategy_params_schema": lambda _args: _read_strategy_json(strategy_id, "params_schema.json"),
-            "get_strategy_meta": lambda _args: _read_strategy_json(strategy_id, "strategy_meta.json"),
-            "get_strategy_protocol": lambda _args: _read_strategy_json(strategy_id, "strategy_protocol.json"),
-        }
-    
     # Call LLM with appropriate prompt
     try:
         if is_refinement_mode:
@@ -1910,18 +1772,16 @@ def chat_with_strategy(
                     config=strategy.chat_config,
                     refine_proposal=None,
                 )
+            backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
             try:
                 refine_meta = _run_autonomous_refine(
                     strategy_id,
                     user_message,
                     chat_history=history,
-                )
-                clean_reply = (
-                    "Agent 已完成本次 refine，并已直接写入策略工作区。\n\n"
-                    f"{refine_meta.get('agent_summary') or '修改已应用。'}"
+                    backtest_context=backtest_context,
                 )
             except Exception as exc:
-                clean_reply = f"Agent refine 失败：{exc}"
+                clean_reply = f"Agent 处理失败：{exc}"
                 _append_assistant_message(history, clean_reply)
                 strategy.chat_history = history
                 strategy.updated_at = datetime.now(timezone.utc)
@@ -1935,18 +1795,31 @@ def chat_with_strategy(
                     refine_proposal=None,
                 )
 
-            final_history = history + [{"role": "assistant", "content": clean_reply}]
-            _persist_autonomous_refine_result(
-                db,
-                strategy_id=strategy_id,
-                final_history=final_history,
-                prompt=user_message,
-                llm_meta={
-                    "mode": "autonomous_refine",
-                    **refine_meta,
-                },
-            )
-            db.commit()
+            files_changed = bool(refine_meta.get("files_changed"))
+            agent_summary = str(refine_meta.get("agent_summary") or "").strip()
+            if files_changed:
+                clean_reply = (
+                    "Agent 已完成本次修改，并已写入策略工作区。\n\n"
+                    f"{agent_summary or '修改已应用。'}"
+                )
+                final_history = history + [{"role": "assistant", "content": clean_reply}]
+                _persist_autonomous_refine_result(
+                    db,
+                    strategy_id=strategy_id,
+                    final_history=final_history,
+                    prompt=user_message,
+                    llm_meta={
+                        "mode": "autonomous_refine",
+                        **refine_meta,
+                    },
+                )
+            else:
+                clean_reply = agent_summary or "已为您分析完毕。"
+                final_history = history + [{"role": "assistant", "content": clean_reply}]
+                strategy.chat_history = final_history
+                strategy.updated_at = datetime.now(timezone.utc)
+                db.commit()
+
             db.refresh(strategy)
             return ChatResponse(
                 reply=clean_reply,
@@ -1955,12 +1828,43 @@ def chat_with_strategy(
                 config=strategy.chat_config,
                 refine_proposal=None,
             )
+        elif is_done_qa_mode:
+            strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
+            strategy_code = _read_strategy_code(strategy_code_path)
+            backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
+            qa_prompt = STRATEGY_QA_SYSTEM_PROMPT
+            if strategy_code:
+                qa_prompt += f"\n\nCurrent strategy code (`strategy.py`):\n```python\n{strategy_code[:8000]}\n```"
+            if backtest_context:
+                qa_prompt += f"\n\nLatest backtest results:\n{backtest_context[:4000]}"
+            llm_history = _append_language_to_history(history, user_message)
+            llm_history = _sanitize_llm_messages(llm_history)
+            reply = _call_chat_llm(
+                llm_history,
+                system_prompt=qa_prompt,
+                json_mode=False,
+            )
+            clean_reply = reply.strip()
+            _append_assistant_message(history, clean_reply)
+            strategy.chat_history = history
+            strategy.chat_status = ChatStatus.DONE
+            strategy.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(strategy)
+            return ChatResponse(
+                reply=clean_reply,
+                status=ChatStatus.DONE,
+                chat_history=history,
+                config=strategy.chat_config,
+                refine_proposal=None,
+            )
         else:
-            reply = _call_chat_llm_with_tools(
+            llm_history = _append_language_to_history(history, user_message)
+            llm_history = _sanitize_llm_messages(llm_history)
+            reply = _call_chat_llm(
                 llm_history,
                 system_prompt=CHAT_SYSTEM_PROMPT,
-                tools=_CHAT_TOOLS,
-                tool_handlers=_build_tool_handlers(),
+                json_mode=False,
             )
     except requests.RequestException as e:
         raise HTTPException(status_code=502, detail=f"LLM request failed: {e}")
@@ -2011,8 +1915,14 @@ def chat_with_strategy_stream(
     if strategy.chat_history is None:
         strategy.chat_history = []
     
-    # Determine whether we are refining an existing strategy (code already generated).
-    is_refinement_mode = strategy.chat_status == ChatStatus.DONE
+    # If strategy code has already been generated, classify intent into Q&A or refine
+    is_refinement_mode = False
+    is_done_qa_mode = False
+    if strategy.chat_status == ChatStatus.DONE:
+        if _classify_done_chat_intent(req.message) == "refine":
+            is_refinement_mode = True
+        else:
+            is_done_qa_mode = True
 
     user_message = req.message
 
@@ -2035,11 +1945,17 @@ def chat_with_strategy_stream(
         chat_history = [{"role": "user", "content": _append_language_instruction(user_message)}]
         system_prompt = CHAT_SYSTEM_PROMPT
     elif user_message.strip() == "/generate_overview":
-        # Special command to generate overview using Autonomous Agent
-        # We handle this as a synchronous-like blocking call within the stream,
-        # or we could make it async. For simplicity and reliability, we run it here.
-        # This bypasses the standard chat flow.
         pass
+    elif is_done_qa_mode:
+        chat_history = llm_history
+        strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
+        strategy_code = _read_strategy_code(strategy_code_path)
+        backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
+        system_prompt = STRATEGY_QA_SYSTEM_PROMPT
+        if strategy_code:
+            system_prompt += f"\n\nCurrent strategy code (`strategy.py`):\n```python\n{strategy_code[:8000]}\n```"
+        if backtest_context:
+            system_prompt += f"\n\nLatest backtest results:\n{backtest_context[:4000]}"
     else:
         chat_history = llm_history
         system_prompt = CHAT_SYSTEM_PROMPT
@@ -2065,7 +1981,7 @@ def chat_with_strategy_stream(
             from agent import tau_driver
             from agent.tau_config import ensure_catalog_entry, resolve_provider
 
-            yield f"data: {json.dumps({'type': 'token', 'content': 'Starting autonomous agent to generate overview...\\n'})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'content': 'Starting autonomous agent to generate overview...\n'})}\n\n"
 
             try:
                 strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
@@ -2113,36 +2029,14 @@ def chat_with_strategy_stream(
             )
             return
 
-        def _build_tool_handlers() -> dict[str, Any]:
-            return {
-                "get_latest_backtest": lambda args: _get_latest_backtest_payload(
-                    db,
-                    strategy_id,
-                    max_trades=int(args.get("max_trades") or 10),
-                    max_log_lines=int(args.get("max_log_lines") or 30),
-                ) or {"error": "backtest_not_found"},
-                "get_strategy_files": lambda _args: {"files": _list_strategy_files(strategy_id)},
-                "get_strategy_code": lambda args: _read_strategy_text(
-                    strategy_id,
-                    "strategy.py",
-                    max_chars=int(args.get("max_chars") or 8000),
-                ),
-                "get_strategy_file": lambda args: _read_strategy_text(
-                    strategy_id,
-                    str(args.get("name") or ""),
-                    max_chars=int(args.get("max_chars") or 8000),
-                ),
-                "get_strategy_params_schema": lambda _args: _read_strategy_json(strategy_id, "params_schema.json"),
-                "get_strategy_meta": lambda _args: _read_strategy_json(strategy_id, "strategy_meta.json"),
-                "get_strategy_protocol": lambda _args: _read_strategy_json(strategy_id, "strategy_protocol.json"),
-            }
-
         if is_refinement_mode:
-            yield f"data: {json.dumps({'type': 'token', 'content': 'Running agent refine...\\n'})}\n\n"
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'refine_start', 'path': 'strategy.py', 'message': '正在分析修改需求并准备更新 strategy.py...'}, ensure_ascii=False)}\n\n"
             progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
             def _push_progress(event: dict[str, Any]) -> None:
                 progress_queue.put({"kind": "progress", "payload": event})
+
+            backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
 
             def _run_refine_worker() -> None:
                 try:
@@ -2151,6 +2045,7 @@ def chat_with_strategy_stream(
                         user_message,
                         chat_history=history,
                         on_progress=_push_progress,
+                        backtest_context=backtest_context,
                     )
                     progress_queue.put({"kind": "result", "payload": refine_meta_result})
                 except Exception as worker_error:
@@ -2171,9 +2066,14 @@ def chat_with_strategy_stream(
                     tool = str(payload.get("tool") or "")
                     path = str(payload.get("path") or "")
                     phase = str(payload.get("phase") or "")
-                    if tool in {"edit_file", "write_file"} and path:
+                    args = payload.get("args")
+                    if not path and isinstance(args, dict):
+                        path = str(args.get("path") or "")
+                    if tool in {"edit_file", "write_file", "edit", "write", "read_file", "read"} and path:
+                        file_name = os.path.basename(path)
+                        action_text = "修改" if tool in {"edit_file", "write_file", "edit", "write"} else "阅读"
                         yield (
-                            f"data: {json.dumps({'type': 'progress', 'tool': tool, 'path': path, 'phase': phase})}\n\n"
+                            f"data: {json.dumps({'type': 'progress', 'tool': tool, 'path': file_name, 'message': f'正在{action_text} {file_name}...', 'phase': phase})}\n\n"
                         )
                 elif kind == "result":
                     refine_meta = event.get("payload") if isinstance(event.get("payload"), dict) else {}
@@ -2183,66 +2083,92 @@ def chat_with_strategy_stream(
                     break
 
             if refine_meta is not None and refine_error is None:
-                clean_reply = (
-                    "Agent 已完成本次 refine，并已直接写入策略工作区。\n\n"
-                    f"{refine_meta.get('agent_summary') or '修改已应用。'}"
-                )
-                final_history = history + [{"role": "assistant", "content": clean_reply}]
-
-                session = session_factory()
-                try:
-                    _persist_autonomous_refine_result(
-                        session,
-                        strategy_id=strategy_id,
-                        final_history=final_history,
-                        prompt=user_message,
-                        llm_meta={
-                            "mode": "autonomous_refine",
-                            **refine_meta,
-                        },
+                files_changed = bool(refine_meta.get("files_changed"))
+                agent_summary = str(refine_meta.get("agent_summary") or "").strip()
+                if files_changed:
+                    clean_reply = (
+                        "Agent 已完成本次修改，并已写入策略工作区。\n\n"
+                        f"{agent_summary or '修改已应用。'}"
                     )
-                    session.commit()
-                finally:
-                    session.close()
+                    final_history = history + [{"role": "assistant", "content": clean_reply}]
+
+                    session = session_factory()
+                    try:
+                        _persist_autonomous_refine_result(
+                            session,
+                            strategy_id=strategy_id,
+                            final_history=final_history,
+                            prompt=user_message,
+                            llm_meta={
+                                "mode": "autonomous_refine",
+                                **refine_meta,
+                            },
+                        )
+                        session.commit()
+                    finally:
+                        session.close()
+                else:
+                    clean_reply = agent_summary or "已为您分析完毕。"
+                    final_history = history + [{"role": "assistant", "content": clean_reply}]
+
+                    session = session_factory()
+                    try:
+                        strat = session.get(Strategy, strategy_id)
+                        if strat:
+                            strat.chat_history = final_history
+                            strat.updated_at = datetime.now(timezone.utc)
+                            session.commit()
+                    finally:
+                        session.close()
             else:
-                clean_reply = f"Agent refine 失败：{refine_error or 'unknown_error'}"
+                clean_reply = f"Agent 处理失败：{refine_error or 'unknown_error'}"
                 _persist_chat(clean_reply)
                 final_history = history + [{"role": "assistant", "content": clean_reply}]
 
+            chunk_size = 12
+            for i in range(0, len(clean_reply), chunk_size):
+                chunk = clean_reply[i : i + chunk_size]
+                yield f"data: {json.dumps({'type': 'token', 'content': chunk}, ensure_ascii=False)}\n\n"
+
             yield (
-                f"data: {json.dumps({'type': 'done', 'status': ChatStatus.DONE.value, 'clean_reply': clean_reply, 'config': None, 'chat_history': final_history, 'refine_proposal': None})}\n\n"
+                f"data: {json.dumps({'type': 'done', 'status': ChatStatus.DONE.value, 'clean_reply': clean_reply, 'config': None, 'chat_history': final_history, 'refine_proposal': None}, ensure_ascii=False)}\n\n"
             )
             return
 
-        yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略需求与交易逻辑...'})}\n\n"
+        if is_done_qa_mode:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略逻辑与代码...'}, ensure_ascii=False)}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略需求与交易逻辑...'}, ensure_ascii=False)}\n\n"
 
         try:
-            # Use tool-capable call for all modes so LLM can decide when to read backtests.
-            json_mode = False
-            full_reply = _call_chat_llm_with_tools(
+            full_reply = _call_chat_llm(
                 chat_history,
                 system_prompt=system_prompt,
-                tools=_CHAT_TOOLS,
-                tool_handlers=_build_tool_handlers(),
-                json_mode=json_mode,
+                json_mode=False,
             )
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             return
 
-        # Parse full response (normal chat flow)
-        new_status, clean_reply, config = _parse_chat_response(full_reply)
-
-        if new_status == ChatStatus.READY and config:
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'ready', 'path': 'strategy.py', 'message': '正在生成 strategy.py 策略配置...'})}\n\n"
+        if is_done_qa_mode:
+            clean_reply = full_reply.strip()
+            new_status = ChatStatus.DONE
+            config = strategy.chat_config
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'}, ensure_ascii=False)}\n\n"
         else:
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'})}\n\n"
+            # Parse full response (normal chat flow)
+            new_status, clean_reply, config = _parse_chat_response(full_reply)
+
+            if new_status == ChatStatus.READY and config:
+                yield f"data: {json.dumps({'type': 'progress', 'stage': 'ready', 'path': 'strategy.py', 'message': '正在生成 strategy.py 策略配置...'}, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'}, ensure_ascii=False)}\n\n"
 
         # Stream the reply content in smooth chunks for SSE typewriter effect
         chunk_size = 12
         for i in range(0, len(clean_reply), chunk_size):
             chunk = clean_reply[i : i + chunk_size]
-            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk}, ensure_ascii=False)}\n\n"
 
         session = session_factory()
         try:
@@ -2253,8 +2179,7 @@ def chat_with_strategy_stream(
                 updated_history.append(_build_assistant_message(clean_reply))
 
                 strat.chat_history = updated_history
-
-                if not is_refinement_mode:
+                if not is_refinement_mode and not is_done_qa_mode:
                     strat.chat_status = new_status
                     if new_status == ChatStatus.READY and config:
                         strat.chat_config = config
@@ -2267,7 +2192,7 @@ def chat_with_strategy_stream(
             session.close()
 
         final_history = history + [_build_assistant_message(clean_reply)]
-        yield f"data: {json.dumps({'type': 'done', 'status': new_status.value, 'clean_reply': clean_reply, 'config': config, 'chat_history': final_history, 'refine_proposal': None})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'status': new_status.value, 'clean_reply': clean_reply, 'config': config, 'chat_history': final_history, 'refine_proposal': None}, ensure_ascii=False)}\n\n"
     
     return StreamingResponse(
         generate_sse(),

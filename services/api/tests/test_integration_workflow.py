@@ -153,6 +153,9 @@ def test_strategy_not_found(e2e_client: E2EClient):
 @pytest.mark.integration
 @pytest.mark.e2e_core
 def test_unauthorized_access(e2e_api_base_url: str, e2e_strategy_id: str):
+    from app.settings import settings
+    if settings.dev_skip_auth:
+        pytest.skip("dev_skip_auth is enabled, skipping unauthorized access test")
     # No cookies (fresh session).
     sess = requests.Session()
     try:

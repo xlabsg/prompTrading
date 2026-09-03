@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
 from control_plane.models import Base, Strategy, StrategyMember, StrategyTemplate, StrategyVersion, User
-from control_plane.enums import StrategyRole, StrategyTemplateType
+from control_plane.enums import ChatStatus, StrategyRole, StrategyTemplateType
 from control_plane.templates import instantiate_strategy_from_template
 
 
@@ -40,8 +40,7 @@ def test_template_fork_domain_and_workspace():
             strategy = Strategy(
                 id=strategy_id,
                 name="My Divergence Bot",
-                description=template.description,
-                chat_status="done",
+                chat_status=ChatStatus.DONE,
             )
             db.add(strategy)
 
