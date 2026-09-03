@@ -17,6 +17,8 @@ import { jobsApi, strategiesApi } from "@/lib/api";
 import { buildGenerationPrompt } from "@/lib/strategyPrompt";
 import type { Strategy, ChatMessage } from "@/lib/types";
 import { useTranslation } from "react-i18next";
+import { actionRegistry, parseActionFromMessage, ActionPayload } from "@/lib/actions";
+import { ActionCard } from "@/components/console/actions/ActionCard";
 
 interface ConsoleSidebarProps {
     strategy: Strategy | null;
@@ -24,6 +26,7 @@ interface ConsoleSidebarProps {
     collapsed: boolean;
     onToggleCollapse: () => void;
     onStrategyGenerated?: () => void;
+    onNavigateView?: (view: "overview" | "code" | "backtest" | "live" | "portfolio" | "logs" | "signals", targetId?: string) => void;
     variant?: "default" | "dialog";
     onClose?: () => void;
 }
@@ -51,6 +54,7 @@ const ConsoleSidebar = ({
     onStrategyGenerated,
     variant = "default",
     onClose,
+    onNavigateView,
 }: ConsoleSidebarProps) => {
     const queryClient = useQueryClient();
     const { t } = useTranslation();
@@ -58,6 +62,9 @@ const ConsoleSidebar = ({
     const [message, setMessage] = useState("");
     const [expandedMessages, setExpandedMessages] = useState<Record<number, boolean>>({});
     const scrollRef = useRef<HTMLDivElement>(null);
+
+    // Active Action Widgets state
+    const [activeActions, setActiveActions] = useState<ActionPayload[]>([]);
 
     // Streaming state
     const [streamingMessage, setStreamingMessage] = useState("");
@@ -75,6 +82,62 @@ const ConsoleSidebar = ({
     const [rollbackError, setRollbackError] = useState<string | null>(null);
     const [showDialogRollback, setShowDialogRollback] = useState(false);
     const readyAutoTriggerRef = useRef(false);
+
+    const executeAction = useCallback(async (actionPayload: ActionPayload) => {
+        const handler = actionRegistry.get(actionPayload.type);
+        if (!handler) {
+            console.warn(`No action handler registered for type: ${actionPayload.type}`);
+            return;
+        }
+
+        const actionContext = {
+            strategy,
+            queryClient,
+            onNavigateView,
+            onSendMessage: (msg: string) => {
+                setMessage(msg);
+            },
+        };
+
+        // Add to activeActions as running
+        setActiveActions((prev) => [
+            ...prev.filter((a) => a.id !== actionPayload.id),
+            { ...actionPayload, status: "running" },
+        ]);
+
+        try {
+            const { jobId, result } = await handler.execute(actionContext, actionPayload.params);
+
+            if (jobId && handler.pollCompletion) {
+                // Poll for background job completion
+                const finalResult = await handler.pollCompletion(actionContext, jobId, actionPayload.params);
+                setActiveActions((prev) =>
+                    prev.map((a) =>
+                        a.id === actionPayload.id
+                            ? { ...a, status: "succeeded", result: finalResult, completedAt: Date.now() }
+                            : a
+                    )
+                );
+            } else {
+                setActiveActions((prev) =>
+                    prev.map((a) =>
+                        a.id === actionPayload.id
+                            ? { ...a, status: "succeeded", result, completedAt: Date.now() }
+                            : a
+                    )
+                );
+            }
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            setActiveActions((prev) =>
+                prev.map((a) =>
+                    a.id === actionPayload.id
+                        ? { ...a, status: "failed", error: errorMessage, completedAt: Date.now() }
+                        : a
+                )
+            );
+        }
+    }, [strategy, queryClient, onNavigateView]);
 
     const refreshStrategyData = useCallback(() => {
         queryClient.invalidateQueries({ queryKey: ["strategies"] });
@@ -231,6 +294,7 @@ const ConsoleSidebar = ({
 
             const decoder = new TextDecoder();
             let buffer = "";
+            let fullResponse = "";
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -247,6 +311,7 @@ const ConsoleSidebar = ({
                         try {
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "token") {
+                                fullResponse += data.content;
                                 setStreamingMessage(prev => prev + data.content);
                             } else if (data.type === "progress") {
                                 const msg = data.message || (data.path ? t("console.sidebar.editingFile", { path: data.path }) : null);
@@ -267,6 +332,12 @@ const ConsoleSidebar = ({
                         }
                     }
                 }
+            }
+
+            // Check if LLM emitted an action block in its response
+            const actionPayload = parseActionFromMessage(fullResponse);
+            if (actionPayload) {
+                void executeAction(actionPayload);
             }
         } catch (error) {
             console.error("Streaming chat error:", error);
@@ -461,11 +532,20 @@ const ConsoleSidebar = ({
     };
 
     const handleSendMessage = () => {
-        if (!message.trim()) return;
+        const text = message.trim();
+        if (!text) return;
         if (isStreaming) return;
 
+        // Check if user input directly triggers an action
+        const actionPayload = parseActionFromMessage(text);
+        if (actionPayload) {
+            setMessage("");
+            void executeAction(actionPayload);
+            return;
+        }
+
         // Always use streaming chat; backend routes analysis/chat/refine automatically.
-        sendStreamingMessage(message);
+        sendStreamingMessage(text);
     };
 
     const toggleMessageDetails = (index: number) => {
@@ -786,6 +866,27 @@ const ConsoleSidebar = ({
                                     </div>
                                 </motion.div>
                             )}
+
+                            {/* Active Action Widgets (e.g. Backtest) */}
+                            {activeActions.map((act) => (
+                                <motion.div
+                                    key={act.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="w-full min-w-0"
+                                >
+                                    <ActionCard
+                                        payload={act}
+                                        context={{
+                                            strategy,
+                                            queryClient,
+                                            onNavigateView,
+                                            onSendMessage: (msg: string) => setMessage(msg),
+                                        }}
+                                        onRetry={() => void executeAction(act)}
+                                    />
+                                </motion.div>
+                            ))}
 
                             {liveDraft && (
                                 <motion.div

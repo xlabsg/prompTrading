@@ -45,6 +45,7 @@ const Console = () => {
     const initialTab = tab && validTabs.includes(tab as ViewType) ? (tab as ViewType) : "overview";
 
     const [currentView, setCurrentView] = useState<ViewType>(initialTab);
+    const [activeBacktestRunId, setActiveBacktestRunId] = useState<string | undefined>();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [createdStrategyId, setCreatedStrategyId] = useState<string | undefined>();
     const [isAuthOpen, setIsAuthOpen] = useState(false);
@@ -60,8 +61,11 @@ const Console = () => {
     const sidebarResizeRafRef = useRef<number | null>(null);
 
     // Sync URL with tab changes
-    const handleViewChange = (view: ViewType) => {
+    const handleViewChange = (view: ViewType, targetId?: string) => {
         setCurrentView(view);
+        if (view === "backtest" && targetId) {
+            setActiveBacktestRunId(targetId);
+        }
         if (strategyId) {
             navigate(`/strategy/${strategyId}/${view}`, { replace: true });
         }
@@ -272,7 +276,7 @@ const Console = () => {
             case "code":
                 return <CodeView strategy={selectedStrategy} />;
             case "backtest":
-                return <BacktestView strategy={selectedStrategy} />;
+                return <BacktestView strategy={selectedStrategy} initialRunId={activeBacktestRunId} />;
             case "live":
                 return (
                     <LiveTradingView
@@ -355,6 +359,7 @@ const Console = () => {
                     collapsed={sidebarCollapsed}
                     onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
                     onStrategyGenerated={() => handleViewChange("code")}
+                    onNavigateView={handleViewChange}
                 />
                 {!sidebarCollapsed && (
                     <div
