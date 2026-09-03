@@ -397,26 +397,48 @@ def start_trading(
 ) -> TradingSessionResponse:
     """Start a live trading session."""
     require_strategy_member(request, db, strategy_id, [StrategyRole.ADMIN, StrategyRole.EDITOR])
-    user = get_current_user(request, db)
-    if not user_has_active_subscription(user):
-        raise HTTPException(status_code=403, detail="subscription_required")
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
-    
-    config = db.execute(
-        select(TradingConfig).where(TradingConfig.strategy_id == strategy_id)
-    ).scalar_one_or_none()
-    
-    if config is None:
-        raise HTTPException(status_code=400, detail="no_trading_config")
 
     account = db.get(StrategyExchangeAccount, req.account_id)
     if account is None or account.strategy_id != strategy_id:
         raise HTTPException(status_code=404, detail="exchange_account_not_found")
+
+    # Paper trading does not require paid subscription
+    if account.exchange != "paper":
+        user = get_current_user(request, db)
+        if not user_has_active_subscription(user):
+            raise HTTPException(status_code=403, detail="subscription_required")
+
+    config = db.execute(
+        select(TradingConfig).where(TradingConfig.strategy_id == strategy_id)
+    ).scalar_one_or_none()
+
+    if config is None:
+        if account.exchange == "paper":
+            config = TradingConfig(
+                strategy_id=strategy_id,
+                exchange="paper",
+                symbol="BTC-USDT-SWAP",
+                interval="1m",
+                symbols=["BTC-USDT-SWAP"],
+                intervals=["1m"],
+                max_position_pct=10.0,
+                stop_loss_pct=2.0,
+                is_active=False,
+            )
+            db.add(config)
+            db.commit()
+            db.refresh(config)
+        else:
+            raise HTTPException(status_code=400, detail="no_trading_config")
+
     if account.exchange != config.exchange:
-        raise HTTPException(status_code=400, detail="exchange_account_mismatch")
-    
+        config.exchange = account.exchange
+        db.commit()
+        db.refresh(config)
+
     # Check for existing active session
     active_session = db.execute(
         select(TradingSession)

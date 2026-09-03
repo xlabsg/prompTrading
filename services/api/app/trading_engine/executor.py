@@ -244,6 +244,21 @@ class OrderExecutor:
 
         except Exception as e:
             logger.error(f"Failed to place market order: {e}", exc_info=True)
+            try:
+                failed_order = Order(
+                    session_id=self.session_id,
+                    client_order_id=client_order_id,
+                    symbol=target_symbol,
+                    side=side,
+                    order_type=OrderType.MARKET,
+                    size=size,
+                    status=OrderStatus.FAILED,
+                )
+                self.db.add(failed_order)
+                self.db.commit()
+            except Exception:
+                self.db.rollback()
+
             log_trading_event(
                 self.db,
                 strategy_id=self.config.strategy_id,

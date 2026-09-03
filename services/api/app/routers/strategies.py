@@ -9,6 +9,8 @@ import sys
 import time
 import queue
 import threading
+import shutil
+import tempfile
 from datetime import datetime, timezone
 
 import json
@@ -1025,6 +1027,25 @@ def _format_metrics_comparison(before: dict[str, Any] | None, after: dict[str, A
     return f"\n\n```action:metrics_comparison\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```\n"
 
 
+def _is_modification_request(user_message: str) -> bool:
+    """Detect whether user query asks for strategy modifications rather than pure Q&A/explanation."""
+    s = user_message.lower().strip()
+    question_prefixes = (
+        "解释", "说明", "什么是", "为什么", "怎么看", "如何理解", "分析一下", "介绍一下",
+        "what is", "why", "how does", "explain", "describe", "analyze",
+    )
+    is_pure_question = any(s.startswith(p) for p in question_prefixes) or ("?" in s or "？" in s)
+
+    modification_keywords = (
+        "改", "换", "调", "加", "去", "删", "修", "优化", "重写", "设置", "重构",
+        "modify", "change", "update", "adjust", "optimize", "tune", "fix", "set", "refactor", "add", "remove"
+    )
+    has_mod_keyword = any(k in s for k in modification_keywords)
+    if is_pure_question and not has_mod_keyword:
+        return False
+    return has_mod_keyword or not is_pure_question
+
+
 def _run_autonomous_refine(
     strategy_id: str,
     user_message: str,
@@ -1055,6 +1076,20 @@ def _run_autonomous_refine(
         backtest_context=backtest_context,
     )
 
+    # Take backup snapshot of strategy_dir to guarantee safety
+    backup_files: dict[str, bytes] = {}
+    for root, _, files in os.walk(strategy_dir):
+        if ".git" in root or "__pycache__" in root:
+            continue
+        for name in files:
+            p = os.path.join(root, name)
+            rel = os.path.relpath(p, strategy_dir)
+            try:
+                with open(p, "rb") as f:
+                    backup_files[rel] = f.read()
+            except OSError:
+                continue
+
     before_fp = _snapshot_workspace_fingerprint(strategy_dir)
     before_metrics = _evaluate_strategy_metrics(strategy_dir)
 
@@ -1071,6 +1106,20 @@ def _run_autonomous_refine(
 
     after_fp = _snapshot_workspace_fingerprint(strategy_dir)
     files_changed = before_fp != after_fp
+
+    # Safety rollback: if agent left problems in strategy.py, restore from backup
+    problems = _strategy_code_problems(strategy_dir)
+    if problems and files_changed:
+        logger.warning(f"Agent left workspace with problems, rolling back to clean state: {problems}")
+        for rel, content in backup_files.items():
+            p = os.path.join(strategy_dir, rel)
+            try:
+                with open(p, "wb") as f:
+                    f.write(content)
+            except OSError:
+                pass
+        files_changed = False
+
     metrics_comparison = ""
     after_metrics = None
     if files_changed:

@@ -777,7 +777,7 @@ def main() -> int:
 
 
 def _build_params_schema(code: str) -> dict[str, Any]:
-    """Build params schema from code."""
+    """Build params schema from code with inferred bounds."""
     try:
         tree = ast.parse(code)
     except Exception:
@@ -786,45 +786,44 @@ def _build_params_schema(code: str) -> dict[str, Any]:
     params: list[dict[str, Any]] = []
     seen: set[str] = set()
 
+    def _enrich_entry(entry: dict[str, Any], default_val: Any) -> None:
+        entry["default"] = default_val
+        if isinstance(default_val, bool):
+            entry["type"] = "bool"
+        elif isinstance(default_val, int) and not isinstance(default_val, bool):
+            entry["type"] = "int"
+            entry["min"] = 1 if default_val <= 5 else max(1, int(default_val * 0.2))
+            entry["max"] = max(20, int(default_val * 4))
+            entry["step"] = 1
+        elif isinstance(default_val, float):
+            entry["type"] = "float"
+            entry["min"] = round(max(0.01, default_val * 0.2), 3)
+            entry["max"] = round(max(1.0, default_val * 3.0), 3)
+            entry["step"] = 0.01 if default_val < 1.0 else 0.1
+        elif isinstance(default_val, str):
+            entry["type"] = "str"
+        entry["description"] = f"参数 {entry['name']}"
+
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call):
-            continue
-        fn = node.func
-        if not isinstance(fn, ast.Attribute):
-            continue
-        if fn.attr != "get":
-            continue
-        if not isinstance(fn.value, ast.Name) or fn.value.id != "params":
-            continue
-        if not node.args:
-            continue
-
-        key_node = node.args[0]
-        if isinstance(key_node, ast.Constant):
-            key_val = key_node.value
-        else:
-            continue
-
-        if not isinstance(key_val, str) or key_val in seen:
-            continue
-        seen.add(key_val)
-
-        entry: dict[str, Any] = {"name": key_val}
-
-        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
-            default_val = node.args[1].value
-            entry["default"] = default_val
-
-            if isinstance(default_val, bool):
-                entry["type"] = "bool"
-            elif isinstance(default_val, int):
-                entry["type"] = "int"
-            elif isinstance(default_val, float):
-                entry["type"] = "float"
-            elif isinstance(default_val, str):
-                entry["type"] = "str"
-
-        params.append(entry)
+        if isinstance(node, ast.Call):
+            fn = node.func
+            if isinstance(fn, ast.Attribute) and fn.attr == "get" and isinstance(fn.value, ast.Name) and fn.value.id == "params":
+                if node.args and isinstance(node.args[0], ast.Constant):
+                    key_val = node.args[0].value
+                    if isinstance(key_val, str) and key_val not in seen:
+                        seen.add(key_val)
+                        entry: dict[str, Any] = {"name": key_val}
+                        if len(node.args) >= 2 and isinstance(node.args[1], ast.Constant):
+                            _enrich_entry(entry, node.args[1].value)
+                        params.append(entry)
+        elif isinstance(node, ast.Subscript):
+            if isinstance(node.value, ast.Name) and node.value.id == "params":
+                slice_node = node.slice
+                if isinstance(slice_node, ast.Constant) and isinstance(slice_node.value, str):
+                    key_val = slice_node.value
+                    if key_val not in seen:
+                        seen.add(key_val)
+                        params.append({"name": key_val, "type": "float", "description": f"参数 {key_val}"})
 
     return {"version": 1, "params": params}
 
