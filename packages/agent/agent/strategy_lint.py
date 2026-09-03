@@ -17,6 +17,12 @@ _KNOWN_MODULES = {
     "np": "import numpy as np",
     "pd": "import pandas as pd",
     "talib": "import talib",
+    "calc_supertrend": "from backtest.alpha_library import calc_supertrend",
+    "calc_adx": "from backtest.alpha_library import calc_adx",
+    "calc_keltner_channels": "from backtest.alpha_library import calc_keltner_channels",
+    "calc_donchian_channels": "from backtest.alpha_library import calc_donchian_channels",
+    "calc_vwap_deviation": "from backtest.alpha_library import calc_vwap_deviation",
+    "calc_atr": "from backtest.alpha_library import calc_atr",
 }
 
 
@@ -84,12 +90,52 @@ def lint_and_heal_strategy_code(code: str) -> tuple[str, list[str]]:
     return code, fixes
 
 
+def detect_lookahead_bias(code: str) -> list[str]:
+    """Detect potential look-ahead bias and future data leakage in strategy code.
+
+    Checks:
+    1. Negative shift periods: .shift(-1) or .shift(periods=-1) which peeks into future bars
+    2. Centered rolling windows: .rolling(..., center=True) which averages future bars
+    """
+    issues: list[str] = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return issues
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            # Check for .shift(-k) or .shift(periods=-k)
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "shift":
+                for arg in node.args:
+                    if isinstance(arg, ast.UnaryOp) and isinstance(arg.op, ast.USub):
+                        if isinstance(arg.operand, ast.Constant) and isinstance(arg.operand.value, (int, float)):
+                            issues.append(f"Negative shift '{ast.unparse(node)}' leaks future market data into the past.")
+                    elif isinstance(arg, ast.Constant) and isinstance(arg.value, (int, float)) and arg.value < 0:
+                        issues.append(f"Negative shift '{ast.unparse(node)}' leaks future market data into the past.")
+                for kw in node.keywords:
+                    if kw.arg == "periods":
+                        if isinstance(kw.value, ast.UnaryOp) and isinstance(kw.value.op, ast.USub):
+                            issues.append(f"Negative shift '{ast.unparse(node)}' leaks future market data into the past.")
+                        elif isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, (int, float)) and kw.value.value < 0:
+                            issues.append(f"Negative shift '{ast.unparse(node)}' leaks future market data into the past.")
+
+            # Check rolling(..., center=True) which centers on future bars
+            if isinstance(node.func, ast.Attribute) and node.func.attr == "rolling":
+                for kw in node.keywords:
+                    if kw.arg == "center" and isinstance(kw.value, ast.Constant) and kw.value.value is True:
+                        issues.append(f"Rolling with center=True '{ast.unparse(node)}' uses future data in moving window.")
+
+    return issues
+
+
 def dry_run_strategy(
     strategy_code_or_file: str,
     params: dict[str, Any] | None = None,
     bars: int = 100,
+    strict_lookahead: bool = True,
 ) -> tuple[bool, str]:
-    """Execute strategy with synthetic data to verify syntax, imports, and output structure.
+    """Execute strategy with synthetic data to verify syntax, imports, lookahead bias, and output structure.
 
     Returns:
         (success, error_message)
@@ -103,11 +149,16 @@ def dry_run_strategy(
     else:
         code = strategy_code_or_file
 
-    # 1. Basic AST validation
+    # 1. Basic AST validation & Lookahead bias scan
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
         return False, f"SyntaxError: {e}"
+
+    if strict_lookahead:
+        lookahead_issues = detect_lookahead_bias(code)
+        if lookahead_issues:
+            return False, f"LookaheadBiasError: {'; '.join(lookahead_issues)}"
 
     has_fn = any(
         isinstance(n, ast.FunctionDef) and n.name == "generate_signals"

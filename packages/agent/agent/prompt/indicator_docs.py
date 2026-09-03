@@ -56,6 +56,27 @@ _INDICATOR_REGISTRY: dict[str, dict[str, str]] = {
         "description": "True when series a crosses BELOW series b",
         "category": "signal",
     },
+    # === Alpha Library (Zero-Lookahead Building Blocks) ===
+    "supertrend": {
+        "signature": "calc_supertrend(df, period=10, multiplier=3.0) -> pd.DataFrame",
+        "description": "SuperTrend indicator. Returns DataFrame with ['supertrend', 'trend_direction'] (1=bull, -1=bear)",
+        "category": "trend",
+    },
+    "keltner": {
+        "signature": "calc_keltner_channels(df, ema_period=20, atr_period=10, multiplier=2.0) -> pd.DataFrame",
+        "description": "Keltner Channels with EMA centerline and ATR volatility bands. Returns ['middle', 'upper', 'lower']",
+        "category": "volatility",
+    },
+    "donchian": {
+        "signature": "calc_donchian_channels(df, period=20) -> pd.DataFrame",
+        "description": "Donchian Channels breakout bands (lagged by 1 bar to prevent lookahead). Returns ['upper', 'middle', 'lower']",
+        "category": "breakout",
+    },
+    "vwap_deviation": {
+        "signature": "calc_vwap_deviation(df, rolling_bars=24) -> pd.Series",
+        "description": "Rolling VWAP Z-score deviation for volume-weighted mean reversion",
+        "category": "mean_reversion",
+    },
     # === TA-Lib Momentum ===
     "macd": {
         "signature": "MACD(close, fastperiod=12, slowperiod=26, signalperiod=9) -> tuple[np.ndarray, np.ndarray, np.ndarray]",
