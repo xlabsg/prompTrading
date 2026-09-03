@@ -10,6 +10,7 @@ TEST_CASES = [
         "prompt": "编写 5/20 EMA 双均线金叉策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": False,
     },
     {
         "id": "CASE-2-COMPLEX",
@@ -17,6 +18,7 @@ TEST_CASES = [
         "prompt": "请联网调研 Supertrend 动态波动率通道突破并带 ATR 追踪止损策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": True,
     },
     {
         "id": "CASE-3-LOOKAHEAD-TRAP",
@@ -24,6 +26,7 @@ TEST_CASES = [
         "prompt": "编写利用未来收盘价对比当前价的短线高频策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": True,
+        "needs_web_search": False,
     },
     {
         "id": "CASE-4-REGIME-AWARE",
@@ -31,6 +34,7 @@ TEST_CASES = [
         "prompt": "调研并编写适合当前 BTC 波动率状态的布林带均值回归策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": True,
     },
 ]
 
@@ -72,6 +76,7 @@ async def run_side_b(case: dict) -> dict:
             "prompt": case["prompt"],
             "symbol": case["symbol"],
             "interval": "1h",
+            "needs_web_search": case.get("needs_web_search", False),
             "custom_generator": mock_generator,
         },
     )

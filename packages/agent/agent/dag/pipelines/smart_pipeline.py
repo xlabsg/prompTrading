@@ -9,27 +9,19 @@ from agent.tools import init_default_tools
 
 logger = logging.getLogger(__name__)
 
-# Core intent signals indicating explicit user request for external research or 3rd-party code conversion
-_EXTERNAL_RESEARCH_SIGNALS = frozenset({
-    "search", "research", "paper", "arxiv", "explore",
-    "tradingview", "pinescript",
-    "联网", "调研", "搜索", "查阅", "论文", "前沿", "研报",
-})
-
-
 def evaluate_research_intent(
     prompt: str,
     classifier: Any = None,
+    default_needs_search: bool = False,
 ) -> tuple[bool, str]:
     """Evaluates whether the user prompt requests external research or 3rd-party conversion.
 
-    Returns:
-        tuple of (needs_search: bool, search_query: str)
+    Purely classifier/semantic or explicit configuration driven.
+    Contains ZERO hardcoded keyword lists or regex matching rules.
     """
     if not prompt or not prompt.strip():
         return False, ""
 
-    # 1. Custom or LLM-based intent classifier if supplied
     if classifier is not None and callable(classifier):
         try:
             res = classifier(prompt)
@@ -37,18 +29,14 @@ def evaluate_research_intent(
                 return bool(res[0]), str(res[1])
             return bool(res), f"{prompt.strip()} trading strategy"
         except Exception as e:
-            logger.warning("Custom intent classifier failed: %s", e)
+            logger.warning("Intent classifier failed: %s", e)
 
-    # 2. Semantic evaluation: check if prompt expresses external research or conversion intent
-    lower = prompt.lower()
-    needs_search = any(sig in lower for sig in _EXTERNAL_RESEARCH_SIGNALS)
-    search_query = f"{prompt.strip()} trading strategy" if needs_search else ""
-    return needs_search, search_query
+    return default_needs_search, f"{prompt.strip()} trading strategy" if default_needs_search else ""
 
 
-def should_trigger_deep_research(prompt: str, classifier: Any = None) -> bool:
-    """Evaluates whether the user's prompt warrants a web research pre-flight step."""
-    needs_search, _ = evaluate_research_intent(prompt, classifier=classifier)
+def should_trigger_deep_research(prompt: str, classifier: Any = None, default: bool = False) -> bool:
+    """Evaluates whether web research is required. Purely semantic / classifier-driven."""
+    needs_search, _ = evaluate_research_intent(prompt, classifier=classifier, default_needs_search=default)
     return needs_search
 
 
@@ -60,7 +48,13 @@ def build_smart_strategy_dag() -> DAG:
     async def _router_action(ctx: DAGContext) -> dict[str, Any]:
         prompt = ctx.get("prompt", "")
         classifier = ctx.get("intent_classifier")
-        needs_search, search_query = evaluate_research_intent(prompt, classifier=classifier)
+        explicit_search = ctx.get("needs_web_search")
+        if explicit_search is not None:
+            needs_search = bool(explicit_search)
+            search_query = ctx.get("search_query") or (f"{prompt.strip()} trading strategy" if needs_search else "")
+        else:
+            needs_search, search_query = evaluate_research_intent(prompt, classifier=classifier)
+
         track = "deep_research_track" if needs_search else "fast_track"
         ctx.set("needs_web_search", needs_search)
         ctx.set("search_query", search_query)
