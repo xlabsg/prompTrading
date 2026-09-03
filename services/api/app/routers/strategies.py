@@ -181,9 +181,10 @@ def _check_no_running_job(db: Session, job_types: list[JobType], strategy_id: st
         .limit(1)
     ).scalar_one_or_none()
     if active_job:
+        job_type_str = active_job.type.value if hasattr(active_job.type, "value") else str(active_job.type)
         raise HTTPException(
             status_code=409,
-            detail=f"job_already_running:{active_job.id}:{active_job.type.value}"
+            detail=f"job_already_running:{active_job.id}:{job_type_str}"
         )
 
 

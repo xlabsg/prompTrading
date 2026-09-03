@@ -105,11 +105,17 @@ def _read_json(path: str) -> dict[str, Any] | None:
 def _platform_capabilities() -> dict[str, Any]:
     """Get platform capabilities."""
     indicators: list[str] = []
+    excluded_names = {
+        "SeriesLike", "Union", "wraps", "wrapped_func", "chain", "get_compatibility",
+        "get_function_groups", "get_functions", "get_unstable_period", "set_compatibility",
+        "set_unstable_period", "ceil", "floor", "exp", "ln", "log10", "cos", "cosh",
+        "sin", "sinh", "tan", "tanh", "sqrt", "add", "sub", "mult", "div"
+    }
     try:
         from backtest import indicators as bt_indicators
 
         for name in dir(bt_indicators):
-            if name.startswith("_"):
+            if name.startswith("_") or name in excluded_names:
                 continue
             value = getattr(bt_indicators, name, None)
             if callable(value):
@@ -121,11 +127,25 @@ def _platform_capabilities() -> dict[str, Any]:
             "ema",
             "rsi",
             "macd",
-            "bollinger_bands",
+            "bbands",
+            "atr",
             "zscore",
             "cross_over",
             "cross_under",
         ]
+
+    # Core indicator signatures for direct reference
+    common_indicator_signatures = {
+        "sma": "sma(x: Series, window: int = 10) -> pd.Series",
+        "ema": "ema(x: Series, window: int = 10) -> pd.Series",
+        "rsi": "rsi(close: Series, window: int = 14) -> pd.Series",
+        "atr": "atr(high: Series, low: Series, close: Series, window: int = 14) -> pd.Series",
+        "bbands": "bbands(close: Series, timeperiod: int = 20, nbdevup: float = 2.0, nbdevdn: float = 2.0) -> (upper, middle, lower)",
+        "macd": "macd(close: Series, fastperiod: int = 12, slowperiod: int = 26, signalperiod: int = 9) -> (macd, signal, hist)",
+        "cross_over": "cross_over(a: Series, b: Series) -> pd.Series (bool)",
+        "cross_under": "cross_under(a: Series, b: Series) -> pd.Series (bool)",
+        "zscore": "zscore(x: Series, window: int) -> pd.Series",
+    }
 
     return {
         "engine": "vectorized",
@@ -134,11 +154,13 @@ def _platform_capabilities() -> dict[str, Any]:
         "data_schema": {
             "columns": ["timestamp", "open", "high", "low", "close", "volume"],
         },
-        "indicators": indicators,
+        "common_indicator_signatures": common_indicator_signatures,
+        "available_indicators": indicators,
         "notes": {
-            "indicators": "List is non-exhaustive. Prefer backtest.indicators",
+            "import": "Import built-in indicators via: from backtest.indicators import sma, rsi, ...",
+            "inspection": "Run `pt-quant indicators <name>` in bash to see full docstring and parameter signatures.",
         },
-        "validation_tools": ["static_check", "lint(ruff)", "mypy", "pytest", "smoke_backtest"],
+        "validation_tools": ["pt-quant check strategy.py", "pt-quant dry-run strategy.py"],
         "restrictions": [
             "no_network_access_in_strategy_code",
             "no_file_io_in_strategy_code",
@@ -268,6 +290,9 @@ You are working inside the strategy version workspace. Files present: {files}
   - `target_weights`: float array of length n, each in [-1, 1]
   - `weight_reason`: list of n short strings (e.g. 'regime_long', 'reduce_risk')
   - 2-6 bar-aligned debug arrays (indicator or condition values)
+- Signal logic best practice:
+  - DO NOT use chained slice assignment like `data['signal'][...] = ...` or `data['reason'][mask] = ...` (pandas 2+ Copy-on-Write causes silent zeros and ChainedAssignmentError).
+  - Use `np.where(condition, 1.0, np.where(short_condition, -1.0, 0.0))` or `.loc[mask, 'col'] = ...` instead.
 - Use `.to_numpy()` on pandas Series, never pass raw Series.
 - No network access, no file I/O, deterministic only.
 
@@ -275,6 +300,7 @@ You are working inside the strategy version workspace. Files present: {files}
 {capabilities}
 
 ## How to work
+- **Priority Action**: Write `{strategy_file}` immediately using `write` in your first turn! Do not spend rounds reading documentation before writing the code.
 - Always use tools (`write`, `edit`) directly to modify files. Do not output raw tool calls like `functions.write(...)` as code blocks in text.
 - Read before you edit. `edit` matches text exactly, so read the file first and
   reproduce the target text verbatim.
@@ -443,13 +469,16 @@ def _heal_from_message_text(version_dir: str, text: str) -> None:
                 pass
 
 
-def _workspace_problems(version_dir: str) -> list[str]:
+def _workspace_problems(version_dir: str, message_text: str | None = None) -> list[str]:
     """Report why `version_dir` is not yet a publishable strategy.
 
     This is the session's completion test. Tau's loop ends whenever the model
     stops calling tools, so the driver -- not the model -- decides whether the
     work is done, and sends the model back with this list when it is not.
     """
+    if message_text:
+        _heal_from_message_text(version_dir, message_text)
+
     problems: list[str] = []
 
     strategy_path = os.path.join(version_dir, STRATEGY_FILE)
@@ -589,7 +618,7 @@ def main() -> int:
             extension_path=TAU_EXTENSION_PATH,
             thinking_level=thinking_level,
             session_id=parent_session_id,
-            validate=lambda: _workspace_problems(version_dir),
+            validate=lambda text=None: _workspace_problems(version_dir, text),
             env=tau_target.credential_env(),
         )
         agent_summary = session.summary

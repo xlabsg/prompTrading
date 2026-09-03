@@ -112,7 +112,8 @@ def _fetch_page(
     params: dict[str, object] = {"instId": inst_id, "bar": bar, "limit": int(limit)}
     if cursor_param and cursor_ms is not None:
         params[cursor_param] = str(int(cursor_ms))
-    resp = requests.get(f"{OKX_BASE_URL}{path}", params=params, timeout=30)
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; PromptTrading/1.0)"}
+    resp = requests.get(f"{OKX_BASE_URL}{path}", params=params, headers=headers, timeout=15)
     resp.raise_for_status()
     return _parse_okx_payload(resp.json())
 
@@ -251,6 +252,7 @@ def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
         end_ms=req.end_ms,
         fetch=_fetch,
         interval_ms=_bar_ms(req.bar),
+        fallback_to_stale_on_error=True,
     )
     total_limit = int(req.limit)
     if total_limit > 0 and len(df) > total_limit:
