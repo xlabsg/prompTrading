@@ -55,7 +55,9 @@ type StrategyMeta = {
     params_schema?: ParamsSchema;
 };
 
-const intervals = [
+const intervalOptions = [
+    { value: "1m", label: "1m" },
+    { value: "5m", label: "5m" },
     { value: "15m", label: "15m" },
     { value: "1h", label: "1h" },
     { value: "4h", label: "4h" },
@@ -82,6 +84,7 @@ const BacktestView = ({
     readOnly = false,
     hideActions = false,
     hideSettings = false,
+    initialRunId,
 }: BacktestViewProps) => {
     const queryClient = useQueryClient();
     const { t, i18n } = useTranslation();
@@ -241,6 +244,14 @@ const BacktestView = ({
 
     useEffect(() => {
         if (backtests.length === 0) return;
+
+        if (initialRunId) {
+            const targeted = backtests.find((r) => r.id === initialRunId);
+            if (targeted && selectedRun?.id !== targeted.id) {
+                setSelectedRun(targeted);
+                return;
+            }
+        }
 
         if (!selectedRun) {
             const completedRuns = backtests.filter(r => r.status === "succeeded");
