@@ -33,13 +33,14 @@ jobs:
           pip install -e packages/control_plane
           pip install -e packages/data
           pip install -e packages/backtest
+          pip install -e packages/live_trading_sdk
           pip install -e packages/agent
           pip install -e packages/okx_sdk
           pip install -e 'services/api[test]'
 
       - name: Lint with Ruff
         run: |
-          ruff check packages/control_plane services/api
+          ruff check packages/control_plane packages/agent packages/backtest packages/data services/api
 
       - name: Run Backend Tests
         env:
@@ -54,6 +55,9 @@ jobs:
           sudo mkdir -p /workspaces && sudo chmod 777 /workspaces
           mkdir -p /tmp/workspaces
           pytest -v packages/control_plane
+          pytest -v packages/data
+          pytest -v packages/backtest
+          pytest -v packages/agent/tests
           pytest -v services/api
 
   frontend-quality:

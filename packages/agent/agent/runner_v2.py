@@ -618,6 +618,8 @@ def main() -> int:
         stop_reason = "fallback"
         _write_text(os.path.join(version_dir, "strategy.py"), code)
     else:
+        thinking_level = os.getenv("AGENT_TAU_THINKING_LEVEL")
+        parent_session_id = os.getenv("PARENT_TAU_SESSION_ID")
         try:
             session = tau_driver.run_session(
                 task=task,

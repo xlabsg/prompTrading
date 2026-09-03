@@ -33,10 +33,11 @@ interface ConsoleSidebarProps {
 
 const cleanSummaryText = (text: string): string => {
     const raw = String(text || "");
-    const withoutCodeBlocks = raw
-        .replace(/```json[\s\S]*?```/gi, "\n")
-        .replace(/```[\s\S]*?```/g, "\n");
-    const withoutJsonLead = withoutCodeBlocks
+    // Strip action blocks (they are rendered as ActionCard UI components)
+    const withoutActionBlocks = raw.replace(/```action:[a-zA-Z0-9_-]+[\s\S]*?```/g, "\n");
+    // Strip machine JSON payload blocks (e.g. operations/instructions)
+    const withoutJsonBlocks = withoutActionBlocks.replace(/```json[\s\S]*?"(?:operations|instructions)"[\s\S]*?```/gi, "\n");
+    const withoutJsonLead = withoutJsonBlocks
         .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, "")
         .replace(/\bbelow\s+is\s+the\s+json[^:\n]*[:：]?/gi, "")
         .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, "");

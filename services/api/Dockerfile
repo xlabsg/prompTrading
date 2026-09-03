@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install PostgreSQL client for migrations
 # FFmpeg for YouTube audio processing (DISABLED - YouTube import temporarily disabled)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client && \
+    apt-get install -y --no-install-recommends postgresql-client git && \
     rm -rf /var/lib/apt/lists/*
     # ffmpeg && \
     # rm -rf /var/lib/apt/lists/*
@@ -58,8 +58,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Copy live trading SDK (for strategy authors)
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
 
-# Copy backtest utilities (strategy_spec loader, etc.)
+# Copy backtest utilities (strategy_spec loader, ta indicators, etc.)
 COPY packages/backtest/backtest /app/backtest
+COPY packages/backtest/ta.py /app/ta.py
 
 # Copy data utilities (for fetching market data)
 COPY packages/data/data /app/data
