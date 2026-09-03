@@ -120,3 +120,12 @@ def generate_signals(data, params):
     finally:
         if os.path.exists(path):
             os.remove(path)
+
+
+def test_cli_indicators_okx_source(capsys):
+    ret = cli.main(["indicators", "--source", "okx"])
+    assert ret == 0
+    captured = capsys.readouterr()
+    assert "OKX AGENT TRADE KIT TECHNICAL INDICATORS" in captured.out
+    assert "BTCRAINBOW" in captured.out
+    assert "AHR999" in captured.out

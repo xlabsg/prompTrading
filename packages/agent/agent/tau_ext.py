@@ -310,7 +310,13 @@ def _quant_toolkit_section() -> str:
         "- `pt-quant check strategy.py`: Statically verify syntax, imports, and scan for lookahead leaks.\n"
         "- `pt-quant dry-run strategy.py`: Fast in-memory execution to verify target_weights output contract.\n"
         "- `pt-quant indicators [name]`: Inspect platform built-in vectorized indicators and their parameter signatures.\n\n"
-        "Domain guidance skills are available in `.tau/skills/` (e.g. `data-exploration`, `quant-indicators`, `alpha-patterns`, `risk-management`, `backtest-optimization`). Read them with `read` when needed."
+        "Exchange domain guidance and Agent Trade Kit skills are available under `.tau/skills/`:\n"
+        "- `okx-cex-market`: OKX 70+ built-in technical indicators (RSI/MACD/BB/ATR/KDJ/AHR999), orderbooks, and funding rates.\n"
+        "- `okx-cex-bot`: Native OKX Grid Bot & DCA Bot parameterization and specifications.\n"
+        "- `okx-cex-smartmoney`: Whale tracking, consensus positioning, and top trader leaderboards.\n"
+        "- `binance-cex`: Binance Spot & Futures trading rules, lot size precision filters, and CLI commands.\n"
+        "- Quant skills: `data-exploration`, `quant-indicators`, `alpha-patterns`, `risk-management`, `backtest-optimization`.\n"
+        "Read any skill with `read` when needed."
     )
 
 
