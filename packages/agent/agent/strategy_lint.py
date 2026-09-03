@@ -65,6 +65,22 @@ def lint_and_heal_strategy_code(code: str) -> tuple[str, list[str]]:
         )
         fixes.append("Replaced list weight_reason with numpy array for Series boolean indexing")
 
+    # Heal chained assignment anti-patterns: data['col'][mask] = val -> data.loc[mask, 'col'] = val
+    chained_matches = re.findall(r"data\s*\[\s*['\"]([^'\"]+)['\"]\s*\]\s*\[(.*?)\]\s*=", code)
+    if chained_matches:
+        code = re.sub(
+            r"data\s*\[\s*['\"]([^'\"]+)['\"]\s*\]\s*\[(.*?)\]\s*=",
+            r"data.loc[\2, '\1'] =",
+            code,
+        )
+        fixes.append(f"Auto-healed chained assignment to .loc for: {chained_matches}")
+
+    # Heal pandas 2.0 deprecated fillna(method='ffill') / fillna(method='bfill')
+    if re.search(r"\.fillna\(\s*method\s*=\s*['\"](?:ffill|bfill)['\"]\s*\)", code):
+        code = re.sub(r"\.fillna\(\s*method\s*=\s*['\"]ffill['\"]\s*\)", ".ffill()", code)
+        code = re.sub(r"\.fillna\(\s*method\s*=\s*['\"]bfill['\"]\s*\)", ".bfill()", code)
+        fixes.append("Auto-healed deprecated fillna(method=...) to .ffill() / .bfill()")
+
     return code, fixes
 
 

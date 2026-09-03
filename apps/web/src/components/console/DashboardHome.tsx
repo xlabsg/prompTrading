@@ -1111,6 +1111,40 @@ const DashboardHome = ({
                             ) : (
                                 /* Initial creation input */
                                 <form onSubmit={handleSubmit}>
+                                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mr-1">
+                                            <Sparkles size={12} className="text-primary" />
+                                            {t.quickInspirations || "快捷灵感"}:
+                                        </span>
+                                        {[
+                                            {
+                                                label: "BTC 均线交叉",
+                                                desc: "BTC-USDT 1小时级别，双均线金叉做多死叉做空，附带 2% 追踪止损",
+                                            },
+                                            {
+                                                label: "ETH 布林带突破",
+                                                desc: "ETH-USDT 15分钟级别，突破布林带上轨做多，跌破中轨平仓，止损 1.5%",
+                                            },
+                                            {
+                                                label: "SOL RSI 超卖反弹",
+                                                desc: "SOL-USDT 1小时级别，RSI 低于 30 超卖反弹买入，高于 70 止盈",
+                                            },
+                                        ].map((preset) => (
+                                            <button
+                                                key={preset.label}
+                                                type="button"
+                                                onClick={() => {
+                                                    setPrompt(preset.desc);
+                                                    if (promptTextareaRef.current) {
+                                                        promptTextareaRef.current.focus();
+                                                    }
+                                                }}
+                                                className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+                                            >
+                                                <span>{preset.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                     <Textarea
                                         ref={promptTextareaRef}
                                         value={prompt}

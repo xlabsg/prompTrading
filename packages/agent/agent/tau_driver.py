@@ -234,7 +234,11 @@ def _drive(
             proc=proc,
         )
 
-        problems = validate()
+        # Allow validator to inspect the latest model summary text to heal missing files
+        try:
+            problems = validate(result.summary)
+        except TypeError:
+            problems = validate()
         if not problems:
             _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
             return

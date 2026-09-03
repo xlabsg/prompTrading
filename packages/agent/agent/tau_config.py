@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 # The provider name `setup_command` writes to, and the one the driver passes to
 # `--provider` whenever a custom base URL is configured.
-CUSTOM_PROVIDER_NAME = "openai"
+CUSTOM_PROVIDER_NAME = "custom_openai"
 
 _DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",

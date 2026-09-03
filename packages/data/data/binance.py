@@ -45,7 +45,8 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
         if req.end_ms is not None:
             params["endTime"] = int(req.end_ms)
 
-        resp = requests.get(f"{BINANCE_SPOT_BASE_URL}/api/v3/klines", params=params, timeout=30)
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; PromptTrading/1.0)"}
+        resp = requests.get(f"{BINANCE_SPOT_BASE_URL}/api/v3/klines", params=params, headers=headers, timeout=15)
         resp.raise_for_status()
         batch = resp.json() or []
         if not batch:
@@ -112,4 +113,5 @@ def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
         end_ms=req.end_ms,
         fetch=_fetch,
         interval_ms=interval_to_ms(req.interval),
+        fallback_to_stale_on_error=True,
     )
