@@ -4,12 +4,14 @@ entrypoint:
   module: strategy.py
   function: generate_signals
 signal_mode: target_weights
+min_history_bars: 200
 params: {}
 """
 
 DEFAULT_STRATEGY_PROTOCOL = {
     "version": 2,
     "signal_mode": "target_weights",
+    "min_history_bars": 200,
     "input": {
         "function": "generate_signals(data, params)",
         "data_schema": {

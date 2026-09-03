@@ -40,7 +40,7 @@ except Exception:  # pragma: no cover - fallback for CI without SDK install
 
 
 DEFAULT_BAR_INTERVAL = os.getenv("LIVE_TRADING_DEFAULT_BAR", "1m")
-DEFAULT_HISTORY_BARS = int(os.getenv("LIVE_TRADING_HISTORY_BARS", "150"))
+DEFAULT_HISTORY_BARS = int(os.getenv("LIVE_TRADING_HISTORY_BARS", "250"))
 MIN_POLL_SECONDS = float(os.getenv("LIVE_TRADING_MIN_POLL_SECONDS", "5"))
 
 
@@ -219,9 +219,9 @@ class StrategyRunner:
 
         params = dict(spec.params or {})
         bar_interval = params.get("live_bar_interval") or DEFAULT_BAR_INTERVAL
-        history_bars = int(params.get("live_history_bars") or DEFAULT_HISTORY_BARS)
+        history_bars = int(params.get("live_history_bars") or params.get("min_history_bars") or getattr(spec, "min_history_bars", None) or DEFAULT_HISTORY_BARS)
         self._bar_interval = str(bar_interval)
-        self._history_bars = max(50, history_bars)
+        self._history_bars = max(200, history_bars)
         self._symbols = [s for s in (self.config.symbols or [self.config.symbol]) if s]
         if not self._symbols:
             self._symbols = [self.config.symbol]
