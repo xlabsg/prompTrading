@@ -36,8 +36,8 @@ def test_e2e_generate_and_backtest_with_fallback(e2e_client: E2EClient, e2e_stra
             "end_ms": end_ms,
         },
         "params": {"fast": 10, "slow": 30},
-        # Force fallback if any LLM call fails or isn't configured.
-        "llm_meta": {"fallback_on_error": True},
+        # Force fallback to verify pipeline execution deterministically without external LLM latency
+        "llm_meta": {"fallback_on_error": True, "force_fallback": True},
     }
 
     payload = e2e_client.post_json(f"/api/strategies/{e2e_strategy_id}/generate_and_backtest", request_data)

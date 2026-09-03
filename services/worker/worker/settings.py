@@ -32,8 +32,11 @@ class Settings(BaseSettings):
     # container is killed and the job is marked failed so the queue keeps moving.
     worker_job_timeout_s: int = 420
 
-    # Agent sandbox limits (code generation)
-    agent_job_timeout_s: int = 300
+    # Max silence duration (seconds) with zero log/data output before treating container as dead/hung
+    container_idle_timeout_s: int = 120
+
+    # Agent sandbox limits (code generation hard ceiling)
+    agent_job_timeout_s: int = 420
     agent_cpu_limit: float = 1.0  # vCPU cores (0 = no limit)
     agent_memory_limit_mb: int = 1536  # 0 = no limit
     agent_pids_limit: int = 256

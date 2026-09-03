@@ -364,11 +364,11 @@ const DashboardHome = ({
     }, [createdStrategy?.chat_status]);
 
     const getGeneratingHint = (seconds: number) => {
-        if (seconds < 15) return "正在解析策略需求与交易逻辑...";
-        if (seconds < 40) return "正在由 Docker Agent 编写 strategy.py...";
-        if (seconds < 75) return "正在执行沙箱语法审计与参数化校验...";
-        if (seconds < 110) return "正在验证回测协议与指标计算...";
-        return "正在生成可视化决策流架构图与概览文档，即将就绪...";
+        if (seconds < 15) return translate("dashboard.generatingHints.analyzing", { defaultValue: "正在解析策略需求与交易逻辑..." });
+        if (seconds < 40) return translate("dashboard.generatingHints.writing", { defaultValue: "正在由 Docker Agent 编写 strategy.py..." });
+        if (seconds < 75) return translate("dashboard.generatingHints.linting", { defaultValue: "正在执行沙箱语法审计与参数化校验..." });
+        if (seconds < 110) return translate("dashboard.generatingHints.verifying", { defaultValue: "正在验证回测协议与指标计算..." });
+        return translate("dashboard.generatingHints.rendering", { defaultValue: "正在生成可视化决策流架构图与概览文档，即将就绪..." });
     };
 
     const chatHistory: ChatMessage[] = createdStrategy?.chat_history || [];
@@ -487,7 +487,10 @@ const DashboardHome = ({
 
             const prompt = buildGenerationPrompt(createdStrategy);
 
-            const result = await strategiesApi.generate(createdStrategy.id, { prompt });
+            // Backend automatically infers target symbol & interval from prompt, or falls back to standard benchmark
+            const result = await strategiesApi.generateAndBacktest(createdStrategy.id, {
+                prompt,
+            });
 
             // Poll job status to show real progress
             const jobId = result.job.id;
@@ -861,7 +864,7 @@ const DashboardHome = ({
                                                         <span>{getGeneratingHint(generatingElapsedSeconds)}</span>
                                                     </div>
                                                     <span className="tabular-nums font-mono text-[11px] bg-muted/80 px-2 py-0.5 rounded-full text-muted-foreground">
-                                                        ⏱️ 已耗时 {generatingElapsedSeconds} 秒
+                                                        ⏱️ {translate("dashboard.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `已耗时 ${generatingElapsedSeconds} 秒` })}
                                                     </span>
                                                 </div>
                                                 {generationSteps.map((step, index) => {
@@ -1006,7 +1009,7 @@ const DashboardHome = ({
                                                 <Loader2 size={15} className="animate-spin text-primary" />
                                                 <span>{t.statusGenerating}</span>
                                                 <span className="font-mono text-xs text-muted-foreground ml-1">
-                                                    (已耗时 {generatingElapsedSeconds} 秒)
+                                                    ({translate("dashboard.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `已耗时 ${generatingElapsedSeconds} 秒` })})
                                                 </span>
                                             </div>
                                         )}

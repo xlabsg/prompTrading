@@ -53,7 +53,7 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
             { id: "overview" as ViewType, label: t("console.views.overview", { defaultValue: "Overview" }), icon: Network },
             { id: "code" as ViewType, label: t("console.views.code"), icon: Code },
             { id: "backtest" as ViewType, label: t("console.views.backtest"), icon: LineChart },
-            { id: "live" as ViewType, label: t("console.views.live"), icon: Radio },
+            { id: "live" as ViewType, label: t("console.views.live"), icon: Radio, badge: "Pro" },
             { id: "portfolio" as ViewType, label: t("console.views.portfolio"), icon: LineChart },
         ],
         [t],
@@ -266,6 +266,11 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
                                     )}
                                     <view.icon size={16} className="relative z-10" />
                                     <span className="relative z-10 hidden sm:inline">{view.label}</span>
+                                    {"badge" in view && (
+                                        <span className="relative z-10 text-[10px] px-1 py-0.2 leading-tight rounded font-semibold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                                            {(view as { badge?: string }).badge}
+                                        </span>
+                                    )}
                                 </button>
                             ))}
 

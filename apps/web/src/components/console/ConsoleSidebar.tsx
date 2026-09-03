@@ -689,9 +689,10 @@ const ConsoleSidebar = ({
                         <>
                             {chatHistory.map((msg, idx) => {
                                 const summary = cleanSummaryText(msg.summary?.trim() || "");
-                                const displayText = summary || msg.content;
+                                const displayText = cleanSummaryText(summary || msg.content);
                                 const hasDetails = Boolean(summary) && msg.content.trim() !== summary;
                                 const showDetails = Boolean(expandedMessages[idx]);
+                                const inlineAction = msg.role === "assistant" ? parseActionFromMessage(msg.content) : null;
 
                                 return (
                                     <motion.div
@@ -736,6 +737,19 @@ const ConsoleSidebar = ({
                                                             {displayText}
                                                         </ReactMarkdown>
                                                     </div>
+                                                    {inlineAction && (
+                                                        <div className="pt-1 w-full min-w-0">
+                                                            <ActionCard
+                                                                payload={inlineAction}
+                                                                context={{
+                                                                    strategy,
+                                                                    queryClient,
+                                                                    onNavigateView,
+                                                                    onSendMessage: (m: string) => setMessage(m),
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
                                                     {hasDetails && (
                                                         <Button
                                                             variant="ghost"
