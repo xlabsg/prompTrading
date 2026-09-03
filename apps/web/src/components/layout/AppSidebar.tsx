@@ -62,7 +62,6 @@ export const AppSidebar = ({
             ? [{ icon: TrendingUp, label: t("nav.trending"), path: "/trending", page: "trending" as PageType }]
             : []),
         { icon: Layout, label: t("nav.templates"), path: "/templates", page: "templates" as PageType },
-        { icon: Tag, label: t("nav.subscriptions"), path: "/subscriptions", page: "subscriptions" as PageType },
     ];
     const adminNavItems = isAdmin ? [
         { icon: Shield, label: t("nav.admin"), path: "/admin/trending", page: "home" as PageType },

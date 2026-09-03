@@ -1,4 +1,4 @@
-import { Star, Users, Tag, Bell, BarChart3 } from "lucide-react";
+import { Star, Users, Tag, Copy, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TemplateListItem } from "@/lib/types";
 import { useTranslation } from "react-i18next";
@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 interface TemplateCardProps {
     template: TemplateListItem;
     onOpenDetail: (templateId: string) => void;
-    onSubscribeSignal: (template: TemplateListItem) => void;
+    onFork: (template: TemplateListItem) => void;
     onViewPerformance: (template: TemplateListItem) => void;
 }
 
@@ -16,7 +16,7 @@ const templateTypeColors: Record<string, string> = {
     community: "bg-green-500/10 text-green-500",
 };
 
-export function TemplateCard({ template, onOpenDetail, onSubscribeSignal, onViewPerformance }: TemplateCardProps) {
+export function TemplateCard({ template, onOpenDetail, onFork, onViewPerformance }: TemplateCardProps) {
     const { t } = useTranslation();
     const templateTypeLabels: Record<string, string> = {
         builtin: t("templates.filters.builtin"),
@@ -101,12 +101,12 @@ export function TemplateCard({ template, onOpenDetail, onSubscribeSignal, onView
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
-                            onSubscribeSignal(template);
+                            onFork(template);
                         }}
                         className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-primary bg-primary text-primary-foreground hover:bg-primary/90 transition-colors text-xs font-medium"
                     >
-                        <Bell size={12} />
-                        {t("templates.subscribeSignals")}
+                        <Copy size={12} />
+                        {t("templates.useTemplate", "使用模版")}
                     </button>
                 </div>
 

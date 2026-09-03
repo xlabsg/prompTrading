@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Library } from "lucide-react";
 import { TemplateCard } from "@/components/template/TemplateCard";
 import { TemplateFilters } from "@/components/template/TemplateFilters";
-import { SignalSubscribeDialog } from "@/components/template/SignalSubscribeDialog";
+import { ForkTemplateDialog } from "@/components/template/ForkTemplateDialog";
 import { TemplatePerformanceDialog } from "@/components/template/TemplatePerformanceDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
 import { authApi, templatesApi } from "@/lib/api";
@@ -20,7 +20,7 @@ export function TemplatesPage() {
     const [featured, setFeatured] = useState(false);
     const [sort, setSort] = useState("popular");
     const [selectedTemplate, setSelectedTemplate] = useState<TemplateDetail | null>(null);
-    const [signalDialogOpen, setSignalDialogOpen] = useState(false);
+    const [forkDialogOpen, setForkDialogOpen] = useState(false);
     const [performanceDialogOpen, setPerformanceDialogOpen] = useState(false);
 
     const authQuery = useQuery({
@@ -52,11 +52,11 @@ export function TemplatesPage() {
         navigate(`/template/${templateId}/backtest`);
     };
 
-    const openSubscribeSignalById = async (templateId: string) => {
+    const openForkById = async (templateId: string) => {
         try {
             const detail = await templatesApi.get(templateId);
             setSelectedTemplate(detail);
-            setSignalDialogOpen(true);
+            setForkDialogOpen(true);
         } catch (err) {
             console.error("Failed to load template details:", err);
         }
@@ -142,7 +142,7 @@ export function TemplatesPage() {
                                     key={template.id}
                                     template={template}
                                     onOpenDetail={openTemplateDetail}
-                                    onSubscribeSignal={(t) => openSubscribeSignalById(t.id)}
+                                    onFork={(t) => openForkById(t.id)}
                                     onViewPerformance={(t) => openPerformanceById(t.id)}
                                 />
                             ))}
@@ -151,10 +151,10 @@ export function TemplatesPage() {
                 </div>
             </MainLayout>
 
-            <SignalSubscribeDialog
+            <ForkTemplateDialog
                 template={selectedTemplate}
-                open={signalDialogOpen}
-                onOpenChange={setSignalDialogOpen}
+                open={forkDialogOpen}
+                onOpenChange={setForkDialogOpen}
             />
 
             <TemplatePerformanceDialog

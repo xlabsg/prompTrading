@@ -610,9 +610,25 @@ const zh = {
     count: "{{count}} 个模板",
     browse: "浏览模板",
     openCopy: "打开我的副本",
-    openCopyTooltip: "打开由该模板创建的策略副本",
     createCopy: "创建副本",
     createCopyTooltip: "创建可交易副本（需要 API 密钥）",
+    forkTitle: "基于模板创建策略",
+    forkSubtitle: "克隆官方模板至您的专属工作区，立即可回测、实盘或与 AI 对话迭代。",
+    forkSuccess: "策略创建成功！",
+    forking: "创建中...",
+    createStrategy: "创建策略",
+    forkErrors: {
+      nameRequired: "请输入策略名称",
+      failed: "创建策略失败",
+    },
+    fields: {
+      strategyName: "策略名称",
+      description: "策略描述 (可选)",
+    },
+    placeholders: {
+      strategyName: "输入策略名称...",
+      description: "简短描述您的策略目标...",
+    },
     filters: {
       allTypes: "全部类型",
       builtin: "内置",

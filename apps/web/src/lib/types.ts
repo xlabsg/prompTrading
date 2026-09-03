@@ -696,6 +696,18 @@ export interface SubscribeResponse {
     message: string;
 }
 
+export interface ForkTemplateRequest {
+    name: string;
+    description?: string;
+}
+
+export interface ForkTemplateResponse {
+    strategy_id: string;
+    strategy_name: string;
+    version_id: string;
+    message: string;
+}
+
 // ============== Template Performance Types ==============
 
 export interface PerformanceMetrics {
