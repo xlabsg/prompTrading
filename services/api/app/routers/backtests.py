@@ -11,7 +11,9 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select, or_
 from sqlalchemy.orm import Session
 
-from control_plane.enums import JobStatus, JobType, StrategyRole
+from datetime import datetime, timezone
+
+from control_plane.enums import ChatStatus, JobStatus, JobType, StrategyRole
 from control_plane.versions import create_strategy_version
 from control_plane.models import BacktestRun, Dataset, Job, Strategy
 from control_plane.queue import QUEUE_NAME, enqueue_job
@@ -336,13 +338,18 @@ def generate_and_backtest(
     # Concurrency check: only one LLM/backtest job at a time
     _check_no_running_job(
         db,
-        [JobType.BACKTEST, JobType.GENERATE_AND_BACKTEST, JobType.REFINE_STRATEGY],
+        [JobType.BACKTEST, JobType.GENERATE_AND_BACKTEST, JobType.GENERATE_STRATEGY, JobType.REFINE_STRATEGY],
         strategy_id=strategy_id,
     )
 
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
+
+    # Atomically set status to GENERATING when job is created
+    strategy.chat_status = ChatStatus.GENERATING
+    strategy.updated_at = datetime.now(timezone.utc)
+    db.flush()
 
     init_strategy_workspace(settings.workspaces_dir, strategy_id)
 

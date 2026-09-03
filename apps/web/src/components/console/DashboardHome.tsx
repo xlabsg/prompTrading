@@ -487,7 +487,14 @@ const DashboardHome = ({
 
             const prompt = buildGenerationPrompt(createdStrategy);
 
-            const result = await strategiesApi.generate(createdStrategy.id, { prompt });
+            const result = await strategiesApi.generateAndBacktest(createdStrategy.id, {
+                prompt,
+                dataset: {
+                    exchange: "okx",
+                    symbol: "BTC-USDT-SWAP",
+                    interval: "1h",
+                },
+            });
 
             // Poll job status to show real progress
             const jobId = result.job.id;

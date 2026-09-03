@@ -11,6 +11,7 @@ import type {
     BacktestPosition,
     BacktestTrade,
     GenerateStrategyRequest,
+    GenerateAndBacktestRequest,
     RefineStrategyRequest,
     Repo,
     RepoImportRequest,
@@ -140,6 +141,12 @@ export const strategiesApi = {
 
     generate: (strategyId: string, req: GenerateStrategyRequest) =>
         fetchApi<TriggerJobResponse>(`/api/strategies/${strategyId}/generate`, {
+            method: "POST",
+            body: JSON.stringify(req),
+        }),
+
+    generateAndBacktest: (strategyId: string, req: GenerateAndBacktestRequest) =>
+        fetchApi<TriggerJobResponse>(`/api/strategies/${strategyId}/generate_and_backtest`, {
             method: "POST",
             body: JSON.stringify(req),
         }),

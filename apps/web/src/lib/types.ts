@@ -454,6 +454,19 @@ export interface GenerateStrategyRequest {
     llm_meta?: Record<string, unknown>;
 }
 
+export interface GenerateAndBacktestRequest {
+    prompt: string;
+    dataset?: {
+        exchange?: string;
+        symbol?: string;
+        interval?: string;
+        start_ms?: number;
+        end_ms?: number;
+    };
+    params?: Record<string, unknown>;
+    llm_meta?: Record<string, unknown>;
+}
+
 export interface RefineStrategyRequest {
     prompt: string;
     patch?: string;

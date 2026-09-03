@@ -607,80 +607,89 @@ def main() -> int:
     agent_summary = ""
     stop_reason = "task_done"
     session: tau_driver.TauSessionResult | None = None
-    parent_session_id = (os.getenv("PARENT_TAU_SESSION_ID") or "").strip() or None
-    thinking_level = (os.getenv("AGENT_TAU_THINKING_LEVEL") or "").strip() or None
-    try:
-        session = tau_driver.run_session(
-            task=task,
-            workspace=version_dir,
-            provider=tau_target.provider,
-            model=tau_target.model,
-            extension_path=TAU_EXTENSION_PATH,
-            thinking_level=thinking_level,
-            session_id=parent_session_id,
-            validate=lambda text=None: _workspace_problems(version_dir, text),
-            env=tau_target.credential_env(),
-        )
-        agent_summary = session.summary
-        _heal_from_message_text(version_dir, session.summary)
-        strat_file = os.path.join(version_dir, "strategy.py")
-        code = _read_text(strat_file)
-        _validate_strategy_code(code)
-
-        # Post-generation static lint & sandbox dry-run
-        from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
-        healed, fixes = lint_and_heal_strategy_code(code)
-        if fixes:
-            _write_text(strat_file, healed)
-            print(f"[agent] Post-generation auto-healed imports: {fixes}")
-            code = healed
-        ok, dry_err = dry_run_strategy(code)
-        if not ok:
-            print(f"[agent] Post-generation dry-run warning: {dry_err}")
-        else:
-            print("[agent] Post-generation dry-run smoke test passed (100 synthetic bars evaluated successfully)")
-
-        # Post-generation AST safety and lookahead bias audit
+    force_fallback = (
+        (os.getenv("FORCE_FALLBACK") or "").strip().lower() in ("1", "true", "yes")
+        or (os.getenv("MOCK_LLM") or "").strip().lower() in ("1", "true", "yes")
+    )
+    if force_fallback:
+        print("[agent] FORCE_FALLBACK enabled: skipping LLM session and writing fallback strategy.")
+        code = fallback_strategy_py(prompt)
+        used_llm = False
+        stop_reason = "fallback"
+        _write_text(os.path.join(version_dir, "strategy.py"), code)
+    else:
         try:
-            from agent.tools import init_default_tools
-            tools = init_default_tools()
-            auditor = tools.require("ast_auditor")
-            audit_res = asyncio.run(auditor.run(code=code))
-            if audit_res.success and audit_res.data:
-                issues = audit_res.data.get("issues", [])
-                if issues:
-                    print(f"[agent] AST audit detected {len(issues)} issue(s): {issues}")
-                else:
-                    print("[agent] AST audit passed (0 lookahead bias or unsafe imports)")
-        except Exception as e:
-            print(f"[agent] AST audit warning: {e}")
-
-    except Exception as exc:
-        print(f"[agent] agent_failed: {exc}", file=sys.stderr)
-        strat_path = os.path.join(version_dir, "strategy.py")
-        recovered = False
-        if session and session.summary:
-            _heal_from_message_text(version_dir, session.summary)
-        if os.path.isfile(strat_path):
-            try:
-                code = _read_text(strat_path)
-                _validate_strategy_code(code)
-                recovered = True
-                print("[agent] recovered: strategy.py is valid despite session exception")
-            except Exception:
-                recovered = False
-
-        if not recovered:
-            fallback_on_error = (
-                (os.getenv("LLM_FALLBACK_ON_ERROR") or "").strip().lower()
-                in ("1", "true", "yes")
+            session = tau_driver.run_session(
+                task=task,
+                workspace=version_dir,
+                provider=tau_target.provider,
+                model=tau_target.model,
+                extension_path=TAU_EXTENSION_PATH,
+                thinking_level=thinking_level,
+                session_id=parent_session_id,
+                validate=lambda text=None: _workspace_problems(version_dir, text),
+                env=tau_target.credential_env(),
             )
-            if not fallback_on_error:
-                raise
-            code = fallback_strategy_py(prompt)
-            used_llm = False
-            stop_reason = "fallback"
-            _write_text(os.path.join(version_dir, "strategy.py"), code)
+            agent_summary = session.summary
+            _heal_from_message_text(version_dir, session.summary)
+            strat_file = os.path.join(version_dir, "strategy.py")
+            code = _read_text(strat_file)
+            _validate_strategy_code(code)
+
+            # Post-generation static lint & sandbox dry-run
+            from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
+            healed, fixes = lint_and_heal_strategy_code(code)
+            if fixes:
+                _write_text(strat_file, healed)
+                print(f"[agent] Post-generation auto-healed imports: {fixes}")
+                code = healed
+            ok, dry_err = dry_run_strategy(code)
+            if not ok:
+                print(f"[agent] Post-generation dry-run warning: {dry_err}")
+            else:
+                print("[agent] Post-generation dry-run smoke test passed (100 synthetic bars evaluated successfully)")
+
+            # Post-generation AST safety and lookahead bias audit
+            try:
+                from agent.tools import init_default_tools
+                tools = init_default_tools()
+                auditor = tools.require("ast_auditor")
+                audit_res = asyncio.run(auditor.run(code=code))
+                if audit_res.success and audit_res.data:
+                    issues = audit_res.data.get("issues", [])
+                    if issues:
+                        print(f"[agent] AST audit detected {len(issues)} issue(s): {issues}")
+                    else:
+                        print("[agent] AST audit passed (0 lookahead bias or unsafe imports)")
+            except Exception as e:
+                print(f"[agent] AST audit warning: {e}")
+
+        except Exception as exc:
+            print(f"[agent] agent_failed: {exc}", file=sys.stderr)
+            strat_path = os.path.join(version_dir, "strategy.py")
+            recovered = False
+            if session and session.summary:
+                _heal_from_message_text(version_dir, session.summary)
+            if os.path.isfile(strat_path):
+                try:
+                    code = _read_text(strat_path)
+                    _validate_strategy_code(code)
+                    recovered = True
+                    print("[agent] recovered: strategy.py is valid despite session exception")
+                except Exception:
+                    recovered = False
+
+            if not recovered:
+                fallback_on_error = (
+                    (os.getenv("LLM_FALLBACK_ON_ERROR") or "").strip().lower()
+                    in ("1", "true", "yes")
+                )
+                if not fallback_on_error:
+                    raise
+                code = fallback_strategy_py(prompt)
+                used_llm = False
+                stop_reason = "fallback"
+                _write_text(os.path.join(version_dir, "strategy.py"), code)
 
     # Spec and protocol are platform-owned; write them if the agent did not.
     for name, payload, writer in (

@@ -269,6 +269,7 @@ def _run_container_and_stream_logs(
     log_file_path: Optional[str] = None,
     tail_max_lines: int = 200,
     timeout_s: int | None = None,
+    idle_timeout_s: int | None = None,
     mem_limit: int | str | None = None,
     nano_cpus: int | None = None,
     read_only: bool | None = None,
@@ -334,6 +335,9 @@ def _run_container_and_stream_logs(
 
     container = client.containers.run(**run_kwargs)
     stop_event = threading.Event()
+    last_activity = [time.monotonic()]
+    resolved_idle_timeout = idle_timeout_s if idle_timeout_s is not None else getattr(settings, "container_idle_timeout_s", 120)
+
     def _stream_logs() -> None:
         try:
             for raw in container.logs(stream=True, follow=True, stdout=True, stderr=True):
@@ -345,6 +349,7 @@ def _run_container_and_stream_logs(
                     line = str(raw)
                 if not line:
                     continue
+                last_activity[0] = time.monotonic()
                 tail.append(line)
                 _publish_log(job_id, line, rds=rds)
                 if log_f is not None:
@@ -383,8 +388,29 @@ def _run_container_and_stream_logs(
                     exit_code = 1
                 break
 
-            if timeout_s is not None and (time.monotonic() - start) > float(timeout_s):
-                _publish_log(job_id, f"[worker] job_timeout: killing container after {timeout_s}s", rds=rds)
+            now = time.monotonic()
+            # 1. Idle timeout: detect genuine hangs/deadlocks when zero output is returned
+            idle_elapsed = now - last_activity[0]
+            if resolved_idle_timeout is not None and idle_elapsed > float(resolved_idle_timeout):
+                _publish_log(
+                    job_id,
+                    f"[worker] job_idle_timeout: container silent for {idle_elapsed:.0f}s (no data returning), killing container",
+                    rds=rds,
+                )
+                try:
+                    container.kill()
+                except Exception:
+                    pass
+                exit_code = 124
+                break
+
+            # 2. Hard ceiling: safety boundary against infinite loops
+            if timeout_s is not None and (now - start) > float(timeout_s):
+                _publish_log(
+                    job_id,
+                    f"[worker] job_timeout: hard timeout ceiling reached ({timeout_s}s), killing container",
+                    rds=rds,
+                )
                 try:
                     container.kill()
                 except Exception:
@@ -610,6 +636,8 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
     }
     # Optional per-job overrides (kept in the job payload) for OpenAI-compatible endpoints.
     if isinstance(llm_meta, dict):
+        if llm_meta.get("force_fallback") or llm_meta.get("mock_llm"):
+            agent_env["FORCE_FALLBACK"] = "1"
         if llm_meta.get("base_url"):
             agent_env["LLM_BASE_URL"] = str(llm_meta["base_url"])
         if llm_meta.get("model"):
@@ -735,6 +763,22 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
 
     # Step 2: run backtest
     _handle_backtest(db, rds, docker_client, job)
+
+    # Step 3: generate AI strategy name and mark chat_status as DONE
+    strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is not None:
+        naming_prompt, source = _build_strategy_name_prompt(strategy, prompt)
+        _publish_log(rds, job.id, f"Generating strategy name from {source}...")
+        new_name = _generate_strategy_name(naming_prompt, llm_meta=llm_meta)
+        strategy.name = new_name
+        strategy.chat_status = ChatStatus.DONE
+        strategy.updated_at = _utcnow()
+        db.flush()
+        _publish_log(rds, job.id, f"Strategy name: {new_name}")
+
+    _ensure_strategy_repo(strategy_dir)
+    git_commit(strategy_dir, f"AI generate & backtest: {prompt[:80]}" if prompt else "AI generate & backtest")
 
 
 def _dir_size_bytes(path: str) -> int:
@@ -1124,6 +1168,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
     }
     # Optional per-job overrides (kept in the job payload) for OpenAI-compatible endpoints.
     if isinstance(llm_meta, dict):
+        if llm_meta.get("force_fallback") or llm_meta.get("mock_llm"):
+            agent_env["FORCE_FALLBACK"] = "1"
         if llm_meta.get("base_url"):
             agent_env["LLM_BASE_URL"] = str(llm_meta["base_url"])
         if llm_meta.get("model"):
@@ -1646,6 +1692,36 @@ def _create_backtest_trending_top_n_job(
     db.commit()
 
     enqueue_job(settings.app_workspaces_dir, job_id, JobType.TRENDING_BACKTEST.value, {"strategy_ids": strategy_ids}, priority="batch", redis_client=rds)
+
+
+# --- Job dispatch ----------------------------------------------------------
+#
+# Every handler is normalised to (db, rds, docker_client, job); handlers that do
+# not spawn a container simply ignore docker_client. Template jobs are imported
+# lazily inside their wrappers to keep worker start-up cheap.
+
+
+def _dispatch_repo(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    # REPO_SYNC is handled as a re-run of import over the selected branches.
+    _handle_repo_import(db, rds, job)
+
+
+def _dispatch_template_performance(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    from worker.template_performance_job import generate_template_performance_data
+
+    generate_template_performance_data(db, rds, job)
+
+
+def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    from worker.template_backtest_job import handle_template_backtest
+
+    handle_template_backtest(db, rds, docker_client, job)
+
+
+def _dispatch_template_stable5(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    from worker.template_stable5_screening_job import run_template_stable5_screening
+
+    run_template_stable5_screening(db, rds, job)
 
 
 JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
