@@ -7,12 +7,9 @@ export type JobType =
     | "generate_strategy"
     | "refine_strategy"
     | "generate_and_backtest"
-    | "start_sandbox"
-    | "stop_sandbox"
     | "repo_import"
     | "repo_sync";
 export type BacktestStatus = "queued" | "running" | "succeeded" | "failed";
-export type SandboxStatus = "starting" | "running" | "stopped" | "failed";
 export type StrategyRole = "admin" | "editor" | "viewer";
 
 export interface User {
@@ -369,18 +366,8 @@ export interface Job {
 export interface TriggerJobResponse {
     job: Job;
     backtest_run?: BacktestRun;
-    sandbox_url?: string;
     strategy_version?: StrategyVersion;
     strategy?: Strategy;  // For repo import - the created/linked strategy
-}
-
-export interface SandboxSession {
-    id: string;
-    strategy_id: string;
-    status: SandboxStatus;
-    created_at: string;
-    stopped_at?: string;
-    url_path: string;
 }
 
 export interface Repo {

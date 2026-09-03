@@ -16,7 +16,6 @@ from control_plane.models import (
     StrategyVersion,
     Job,
     BacktestRun,
-    SandboxSession,
     TradingConfig,
     TradingSession,
     StrategyMember,

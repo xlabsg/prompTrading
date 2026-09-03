@@ -18,7 +18,6 @@ services:
       APP_REPOS_DIR: /workspaces/repos
       APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://ai.example.com}
-      APP_SANDBOX_BASE_URL: ${APP_SANDBOX_BASE_URL:-https://ai.example.com}
       APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
       APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
       APP_ADMIN_EMAILS: ${APP_ADMIN_EMAILS:-}
@@ -92,7 +91,6 @@ services:
       WORKER_WORKSPACES_VOLUME: ai_strategy_workspaces
       WORKER_AGENT_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/prompt-trading-agent:${IMAGE_TAG:-latest}
       WORKER_BACKTEST_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/prompt-trading-backtest:${IMAGE_TAG:-latest}
-      WORKER_DEV_IMAGE: ghcr.io/${GITHUB_ORG:-your-org}/prompt-trading-dev:${IMAGE_TAG:-latest}
 
       # LLM config
       LLM_PROVIDER: ${LLM_PROVIDER:-}

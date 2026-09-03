@@ -46,10 +46,6 @@ jobs:
             context: .
             dockerfile: infra/images/backtest/Dockerfile
             image: backtest
-          - name: dev
-            context: .
-            dockerfile: infra/images/dev/Dockerfile
-            image: dev
 
     steps:
       - name: Checkout repository
