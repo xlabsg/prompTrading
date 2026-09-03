@@ -1,7 +1,7 @@
-numpy==2.2.1
-pandas==2.2.3
-TA-Lib==0.6.8
-yfinance==0.2.54
-pyarrow==18.1.0
-requests==2.32.3
-pyyaml==6.0.2
+numpy>=2.2.3
+pandas>=2.2.3
+TA-Lib>=0.6.8
+yfinance>=0.2.55
+pyarrow>=19.0.0
+requests>=2.32.3
+pyyaml>=6.0.2
