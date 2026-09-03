@@ -164,3 +164,12 @@ def test_summarize_chat_reply_falls_back_to_cleaned_source_when_all_attempts_bad
         "[READY]\nHere is the JSON requested:\n```json\n{\"summary\":\"x\"}\n```\n请确认后生成策略。"
     )
     assert summary == "请确认后生成策略。"
+
+
+def test_parse_ready_without_json_falls_back_to_chatting() -> None:
+    reply = "[READY]\n好的，请确认以上信息是否正确，或者您是否有其他需要调整的地方？"
+    status, clean_reply, config = _parse_chat_response(reply)
+    assert status == ChatStatus.CHATTING
+    assert config is None
+    assert "请确认以上信息是否正确" in clean_reply
+    assert "[READY]" not in clean_reply

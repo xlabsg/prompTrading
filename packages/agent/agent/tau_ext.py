@@ -52,14 +52,22 @@ def _workspace_problems(workspace: str) -> list[str]:
             problems.append(
                 f"- {STRATEGY_FILE} has no {PROTOCOL.entry_function}() entry point."
             )
-
-    overview_path = os.path.join(workspace, OVERVIEW_FILE)
-    if not os.path.isfile(overview_path):
-        problems.append(f"- {OVERVIEW_FILE} does not exist yet.")
-    elif PROTOCOL.overview_required_marker not in _read(overview_path):
-        problems.append(
-            f"- {OVERVIEW_FILE} has no {PROTOCOL.overview_required_marker} diagram block."
-        )
+        else:
+            try:
+                from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
+                healed, fixes = lint_and_heal_strategy_code(source)
+                if fixes:
+                    with open(strategy_path, "w", encoding="utf-8") as f:
+                        f.write(healed)
+                    source = healed
+                ok, err = dry_run_strategy(source)
+                if not ok:
+                    problems.append(
+                        f"- {STRATEGY_FILE} failed dry-run execution: {err}. "
+                        f"Ensure {PROTOCOL.entry_function}(data, params) runs cleanly without errors and returns valid target_weights."
+                    )
+            except Exception as e:
+                problems.append(f"- {STRATEGY_FILE} validation error: {e}")
 
     return problems
 

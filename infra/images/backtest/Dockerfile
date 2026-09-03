@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --no-cache-dir -r /app/requirements.txt
 
 COPY packages/backtest/backtest /app/backtest
+COPY packages/backtest/ta.py /app/ta.py
 COPY packages/data/data /app/data
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
 

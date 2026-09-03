@@ -8,7 +8,7 @@ interface LogoProps {
     animated?: boolean;
 }
 
-// 精致几何 Logo - 六边形内嵌 Alpha 符号
+// 精致几何 Logo - 六边形内嵌 Prompt 提示符与交易上升条形
 const LogoIcon = ({
     size = "md",
     animated = false,
@@ -41,15 +41,27 @@ const LogoIcon = ({
                 d="M20 7L31 13.5V26.5L20 33L9 26.5V13.5L20 7Z"
                 className="fill-primary-foreground/20"
             />
-            {/* Alpha 符号 - 抽象 A 形状 */}
+            {/* Prompt 提示符 > */}
             <path
-                d="M20 11L28 27H24L22 23H18L16 27H12L20 11Z"
+                d="M12 14.5L18 20L12 25.5H15.2L21.2 20L15.2 14.5H12Z"
                 className="fill-primary-foreground"
             />
-            {/* A 中间横杠 */}
-            <path
-                d="M17 20H23L22 22H18L17 20Z"
-                className="fill-primary"
+            {/* 交易上升柱线 (Trading Bars) */}
+            <rect
+                x="23"
+                y="19"
+                width="2.2"
+                height="6.5"
+                rx="0.5"
+                className="fill-primary-foreground"
+            />
+            <rect
+                x="26.5"
+                y="14.5"
+                width="2.2"
+                height="11"
+                rx="0.5"
+                className="fill-primary-foreground"
             />
         </svg>
     );
@@ -98,13 +110,13 @@ const Logo = ({
                     "font-display font-bold text-foreground",
                     textSizeClasses[size]
                 )}>
-                    Alpha
+                    Promp
                 </span>
                 <span className={cn(
                     "font-display font-bold text-gradient-orange",
                     textSizeClasses[size]
                 )}>
-                    Forge
+                    Trading
                 </span>
             </div>
         </>

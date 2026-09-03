@@ -31,13 +31,16 @@ interface ConsoleSidebarProps {
 const cleanSummaryText = (text: string): string => {
     const raw = String(text || "");
     const withoutCodeBlocks = raw
-        .replace(/```json[\s\S]*?```/gi, " ")
-        .replace(/```[\s\S]*?```/g, " ");
+        .replace(/```json[\s\S]*?```/gi, "\n")
+        .replace(/```[\s\S]*?```/g, "\n");
     const withoutJsonLead = withoutCodeBlocks
-        .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, " ")
-        .replace(/\bbelow\s+is\s+the\s+json[^:\n]*[:：]?/gi, " ")
-        .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, " ");
-    return withoutJsonLead.replace(/\s+/g, " ").trim();
+        .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, "")
+        .replace(/\bbelow\s+is\s+the\s+json[^:\n]*[:：]?/gi, "")
+        .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, "");
+    return withoutJsonLead
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 };
 
 const ConsoleSidebar = ({
@@ -60,6 +63,7 @@ const ConsoleSidebar = ({
     const [streamingMessage, setStreamingMessage] = useState("");
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamingProgressPath, setStreamingProgressPath] = useState<string | null>(null);
+    const [streamingProgressMessage, setStreamingProgressMessage] = useState<string | null>(null);
     const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
     const [refineError, setRefineError] = useState<string | null>(null);
     const [liveDraft, setLiveDraft] = useState<{ summary: string; code: string } | null>(null);
@@ -168,6 +172,8 @@ const ConsoleSidebar = ({
                                     if (data.type === "token") {
                                         setStreamingMessage(prev => prev + data.content);
                                     } else if (data.type === "progress") {
+                                        const msg = data.message || (data.path ? t("console.sidebar.editingFile", { path: data.path }) : null);
+                                        if (msg) setStreamingProgressMessage(msg);
                                         const path = typeof data.path === "string" ? data.path : "";
                                         if (path) {
                                             setStreamingProgressPath(path);
@@ -189,6 +195,7 @@ const ConsoleSidebar = ({
                     setIsStreaming(false);
                     setStreamingMessage("");
                     setStreamingProgressPath(null);
+                    setStreamingProgressMessage(null);
                     setPendingUserMessage(null);
                 }
             })();
@@ -242,6 +249,8 @@ const ConsoleSidebar = ({
                             if (data.type === "token") {
                                 setStreamingMessage(prev => prev + data.content);
                             } else if (data.type === "progress") {
+                                const msg = data.message || (data.path ? t("console.sidebar.editingFile", { path: data.path }) : null);
+                                if (msg) setStreamingProgressMessage(msg);
                                 const path = typeof data.path === "string" ? data.path : "";
                                 if (path) {
                                     setStreamingProgressPath(path);
@@ -265,6 +274,7 @@ const ConsoleSidebar = ({
             setIsStreaming(false);
             setStreamingMessage("");
             setStreamingProgressPath(null);
+            setStreamingProgressMessage(null);
             setPendingUserMessage(null);
         }
     };
@@ -631,9 +641,9 @@ const ConsoleSidebar = ({
                                         >
                                             {msg.role === "assistant" ? (
                                                 <div className="space-y-2">
-                                                    <p className="whitespace-pre-wrap break-words leading-relaxed">
-                                                        {displayText}
-                                                    </p>
+                                                    <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
+                                                        <ReactMarkdown>{displayText}</ReactMarkdown>
+                                                    </div>
                                                     {hasDetails && (
                                                         <Button
                                                             variant="ghost"
@@ -690,9 +700,9 @@ const ConsoleSidebar = ({
                                         <div className="flex items-center gap-2 text-muted-foreground">
                                             <Loader2 size={14} className="animate-spin" />
                                             <span className="text-sm">
-                                                {streamingProgressPath
+                                                {streamingProgressMessage || (streamingProgressPath
                                                     ? t("console.sidebar.editingFile", { path: streamingProgressPath })
-                                                    : t("console.sidebar.aiThinking")}
+                                                    : t("console.sidebar.aiThinking"))}
                                             </span>
                                         </div>
                                     </div>

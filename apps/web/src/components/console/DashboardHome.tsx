@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { authApi, strategiesApi, githubApi, reposApi, jobsApi } from "@/lib/api";
 import { buildGenerationPrompt } from "@/lib/strategyPrompt";
 import React from "react";
+import ReactMarkdown from "react-markdown";
 import ImportStrategyModal from "@/components/strategy/ImportStrategyModal";
 import { TrendingSection } from "@/components/dashboard/TrendingSection";
 import { useTranslation } from "react-i18next";
@@ -64,15 +65,18 @@ const Github = ({ className, size = 24 }: { className?: string; size?: number })
 
 const cleanAssistantResponse = (content: string): string => {
     const withoutCodeBlocks = content
-        .replace(/```json[\s\S]*?```/gi, " ")
-        .replace(/```[\s\S]*?```/g, " ");
+        .replace(/```json[\s\S]*?```/gi, "\n")
+        .replace(/```[\s\S]*?```/g, "\n");
 
     const withoutJsonLead = withoutCodeBlocks
-        .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, " ")
-        .replace(/\bjson\s*(response|payload|output)[^:\n]*[:：]?/gi, " ")
-        .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, " ");
+        .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, "")
+        .replace(/\bjson\s*(response|payload|output)[^:\n]*[:：]?/gi, "")
+        .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, "");
 
-    return withoutJsonLead.replace(/\s+/g, " ").trim();
+    return withoutJsonLead
+        .replace(/[ \t]+/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim();
 };
 
 const DashboardHome = ({
@@ -95,6 +99,7 @@ const DashboardHome = ({
     const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
     const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
     const [currentGeneratingStep, setCurrentGeneratingStep] = useState(0);
+    const [generatingElapsedSeconds, setGeneratingElapsedSeconds] = useState(0);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [importStage, setImportStage] = useState<"connect" | "select" | "progress" | "done">("connect");
     const [repoSearch, setRepoSearch] = useState("");
@@ -347,6 +352,25 @@ const DashboardHome = ({
         ? strategies.find(s => s.id === createdStrategyId)
         : null;
 
+    useEffect(() => {
+        if (createdStrategy?.chat_status !== "generating") {
+            setGeneratingElapsedSeconds(0);
+            return;
+        }
+        const timer = setInterval(() => {
+            setGeneratingElapsedSeconds((prev) => prev + 1);
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [createdStrategy?.chat_status]);
+
+    const getGeneratingHint = (seconds: number) => {
+        if (seconds < 15) return "正在解析策略需求与交易逻辑...";
+        if (seconds < 40) return "正在由 Docker Agent 编写 strategy.py...";
+        if (seconds < 75) return "正在执行沙箱语法审计与参数化校验...";
+        if (seconds < 110) return "正在验证回测协议与指标计算...";
+        return "正在生成可视化决策流架构图与概览文档，即将就绪...";
+    };
+
     const chatHistory: ChatMessage[] = createdStrategy?.chat_history || [];
     const isReadyLikeStatus = createdStrategy
         ? createdStrategy.chat_status === "ready" ||
@@ -377,6 +401,7 @@ const DashboardHome = ({
 
     // Streaming chat state
     const [streamingMessage, setStreamingMessage] = useState("");
+    const [streamingProgressMessage, setStreamingProgressMessage] = useState<string | null>(null);
     const [isStreaming, setIsStreaming] = useState(false);
     const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
     const [generateError, setGenerateError] = useState<string | null>(null);
@@ -387,6 +412,7 @@ const DashboardHome = ({
 
         setIsStreaming(true);
         setStreamingMessage("");
+        setStreamingProgressMessage(null);
         setPendingUserMessage(message);
         setChatInput("");
 
@@ -418,6 +444,9 @@ const DashboardHome = ({
                             const data = JSON.parse(line.slice(6));
                             if (data.type === "token") {
                                 setStreamingMessage(prev => prev + data.content);
+                            } else if (data.type === "progress") {
+                                const msg = data.message || (data.path ? `正在生成 ${data.path} 文件...` : null);
+                                if (msg) setStreamingProgressMessage(msg);
                             } else if (data.type === "done") {
                                 // Refresh strategies to get updated chat history
                                 queryClient.invalidateQueries({ queryKey: ["strategies"] });
@@ -435,6 +464,7 @@ const DashboardHome = ({
         } finally {
             setIsStreaming(false);
             setStreamingMessage("");
+            setStreamingProgressMessage(null);
             setPendingUserMessage(null);
         }
     };
@@ -539,6 +569,7 @@ const DashboardHome = ({
             // Reset chat state when returning to dashboard
             setChatInput("");
             setStreamingMessage("");
+            setStreamingProgressMessage(null);
             setPendingUserMessage(null);
             setIsStreaming(false);
             setGenerateError(null);
@@ -668,26 +699,26 @@ const DashboardHome = ({
     return (
         <div className="flex-1 flex flex-col overflow-hidden bg-gradient-to-br from-orange-50/50 via-background to-orange-100/30">
             <div className="flex-1 overflow-y-auto">
-                <div className="max-w-4xl mx-auto px-4 py-10 sm:px-8 sm:py-16">
+                <div className="max-w-4xl mx-auto px-4 pt-3 pb-10 sm:px-8 sm:pt-6 sm:pb-14">
                     {/* Hero Section */}
-                    <div className="relative text-center mb-12">
-                        <div className="absolute -top-10 left-1/2 h-40 w-40 -translate-x-1/2 rounded-full bg-orange-200/50 blur-3xl" />
-                        <div className="absolute right-0 top-0 h-24 w-24 rounded-full bg-orange-300/40 blur-2xl" />
+                    <div className="relative text-center mb-6 sm:mb-8">
+                        <div className="absolute -top-4 left-1/2 h-36 w-36 -translate-x-1/2 rounded-full bg-orange-200/40 blur-3xl pointer-events-none" />
+                        <div className="absolute right-0 top-0 h-20 w-20 rounded-full bg-orange-300/30 blur-2xl pointer-events-none" />
 
                         <motion.h1
-                            initial={{ y: 20, opacity: 0 }}
+                            initial={{ y: 15, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.1 }}
-                            className="text-3xl font-bold text-foreground mb-3 mt-12 sm:mt-16 sm:text-4xl"
+                            className="text-2xl font-bold text-foreground mb-2 sm:text-3xl lg:text-4xl"
                         >
                             {t.heroTitle}
                         </motion.h1>
 
                         <motion.p
-                            initial={{ y: 20, opacity: 0 }}
+                            initial={{ y: 15, opacity: 0 }}
                             animate={{ y: 0, opacity: 1 }}
                             transition={{ delay: 0.2 }}
-                            className="text-muted-foreground text-base sm:text-lg"
+                            className="text-muted-foreground text-sm sm:text-base max-w-xl mx-auto"
                         >
                             {t.heroSubtitle}
                         </motion.p>
@@ -701,8 +732,9 @@ const DashboardHome = ({
                         className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden mb-12"
                     >
                         {/* Initial Loading State - when creating strategy and waiting for first AI response */}
+                        {/* Initial Loading State - only while strategy record is being created in database */}
                         <AnimatePresence>
-                            {(isCreating || (createdStrategy && chatHistory.length === 0 && chatMutation.isPending)) && (
+                            {isCreating && !createdStrategy && (
                                 <motion.div
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: "auto", opacity: 1 }}
@@ -713,17 +745,19 @@ const DashboardHome = ({
                                         {/* User's initial prompt */}
                                         {prompt && (
                                             <div className="flex justify-end">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
                                                     <p className="whitespace-pre-wrap leading-relaxed">{prompt}</p>
                                                 </div>
                                             </div>
                                         )}
-                                        {/* AI thinking indicator */}
+                                        {/* AI initializing indicator */}
                                         <div className="flex justify-start">
-                                            <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                            <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
                                                 <div className="flex items-center gap-2">
                                                     <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                                    <span className="text-sm text-muted-foreground">{t.thinking}</span>
+                                                    <span className="text-sm text-muted-foreground">
+                                                        {streamingProgressMessage || "正在初始化策略工作区..."}
+                                                    </span>
                                                 </div>
                                             </div>
                                         </div>
@@ -732,64 +766,84 @@ const DashboardHome = ({
                             )}
                         </AnimatePresence>
 
-                        {/* Chat Messages (when created) */}
+                        {/* Chat Messages (active for conversation, first message streaming, and results) */}
                         <AnimatePresence>
-                            {createdStrategy && chatHistory.length > 0 && (
+                            {createdStrategy && (chatHistory.length > 0 || isStreaming || pendingUserMessage) && (
                                 <motion.div
                                     initial={{ height: 0, opacity: 0 }}
                                     animate={{ height: "auto", opacity: 1 }}
                                     className="border-b border-border"
                                 >
-                                    <div ref={scrollRef} className="p-4 space-y-4 max-h-96 overflow-y-auto sm:p-6">
-                                        {isReadyLikeStatus ? null : (
-                                            chatHistory.map((msg, i) => {
-                                                const displayText = msg.role === "assistant"
-                                                    ? cleanAssistantResponse(msg.content)
-                                                    : msg.content;
-                                                if (!displayText) return null;
+                                    <div ref={scrollRef} className="p-4 space-y-4 max-h-[520px] overflow-y-auto sm:p-6">
+                                        {chatHistory.map((msg, i) => {
+                                            const displayText = msg.role === "assistant"
+                                                ? cleanAssistantResponse(msg.content)
+                                                : msg.content;
+                                            if (!displayText) return null;
 
-                                                return (
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    className={cn(
+                                                        "flex",
+                                                        msg.role === "user" ? "justify-end" : "justify-start"
+                                                    )}
+                                                >
                                                     <div
-                                                        key={i}
                                                         className={cn(
-                                                            "flex",
-                                                            msg.role === "user" ? "justify-end" : "justify-start"
+                                                            "max-w-[88%] rounded-2xl px-4 py-3 text-sm",
+                                                            msg.role === "user"
+                                                                ? "bg-primary text-primary-foreground rounded-br-md"
+                                                                : "bg-muted text-foreground rounded-bl-md"
                                                         )}
                                                     >
-                                                        <div
-                                                            className={cn(
-                                                                "max-w-[85%] rounded-2xl px-4 py-3 text-sm",
-                                                                msg.role === "user"
-                                                                    ? "bg-primary text-primary-foreground rounded-br-md"
-                                                                    : "bg-muted rounded-bl-md"
-                                                            )}
-                                                        >
+                                                        {msg.role === "assistant" ? (
+                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
+                                                                <ReactMarkdown>{displayText}</ReactMarkdown>
+                                                            </div>
+                                                        ) : (
                                                             <p className="whitespace-pre-wrap break-words leading-relaxed">
                                                                 {displayText}
                                                             </p>
-                                                        </div>
+                                                        )}
                                                     </div>
-                                                );
-                                            })
-                                        )}
+                                                </div>
+                                            );
+                                        })}
 
                                         {/* Pending user message while streaming */}
-                                        {pendingUserMessage && !isReadyLikeStatus && (
+                                        {pendingUserMessage && (
                                             <div className="flex justify-end">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
                                                     <p className="whitespace-pre-wrap break-words leading-relaxed">{pendingUserMessage}</p>
                                                 </div>
                                             </div>
                                         )}
 
                                         {/* Streaming AI response with typing effect */}
-                                        {isStreaming && !isReadyLikeStatus && (
+                                        {isStreaming && (
                                             <div className="flex justify-start">
-                                                <div className="max-w-[85%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
-                                                    <div className="flex items-center gap-2">
-                                                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                                        <span className="text-sm text-muted-foreground">{t.thinking}</span>
-                                                    </div>
+                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-muted text-foreground rounded-bl-md">
+                                                    {streamingMessage ? (
+                                                        <div className="space-y-2">
+                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
+                                                                <ReactMarkdown>{cleanAssistantResponse(streamingMessage)}</ReactMarkdown>
+                                                            </div>
+                                                            {streamingProgressMessage && (
+                                                                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t border-border/30">
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                                                                    <span>{streamingProgressMessage}</span>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center gap-2">
+                                                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                                            <span className="text-sm text-muted-foreground">
+                                                                {streamingProgressMessage || t.thinking}
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
@@ -801,6 +855,15 @@ const DashboardHome = ({
                                                 animate={{ opacity: 1, y: 0 }}
                                                 className="py-4 space-y-3"
                                             >
+                                                <div className="flex items-center justify-between px-2 pb-2 text-xs border-b border-border/50">
+                                                    <div className="flex items-center gap-2 font-medium text-foreground">
+                                                        <Loader2 size={14} className="animate-spin text-primary" />
+                                                        <span>{getGeneratingHint(generatingElapsedSeconds)}</span>
+                                                    </div>
+                                                    <span className="tabular-nums font-mono text-[11px] bg-muted/80 px-2 py-0.5 rounded-full text-muted-foreground">
+                                                        ⏱️ 已耗时 {generatingElapsedSeconds} 秒
+                                                    </span>
+                                                </div>
                                                 {generationSteps.map((step, index) => {
                                                     const isCompleted = index < currentGeneratingStep;
                                                     const isActive = index === currentGeneratingStep;
@@ -937,8 +1000,16 @@ const DashboardHome = ({
                                 /* Show status message when ready/generating/done */
                                 <div className="text-center py-4 text-muted-foreground text-sm space-y-2">
                                     <div>
-                                        {createdStrategy.chat_status === "ready" && t.statusReady}
-                                        {createdStrategy.chat_status === "generating" && t.statusGenerating}
+                                        {createdStrategy.chat_status === "ready" && (createdStrategy.chat_config && Object.keys(createdStrategy.chat_config).length > 0 ? t.statusReady : t.chatPlaceholder)}
+                                        {createdStrategy.chat_status === "generating" && (
+                                            <div className="flex items-center justify-center gap-2">
+                                                <Loader2 size={15} className="animate-spin text-primary" />
+                                                <span>{t.statusGenerating}</span>
+                                                <span className="font-mono text-xs text-muted-foreground ml-1">
+                                                    (已耗时 {generatingElapsedSeconds} 秒)
+                                                </span>
+                                            </div>
+                                        )}
                                         {createdStrategy.chat_status === "done" && t.statusDone}
                                     </div>
                                     {generateError && (
@@ -946,20 +1017,20 @@ const DashboardHome = ({
                                             {generateError}
                                         </div>
                                     )}
-                                    {createdStrategy.chat_status === "ready" && createdStrategy.chat_config && (
+                                    {createdStrategy.chat_status === "ready" && createdStrategy.chat_config && Object.keys(createdStrategy.chat_config).length > 0 ? (
                                         <motion.div
                                             initial={{ opacity: 0, y: 10 }}
                                             animate={{ opacity: 1, y: 0 }}
                                             className="mt-4 mb-2 text-left"
                                         >
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:bg-amber-950/20 dark:border-amber-800">
                                                 <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                                                    <FileText size={16} className="text-amber-700" />
+                                                    <FileText size={16} className="text-amber-700 dark:text-amber-400" />
                                                     {t.strategyConfigTitle}
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-3 text-sm">
                                                     {Object.entries(createdStrategy.chat_config).map(([key, value]) => (
-                                                        <div key={key} className="rounded-lg bg-white p-2">
+                                                        <div key={key} className="rounded-lg bg-white dark:bg-card p-2 shadow-sm">
                                                             <div className="text-xs text-muted-foreground capitalize">
                                                                 {formatConfigLabel(key)}
                                                             </div>
@@ -972,7 +1043,7 @@ const DashboardHome = ({
                                                 <Button
                                                     onClick={() => generateMutation.mutate()}
                                                     disabled={generateMutation.isPending}
-                                                    className="mt-4 w-full gap-2 bg-green-600 hover:bg-green-700 text-white"
+                                                    className="mt-4 w-full gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm"
                                                 >
                                                     {generateMutation.isPending ? (
                                                         <>
@@ -988,7 +1059,54 @@ const DashboardHome = ({
                                                 </Button>
                                             </div>
                                         </motion.div>
-                                    )}
+                                    ) : createdStrategy.chat_status === "ready" ? (
+                                        /* Fallback when ready but no config: show textarea so user can continue chatting */
+                                        <div className="text-left mt-3">
+                                            <Textarea
+                                                ref={chatTextareaRef}
+                                                value={chatInput}
+                                                onChange={(e) => setChatInput(e.target.value)}
+                                                onKeyDown={handleChatKeyDown}
+                                                placeholder={t.chatPlaceholder}
+                                                className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
+                                                style={{ minHeight: `${chatMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
+                                                disabled={chatMutation.isPending}
+                                            />
+                                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
+                                                <span className="text-sm text-muted-foreground">
+                                                    {t.inputHint}
+                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <Button
+                                                        variant="outline"
+                                                        onClick={() => generateMutation.mutate()}
+                                                        disabled={generateMutation.isPending}
+                                                        className="gap-2"
+                                                    >
+                                                        <Sparkles size={16} />
+                                                        {t.confirmGenerate}
+                                                    </Button>
+                                                    <Button
+                                                        onClick={handleSendChatMessage}
+                                                        disabled={!chatInput.trim() || chatMutation.isPending}
+                                                        className="gap-2 bg-primary hover:bg-primary/90"
+                                                    >
+                                                        {chatMutation.isPending ? (
+                                                            <>
+                                                                <Loader2 size={16} className="animate-spin" />
+                                                                {t.sending}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Send size={16} />
+                                                                {t.sendMessage}
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : null}
                                 </div>
                             ) : (
                                 /* Initial creation input */

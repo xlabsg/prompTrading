@@ -275,6 +275,7 @@ You are working inside the strategy version workspace. Files present: {files}
 {capabilities}
 
 ## How to work
+- Always use tools (`write`, `edit`) directly to modify files. Do not output raw tool calls like `functions.write(...)` as code blocks in text.
 - Read before you edit. `edit` matches text exactly, so read the file first and
   reproduce the target text verbatim.
 - After writing `{strategy_file}`, call `backtest` to evaluate it on real market
@@ -368,6 +369,49 @@ def _max_turns() -> int | None:
         return None
 
 
+def _heal_from_message_text(version_dir: str, text: str) -> None:
+    """If the LLM outputted tool calls or markdown blocks in text, extract and write to disk."""
+    if not text:
+        return
+    import re
+
+    # Check for functions.write({"path": "...", "content": "..."})
+    write_pattern = re.compile(r'functions\.write\(\s*(\{.*?\})\s*\)', re.DOTALL)
+    for match in write_pattern.finditer(text):
+        try:
+            payload = json.loads(match.group(1))
+            path = payload.get("path")
+            content = payload.get("content")
+            if path and content:
+                dest = os.path.join(version_dir, path)
+                _write_text(dest, content)
+                print(f"[agent] auto-healed {path} from model text function call")
+        except Exception:
+            pass
+
+    # Check for markdown python code block with generate_signals if strategy.py missing or invalid
+    strat_path = os.path.join(version_dir, STRATEGY_FILE)
+    needs_strat = True
+    if os.path.isfile(strat_path):
+        try:
+            _validate_strategy_code(_read_text(strat_path))
+            needs_strat = False
+        except Exception:
+            needs_strat = True
+
+    if needs_strat:
+        py_pattern = re.compile(r'```python\s*(.*?def generate_signals.*?)\s*```', re.DOTALL)
+        py_match = py_pattern.search(text)
+        if py_match:
+            try:
+                candidate = py_match.group(1).strip() + "\n"
+                _validate_strategy_code(candidate)
+                _write_text(strat_path, candidate)
+                print("[agent] auto-healed strategy.py from markdown codeblock in text")
+            except Exception:
+                pass
+
+
 def _workspace_problems(version_dir: str) -> list[str]:
     """Report why `version_dir` is not yet a publishable strategy.
 
@@ -382,7 +426,20 @@ def _workspace_problems(version_dir: str) -> list[str]:
         problems.append(f"- {STRATEGY_FILE} does not exist.")
     else:
         try:
-            _validate_strategy_code(_read_text(strategy_path))
+            code = _read_text(strategy_path)
+            _validate_strategy_code(code)
+            from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
+            healed, fixes = lint_and_heal_strategy_code(code)
+            if fixes:
+                _write_text(strategy_path, healed)
+                print(f"[agent] Auto-healed strategy.py imports: {fixes}")
+                code = healed
+            ok, dry_err = dry_run_strategy(code)
+            if not ok:
+                problems.append(
+                    f"- {STRATEGY_FILE} failed dry-run execution: {dry_err}. "
+                    "Ensure generate_signals(data, params) runs cleanly without errors and returns valid target_weights."
+                )
         except SyntaxError as exc:
             problems.append(f"- {STRATEGY_FILE} does not parse: {exc}")
         except ValueError:
@@ -392,12 +449,8 @@ def _workspace_problems(version_dir: str) -> list[str]:
         except OSError as exc:
             problems.append(f"- {STRATEGY_FILE} could not be read: {exc}")
 
-    overview_path = os.path.join(version_dir, OVERVIEW_FILE)
-    if not os.path.isfile(overview_path):
-        problems.append(f"- {OVERVIEW_FILE} does not exist.")
-    elif "```mermaid" not in _read_text(overview_path):
-        problems.append(f"- {OVERVIEW_FILE} has no ```mermaid diagram block.")
-
+    # Note: overview.md is non-blocking. If absent or missing mermaid block,
+    # _ensure_overview_sections will auto-generate it from strategy metadata.
     return problems
 
 
@@ -414,6 +467,7 @@ def main() -> int:
     _ensure_dir(strategy_dir)
 
     # Load current code to decide between first generation and refinement.
+    job_type = os.getenv("JOB_TYPE", "")
     current_code = ""
     current_path = os.path.join(strategy_dir, "strategy.py")
     if os.path.isfile(current_path):
@@ -421,10 +475,35 @@ def main() -> int:
             current_code = _read_text(current_path)
         except OSError:
             current_code = ""
-    is_first_generation = not bool(current_code.strip())
 
-    seeded = _seed_workspace(version_dir, strategy_dir)
-    print(f"[agent] seeded workspace with: {seeded or '(nothing)'}")
+    if job_type in ("generate_strategy", "generate_and_backtest"):
+        is_first_generation = True
+    elif job_type == "refine_strategy":
+        is_first_generation = False
+    else:
+        # Fallback check: default scaffold or fallback code means first generation
+        is_first_generation = (
+            not bool(current_code.strip())
+            or "fast = close.rolling(fast_n).mean()" in current_code
+            or "Auto-generated strategy (fallback)" in current_code
+        )
+
+    if is_first_generation:
+        # For first generation, seed specs/protocols, but ensure strategy.py starts clean
+        # so the model writes a fresh strategy matching user's requirements
+        seeded = [
+            name for name in _seed_workspace(version_dir, strategy_dir)
+            if name != "strategy.py"
+        ]
+        strat_target = os.path.join(version_dir, "strategy.py")
+        if os.path.isfile(strat_target):
+            try:
+                os.remove(strat_target)
+            except OSError:
+                pass
+    else:
+        seeded = _seed_workspace(version_dir, strategy_dir)
+    print(f"[agent] seeded workspace with: {seeded or '(nothing)'} (is_first_generation={is_first_generation})")
 
     session_metrics = SessionMetrics(session_id=strategy_id)
     platform_caps = _platform_capabilities()
@@ -479,8 +558,23 @@ def main() -> int:
             env=tau_target.credential_env(),
         )
         agent_summary = session.summary
-        code = _read_text(os.path.join(version_dir, "strategy.py"))
+        _heal_from_message_text(version_dir, session.summary)
+        strat_file = os.path.join(version_dir, "strategy.py")
+        code = _read_text(strat_file)
         _validate_strategy_code(code)
+
+        # Post-generation static lint & sandbox dry-run
+        from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
+        healed, fixes = lint_and_heal_strategy_code(code)
+        if fixes:
+            _write_text(strat_file, healed)
+            print(f"[agent] Post-generation auto-healed imports: {fixes}")
+            code = healed
+        ok, dry_err = dry_run_strategy(code)
+        if not ok:
+            print(f"[agent] Post-generation dry-run warning: {dry_err}")
+        else:
+            print("[agent] Post-generation dry-run smoke test passed (100 synthetic bars evaluated successfully)")
 
         # Post-generation AST safety and lookahead bias audit
         try:
@@ -499,16 +593,30 @@ def main() -> int:
 
     except Exception as exc:
         print(f"[agent] agent_failed: {exc}", file=sys.stderr)
-        fallback_on_error = (
-            (os.getenv("LLM_FALLBACK_ON_ERROR") or "").strip().lower()
-            in ("1", "true", "yes")
-        )
-        if not fallback_on_error:
-            raise
-        code = fallback_strategy_py(prompt)
-        used_llm = False
-        stop_reason = "fallback"
-        _write_text(os.path.join(version_dir, "strategy.py"), code)
+        strat_path = os.path.join(version_dir, "strategy.py")
+        recovered = False
+        if session and session.summary:
+            _heal_from_message_text(version_dir, session.summary)
+        if os.path.isfile(strat_path):
+            try:
+                code = _read_text(strat_path)
+                _validate_strategy_code(code)
+                recovered = True
+                print("[agent] recovered: strategy.py is valid despite session exception")
+            except Exception:
+                recovered = False
+
+        if not recovered:
+            fallback_on_error = (
+                (os.getenv("LLM_FALLBACK_ON_ERROR") or "").strip().lower()
+                in ("1", "true", "yes")
+            )
+            if not fallback_on_error:
+                raise
+            code = fallback_strategy_py(prompt)
+            used_llm = False
+            stop_reason = "fallback"
+            _write_text(os.path.join(version_dir, "strategy.py"), code)
 
     # Spec and protocol are platform-owned; write them if the agent did not.
     for name, payload, writer in (

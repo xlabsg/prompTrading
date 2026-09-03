@@ -1601,9 +1601,14 @@ def _parse_chat_response(reply: str) -> tuple[ChatStatus, str, dict | None]:
         # If clean_reply is empty, provide a default message
         if not clean_reply:
             clean_reply = "I've gathered all the information needed. Here's the strategy configuration for your review:"
-        
-        return ChatStatus.READY, clean_reply, config
-    
+
+        # Only set status to READY if a non-empty dict config was successfully extracted
+        if config and isinstance(config, dict) and len(config) > 0:
+            return ChatStatus.READY, clean_reply, config
+
+        # Otherwise, the model did not output a valid JSON config (e.g. still clarifying with user)
+        return ChatStatus.CHATTING, clean_reply, None
+
     return ChatStatus.CHATTING, reply, None
 
 
@@ -2209,6 +2214,8 @@ def chat_with_strategy_stream(
             )
             return
 
+        yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略需求与交易逻辑...'})}\n\n"
+
         try:
             # Use tool-capable call for all modes so LLM can decide when to read backtests.
             json_mode = False
@@ -2225,6 +2232,11 @@ def chat_with_strategy_stream(
 
         # Parse full response (normal chat flow)
         new_status, clean_reply, config = _parse_chat_response(full_reply)
+
+        if new_status == ChatStatus.READY and config:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'ready', 'path': 'strategy.py', 'message': '正在生成 strategy.py 策略配置...'})}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'})}\n\n"
 
         # Stream the reply content in smooth chunks for SSE typewriter effect
         chunk_size = 12
