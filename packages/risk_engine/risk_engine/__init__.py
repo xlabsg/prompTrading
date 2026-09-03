@@ -80,6 +80,8 @@ from .state import (
 from .adapters import (
     ExchangeAdapter,
     OKXAdapter,
+    BinanceAdapter,
+    BinanceClient,
 )
 
 __all__ = [
@@ -143,4 +145,6 @@ __all__ = [
     # Adapters
     "ExchangeAdapter",
     "OKXAdapter",
+    "BinanceAdapter",
+    "BinanceClient",
 ]

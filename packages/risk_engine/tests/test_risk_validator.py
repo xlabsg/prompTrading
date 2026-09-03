@@ -1,7 +1,7 @@
 """Tests for RiskValidator"""
 import pytest
 from decimal import Decimal
-from trading_sdk import (
+from risk_engine import (
     RiskValidator, RiskConfig, OrderSpec, Position, Balance,
     OrderSide, OrderType, PositionSide, PositionStatus
 )
