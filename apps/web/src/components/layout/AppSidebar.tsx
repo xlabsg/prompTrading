@@ -64,7 +64,7 @@ export const AppSidebar = ({
         { icon: Layout, label: t("nav.templates"), path: "/templates", page: "templates" as PageType },
     ];
     const adminNavItems = isAdmin ? [
-        { icon: Shield, label: t("nav.admin"), path: "/admin/trending", page: "home" as PageType },
+        { icon: Shield, label: t("nav.admin"), path: "/admin/jobs", page: "home" as PageType },
     ] : [];
 
     const recentStrategies = strategies.slice(0, 5);
@@ -123,7 +123,7 @@ export const AppSidebar = ({
                             onClick={() => navigate(item.path)}
                             className={cn(
                                 "w-full flex items-center gap-3 px-3 py-1.5 rounded-lg text-sm transition-colors",
-                                window.location.pathname.startsWith("/admin/")
+                                window.location.pathname.startsWith("/admin")
                                     ? "bg-primary/10 text-primary"
                                     : "text-muted-foreground hover:text-foreground hover:bg-muted"
                             )}
