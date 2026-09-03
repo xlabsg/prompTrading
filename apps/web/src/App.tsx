@@ -13,7 +13,7 @@ import TemplateConsole from "./pages/TemplateConsole";
 import NotFound from "./pages/NotFound";
 import OAuthCallback from "./pages/OAuthCallback";
 import AuthError from "./pages/AuthError";
-import AdminTrending from "./pages/AdminTrending";
+import AdminJobs from "./pages/AdminJobs";
 import { initGa4, trackPageView } from "@/lib/analytics/ga4";
 
 const queryClient = new QueryClient();
@@ -45,7 +45,8 @@ const App = () => (
                     <Route path="/template/:templateId" element={<TemplateConsole />} />
                     <Route path="/template/:templateId/:tab" element={<TemplateConsole />} />
                     <Route path="/subscriptions" element={<SubscriptionsPage />} />
-                    <Route path="/admin/trending" element={<AdminTrending />} />
+                    <Route path="/admin" element={<AdminJobs />} />
+                    <Route path="/admin/jobs" element={<AdminJobs />} />
                     <Route path="/landing-page" element={<Index />} />
                     <Route path="/auth/oauth/:provider/callback" element={<OAuthCallback />} />
                     <Route path="/auth/error" element={<AuthError />} />

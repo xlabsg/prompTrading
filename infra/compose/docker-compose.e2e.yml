@@ -100,8 +100,13 @@ services:
       # Fail-fast timeout for strategy name generation (seconds)
       STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
       # Schedulers disabled here (safety; mode already prevents starting them)
-      CONTAINER_HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-http://host.docker.internal:6152}
-      CONTAINER_HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-http://host.docker.internal:6152}
+      CONTAINER_HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-${HTTP_PROXY:-}}
+      CONTAINER_HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-${HTTPS_PROXY:-${CONTAINER_HTTP_PROXY:-}}}
+      HTTP_PROXY: ${HTTP_PROXY:-${CONTAINER_HTTP_PROXY:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${CONTAINER_HTTPS_PROXY:-${CONTAINER_HTTP_PROXY:-}}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces_e2e:/workspaces
