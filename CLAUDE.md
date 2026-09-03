@@ -84,7 +84,7 @@ Known pre-existing failures, unrelated to the agent: `packages/agent/agent/tests
 
 ### Data Flow
 ```
-Frontend (React) → API (FastAPI) → PostgreSQL/Redis
+Frontend (React) → API (FastAPI) → SQLite (default) / PostgreSQL (optional)
                          ↓
                    Worker Service → Ephemeral Docker Containers
                          ↓                (agent, backtest)
@@ -92,8 +92,8 @@ Frontend (React) → API (FastAPI) → PostgreSQL/Redis
 ```
 
 ### Key Patterns
-- **Job Queue**: Redis-backed async job processing for strategy generation, backtesting, and trading
-- **WebSocket**: Real-time updates for trading status, positions, PnL via Redis pub/sub
+- **Job Processing**: Worker-based async job execution with RPC dispatch for strategy generation and backtesting
+- **WebSocket**: Real-time updates for trading status, positions, and logs
 - **Encrypted Storage**: API credentials encrypted with Fernet (cryptography library)
 - **Ephemeral Containers**: Worker spawns isolated containers for strategy execution
 
@@ -257,7 +257,7 @@ docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 ### Backend
 - FastAPI, Uvicorn
 - SQLAlchemy 2.0 (async)
-- PostgreSQL 16, Redis 7
+- SQLite (default) / PostgreSQL (optional)
 - Pydantic 2.x
 
 ### Infrastructure
