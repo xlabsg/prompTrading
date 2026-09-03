@@ -14,10 +14,91 @@ from dataclasses import dataclass, field
 from typing import Any, Sequence
 
 import numpy as np
-from scipy import stats
 
 
 EULER_MASCHERONI = 0.5772156649015329
+
+
+def _norm_cdf(z: float) -> float:
+    """Standard normal cumulative distribution function (CDF)."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _norm_ppf(p: float) -> float:
+    """Standard normal quantile function (inverse CDF) via Acklam's algorithm."""
+    if p <= 0.0:
+        return -float("inf")
+    if p >= 1.0:
+        return float("inf")
+    if p == 0.5:
+        return 0.0
+
+    a = (
+        -3.969683028665376e01,
+        2.209460984245205e02,
+        -2.759285104469687e02,
+        1.383577518672690e02,
+        -3.066479806614716e01,
+        2.506628277459239e00,
+    )
+    b = (
+        -5.447609879822406e01,
+        1.615858368580409e02,
+        -1.556989798598866e02,
+        6.680131188771972e01,
+        -1.328068155288572e01,
+    )
+    c = (
+        -7.784894002430293e-03,
+        -3.223964580411365e-01,
+        -2.400758277161838e00,
+        -2.549732539343734e00,
+        4.374664141464968e00,
+        2.938163982698783e00,
+    )
+    d = (
+        7.784695709041462e-03,
+        3.224671290700398e-01,
+        2.445134137142996e00,
+        3.754408661907416e00,
+    )
+
+    p_low = 0.02425
+    p_high = 1.0 - p_low
+
+    if p < p_low:
+        q = math.sqrt(-2.0 * math.log(p))
+        return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+        )
+    elif p <= p_high:
+        q = p - 0.5
+        r = q * q
+        return (
+            (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5])
+            * q
+            / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1.0)
+        )
+    else:
+        q = math.sqrt(-2.0 * math.log(1.0 - p))
+        return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / (
+            (((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1.0
+        )
+
+
+def _calc_skew_kurtosis(arr: np.ndarray) -> tuple[float, float]:
+    """Calculate sample skewness and Pearson kurtosis (normal distribution = 3.0)."""
+    n = len(arr)
+    if n < 4:
+        return 0.0, 3.0
+    mean = float(np.mean(arr))
+    std = float(np.std(arr, ddof=0))
+    if std < 1e-12:
+        return 0.0, 3.0
+    z = (arr - mean) / std
+    skew = float(np.mean(z**3))
+    kurt = float(np.mean(z**4))
+    return skew, kurt
 
 
 @dataclass(frozen=True)
@@ -60,8 +141,8 @@ def compute_expected_max_sharpe(
         return 0.0
 
     std_sharpe = math.sqrt(max(1e-6, var_sharpe))
-    q1 = stats.norm.ppf(1.0 - 1.0 / trials_count)
-    q2 = stats.norm.ppf(1.0 - 1.0 / (trials_count * math.e))
+    q1 = _norm_ppf(1.0 - 1.0 / trials_count)
+    q2 = _norm_ppf(1.0 - 1.0 / (trials_count * math.e))
 
     expected_max = std_sharpe * ((1.0 - EULER_MASCHERONI) * q1 + EULER_MASCHERONI * q2)
     return max(0.0, float(expected_max))
@@ -96,11 +177,10 @@ def compute_dsr(
         return 0.0, 0.0, 3.0
 
     # Calculate skewness and kurtosis
-    skew = float(stats.skew(arr)) if n >= 3 else 0.0
-    kurt = float(stats.kurtosis(arr, fisher=False)) if n >= 4 else 3.0  # Pearson kurtosis (normal=3.0)
+    skew, kurt = _calc_skew_kurtosis(arr)
 
     # Standard error of Sharpe ratio under non-normality (Mertens 2002)
-    se_factor = 1.0 - skew * sr_bar + ((kurt - 1.0) / 4.0) * (sr_bar ** 2)
+    se_factor = 1.0 - skew * sr_bar + ((kurt - 1.0) / 4.0) * (sr_bar**2)
     if se_factor <= 0:
         se_factor = 1.0
     se_sr = math.sqrt(se_factor / (n - 1))
@@ -110,7 +190,7 @@ def compute_dsr(
 
     # Test statistic z
     z = (sr_bar - expected_max_bar) / max(1e-9, se_sr)
-    dsr_prob = float(stats.norm.cdf(z))
+    dsr_prob = _norm_cdf(z)
 
     return max(0.0, min(1.0, dsr_prob)), skew, kurt
 
