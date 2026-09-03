@@ -17,7 +17,8 @@ from control_plane.models import Order, StrategyExchangeAccount, TradingConfig, 
 # Risk Engine imports
 from risk_engine import (
     RiskValidator, PositionManager, OrderManager,
-    OKXAdapter, generate_client_order_id,
+    OKXAdapter, BinanceAdapter, BinanceClient,
+    generate_client_order_id,
     OrderSpec as SDKOrderSpec, OrderSide as SDKOrderSide,
     OrderType as SDKOrderType, PositionSide,
 )
@@ -66,9 +67,8 @@ class OrderExecutor:
         # SDK 配置
         self.sdk_config = build_trading_config(config)
 
-        # OKX 客户端和适配器
-        self.okx_client = self._get_client()
-        self.exchange_adapter = OKXAdapter(self.okx_client)
+        # 交易所适配器 (支持 OKX, Binance, Paper)
+        self.exchange_adapter = self._create_adapter()
 
         # SDK 组件
         self.risk_validator = RiskValidator(self.sdk_config.risk)
@@ -83,20 +83,35 @@ class OrderExecutor:
             f"(symbol: {config.symbol}, exchange: {config.exchange})"
         )
 
-    def _get_client(self):
-        """获取或创建 OKX 客户端或 Paper Trading 客户端"""
-        if getattr(self.account, "exchange", "").lower() == "paper" or not self.account.api_secret_encrypted:
+    def _create_adapter(self):
+        """根据交易账户配置创建对应的交易所适配器"""
+        exchange_name = (getattr(self.account, "exchange", "") or self.config.exchange or "").lower()
+
+        if exchange_name == "paper" or not self.account.api_secret_encrypted:
             from app.trading_engine.paper_client import PaperExchangeClient
             return PaperExchangeClient()
 
-        from okx_sdk import OKXClient
+        api_key = (self.account.api_key_encrypted or "").strip()
+        secret_key = decrypt_credential(self.account.api_secret_encrypted).strip()
 
-        return OKXClient(
-            api_key=(self.account.api_key_encrypted or "").strip(),
-            secret_key=decrypt_credential(self.account.api_secret_encrypted).strip(),
-            passphrase=decrypt_credential(self.account.api_passphrase_encrypted or "").strip(),
+        if exchange_name == "binance":
+            testnet = getattr(settings, "binance_testnet", False)
+            binance_client = BinanceClient(
+                api_key=api_key,
+                secret_key=secret_key,
+                testnet=testnet,
+            )
+            return BinanceAdapter(binance_client)
+
+        from okx_sdk import OKXClient
+        passphrase = decrypt_credential(self.account.api_passphrase_encrypted or "").strip()
+        okx_client = OKXClient(
+            api_key=api_key,
+            secret_key=secret_key,
+            passphrase=passphrase,
             simulated=settings.okx_simulated_trading,
         )
+        return OKXAdapter(okx_client)
 
     def place_market_order(
         self,

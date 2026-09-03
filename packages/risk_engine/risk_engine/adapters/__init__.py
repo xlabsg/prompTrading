@@ -5,8 +5,13 @@ Trading SDK Adapters Module
 """
 from .base import ExchangeAdapter
 from .okx import OKXAdapter
+from .binance import BinanceAdapter
+from .binance_client import BinanceClient, BinanceAPIError
 
 __all__ = [
     "ExchangeAdapter",
     "OKXAdapter",
+    "BinanceAdapter",
+    "BinanceClient",
+    "BinanceAPIError",
 ]

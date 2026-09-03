@@ -276,6 +276,32 @@ def cmd_dry_run(args: argparse.Namespace) -> int:
 
 def cmd_indicators(args: argparse.Namespace) -> int:
     """List or inspect built-in technical indicators."""
+    source = getattr(args, "source", "platform") or "platform"
+    if source.lower() == "okx":
+        print("==================================================")
+        print("    OKX AGENT TRADE KIT TECHNICAL INDICATORS      ")
+        print("==================================================")
+        print("Source: OKX Agent Trade Kit (No auth required)")
+        print("Domain skill: .tau/skills/okx-cex-market/SKILL.md\n")
+        okx_indicators = [
+            ("MA", "Moving Average: simple average of closing price over N bars"),
+            ("EMA", "Exponential Moving Average: weighted average prioritizing recent bars"),
+            ("RSI", "Relative Strength Index: momentum oscillator (default: period 14)"),
+            ("MACD", "Moving Average Convergence Divergence: (12, 26, 9)"),
+            ("BOLL", "Bollinger Bands: (period=20, std=2) with upper, middle, lower"),
+            ("ATR", "Average True Range: volatility indicator across high/low/close"),
+            ("KDJ", "Stochastic Oscillator: %K, %D, %J momentum overbought/oversold"),
+            ("DMI / ADX", "Directional Movement Index: trend direction and strength"),
+            ("SAR", "Parabolic Stop and Reverse: trailing stop price marker"),
+            ("OBV", "On-Balance Volume: volume flow momentum indicator"),
+            ("BTCRAINBOW", "Bitcoin Rainbow Logarithmic Valuation Bands"),
+            ("AHR999", "AHR999 Bitcoin Accumulation & Valuation Ratio"),
+        ]
+        for name, desc in okx_indicators:
+            print(f"  • {name:<12} : {desc}")
+        print("==================================================")
+        return 0
+
     try:
         from backtest import indicators as bt_ind
     except ImportError:
@@ -318,7 +344,8 @@ def cmd_indicators(args: argparse.Namespace) -> int:
     print("      PLATFORM BUILT-IN VECTORIZED INDICATORS     ")
     print("==================================================")
     print("Usage: from backtest.indicators import <indicator>")
-    print("Run `pt-quant indicators <name>` for detailed signature.\n")
+    print("Run `pt-quant indicators <name>` for detailed signature.")
+    print("Run `pt-quant indicators --source okx` for OKX Agent Trade Kit indicators.\n")
     for name in available:
         try:
             fn = getattr(bt_ind, name)
@@ -358,6 +385,7 @@ def main(argv: list[str] | None = None) -> int:
     # 4. indicators
     p_ind = subparsers.add_parser("indicators", help="Introspect platform indicators")
     p_ind.add_argument("name", nargs="?", help="Specific indicator name to inspect")
+    p_ind.add_argument("--source", choices=["platform", "okx"], default="platform", help="Indicator source (platform or okx)")
 
     args = parser.parse_args(argv)
     if not args.command:

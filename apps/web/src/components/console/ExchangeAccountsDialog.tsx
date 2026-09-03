@@ -40,7 +40,7 @@ interface ExchangeAccountsDialogProps {
 
 const exchanges = [
     { id: "okx", name: "OKX", logo: "🟢", enabled: true },
-    { id: "binance", name: "Binance", logo: "🟡", enabled: false, comingSoon: true },
+    { id: "binance", name: "Binance", logo: "🟡", enabled: true },
 ];
 
 const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialogProps) => {
@@ -92,7 +92,8 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
     };
 
     const handleAddAccount = () => {
-        if (!newAccountName || !selectedExchange || !apiKey || !secretKey || !passphrase) return;
+        if (!newAccountName || !selectedExchange || !apiKey || !secretKey) return;
+        if (selectedExchange === "okx" && !passphrase) return;
         createMutation.mutate();
     };
 
@@ -250,25 +251,27 @@ const ExchangeAccountsDialog = ({ strategyId, children }: ExchangeAccountsDialog
                                     </div>
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label>{t("exchangeAccounts.passphrase")} <span className="text-destructive">*</span></Label>
-                                    <div className="relative">
-                                        <Input
-                                            type={showPassphrase ? "text" : "password"}
-                                            placeholder={t("exchangeAccounts.passphrasePlaceholder")}
-                                            value={passphrase}
-                                            onChange={(e) => setPassphrase(e.target.value)}
-                                            className="pr-10"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => setShowPassphrase(!showPassphrase)}
-                                            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                                        >
-                                            {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
-                                        </button>
+                                {selectedExchange === "okx" && (
+                                    <div className="space-y-2">
+                                        <Label>{t("exchangeAccounts.passphrase")} <span className="text-destructive">*</span></Label>
+                                        <div className="relative">
+                                            <Input
+                                                type={showPassphrase ? "text" : "password"}
+                                                placeholder={t("exchangeAccounts.passphrasePlaceholder")}
+                                                value={passphrase}
+                                                onChange={(e) => setPassphrase(e.target.value)}
+                                                className="pr-10"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowPassphrase(!showPassphrase)}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                                            >
+                                                {showPassphrase ? <EyeOff size={16} /> : <Eye size={16} />}
+                                            </button>
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="flex items-center justify-between">

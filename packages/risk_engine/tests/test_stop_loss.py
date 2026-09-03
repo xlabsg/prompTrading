@@ -1,7 +1,7 @@
 """Tests for StopLoss strategies"""
 import pytest
 from decimal import Decimal
-from trading_sdk import (
+from risk_engine import (
     TrailingStopLoss, FixedStopLoss, StopLossManager,
     TrailingStopConfig, ActivationConfig, DistanceConfig,
     ActivationType, DistanceType,

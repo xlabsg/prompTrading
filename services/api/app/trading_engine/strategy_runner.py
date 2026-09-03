@@ -65,9 +65,21 @@ class CandleEvent:
     timestamp: int
 
 
-def _fetch_recent_candles(inst_id: str, interval: str, limit: int) -> pd.DataFrame:
+def _fetch_recent_candles(inst_id: str, interval: str, limit: int, exchange: str = "okx") -> pd.DataFrame:
     if limit <= 0:
         raise ValueError("limit must be positive")
+
+    if (exchange or "").lower() == "binance":
+        from data.binance import KlinesRequest, fetch_klines
+        norm_sym = inst_id.upper().replace("-SWAP", "").replace("/", "").replace("-", "")
+        df = fetch_klines(
+            KlinesRequest(
+                symbol=norm_sym,
+                interval=interval,
+                limit=int(limit),
+            )
+        )
+        return df.tail(int(limit)).reset_index(drop=True)
 
     def interval_ms(value: str) -> int | None:
         s = (value or "").strip()
@@ -117,6 +129,7 @@ class StrategyRunner:
         self.strategy_id = config.strategy_id
         self.config = config
         self.account = account
+        self._exchange = (getattr(account, "exchange", None) or getattr(config, "exchange", None) or "okx").lower()
         self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._artifacts: Optional[StrategyArtifacts] = None
@@ -136,7 +149,7 @@ class StrategyRunner:
             strategy_id=self.strategy_id,
             session_id=session_id,
             config=config,
-            okx_client=self._create_okx_client(account),
+            okx_client=self._create_exchange_client(account),
         )
 
     def start(self) -> None:
@@ -153,24 +166,27 @@ class StrategyRunner:
         self._stop_streams()
 
     # ------------------------------------------------------------------
-    def _create_okx_client(self, account: StrategyExchangeAccount):
-        if getattr(account, "exchange", "").lower() == "paper" or not account.api_secret_encrypted:
+    def _create_exchange_client(self, account: StrategyExchangeAccount):
+        exchange_name = (getattr(account, "exchange", "") or self.config.exchange or "okx").lower()
+        if exchange_name == "paper" or not getattr(account, "api_secret_encrypted", None):
             from app.trading_engine.paper_client import PaperExchangeClient
             return PaperExchangeClient()
 
-        from okx_sdk import OKXClient
-
         api_key = (account.api_key_encrypted or "").strip()
         secret = decrypt_credential(account.api_secret_encrypted).strip()
+
+        if exchange_name == "binance":
+            from risk_engine import BinanceAdapter, BinanceClient
+            testnet = getattr(settings, "binance_testnet", False)
+            binance_client = BinanceClient(
+                api_key=api_key,
+                secret_key=secret,
+                testnet=testnet,
+            )
+            return BinanceAdapter(binance_client)
+
+        from okx_sdk import OKXClient
         passphrase = decrypt_credential(account.api_passphrase_encrypted or "").strip()
-        logger.warning({
-            "event": "runner_credentials",
-            "strategy_id": self.strategy_id,
-            "session_id": self.session_id,
-            "api_key_len": len(api_key),
-            "secret_len": len(secret),
-            "passphrase_len": len(passphrase),
-        })
         return OKXClient(
             api_key=api_key,
             secret_key=secret,
@@ -273,7 +289,7 @@ class StrategyRunner:
                     continue
                 buffer = CandleBuffer(inst_id=symbol, interval=interval, max_candles=max(self._history_bars, 200))
                 try:
-                    history = _fetch_recent_candles(symbol, interval, self._history_bars)
+                    history = _fetch_recent_candles(symbol, interval, self._history_bars, exchange=self._exchange)
                     if not history.empty:
                         buffer.load_history(history.to_dict("records"))
                     buffer.mark_initialized()
@@ -282,14 +298,15 @@ class StrategyRunner:
                     buffer.mark_initialized()
                 self._streams[key] = buffer
 
-                channel = self._ws_manager.build_candle_channel(interval)
-                conn = self._ws_manager.get_connection(symbol)
+                if self._exchange == "okx":
+                    channel = self._ws_manager.build_candle_channel(interval)
+                    conn = self._ws_manager.get_connection(symbol)
 
-                def _callback(records: List[Any], stream_key: tuple[str, str] = key) -> None:
-                    self._handle_ws_records(stream_key, records)
+                    def _callback(records: List[Any], stream_key: tuple[str, str] = key) -> None:
+                        self._handle_ws_records(stream_key, records)
 
-                sub_key = conn.subscribe(channel, symbol, _callback)
-                self._subscriptions[key] = (sub_key, _callback)
+                    sub_key = conn.subscribe(channel, symbol, _callback)
+                    self._subscriptions[key] = (sub_key, _callback)
 
     def _stop_streams(self) -> None:
         for key, (sub_key, callback) in list(self._subscriptions.items()):
@@ -360,6 +377,27 @@ class StrategyRunner:
                         streams_started = True
 
                     if event is None:
+                        # Fallback polling for non-OKX or when WS has no incoming ticks
+                        now = time.time()
+                        last_poll = getattr(self, "_last_poll_time", 0.0)
+                        if now - last_poll >= MIN_POLL_SECONDS:
+                            self._last_poll_time = now
+                            for sym in self._symbols:
+                                for intv in self._intervals:
+                                    k_key = (sym, intv)
+                                    try:
+                                        fresh_df = _fetch_recent_candles(sym, intv, 2, exchange=self._exchange)
+                                        if not fresh_df.empty:
+                                            ts = int(fresh_df["timestamp"].iloc[-1])
+                                            last_ts = self._last_bar_ts.get(k_key, 0)
+                                            if ts > last_ts:
+                                                self._last_bar_ts[k_key] = ts
+                                                buf = self._streams.get(k_key)
+                                                if buf:
+                                                    buf.load_history(fresh_df.to_dict("records"))
+                                                self._event_queue.put(CandleEvent(symbol=sym, interval=intv, timestamp=ts))
+                                    except Exception as e:
+                                        logger.debug("Failed polling candles for %s/%s: %s", sym, intv, e)
                         continue
 
                     history = self._build_history_frame((event.symbol, event.interval))
