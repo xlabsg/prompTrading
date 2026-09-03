@@ -1,6 +1,19 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI coding agents (Claude Code, Codex, Cursor) when
+working with code in this repository. `AGENTS.md` is a symlink to this file — edit
+this one.
+
+## Working Rules
+
+- Readability and performance come first.
+- Do not start by writing code. Talk through the approach until told to write it.
+- Think from first principles.
+- Do not add new README-style docs on your own initiative; keep the existing docs
+  (`README.md`, `LIVE_TRADING_SETUP.md`) up to date when a workflow changes.
+- When modifying the worker, Docker orchestration, or agent runtime dependencies,
+  verify with a real container smoke test (Worker -> Docker agent/backtest
+  lifecycle). In-memory mocks alone are not evidence.
 
 ## Project Overview
 
@@ -84,7 +97,7 @@ Known pre-existing failures, unrelated to the agent: `packages/agent/agent/tests
 
 ### Data Flow
 ```
-Frontend (React) → API (FastAPI) → PostgreSQL/Redis
+Frontend (React) → API (FastAPI) → SQLite (default) / PostgreSQL (optional)
                          ↓
                    Worker Service → Ephemeral Docker Containers
                          ↓                (agent, backtest)
@@ -92,8 +105,8 @@ Frontend (React) → API (FastAPI) → PostgreSQL/Redis
 ```
 
 ### Key Patterns
-- **Job Queue**: Redis-backed async job processing for strategy generation, backtesting, and trading
-- **WebSocket**: Real-time updates for trading status, positions, PnL via Redis pub/sub
+- **Job Processing**: Worker-based async job execution with RPC dispatch for strategy generation and backtesting
+- **WebSocket**: Real-time updates for trading status, positions, and logs
 - **Encrypted Storage**: API credentials encrypted with Fernet (cryptography library)
 - **Ephemeral Containers**: Worker spawns isolated containers for strategy execution
 
@@ -257,7 +270,7 @@ docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 ### Backend
 - FastAPI, Uvicorn
 - SQLAlchemy 2.0 (async)
-- PostgreSQL 16, Redis 7
+- SQLite (default) / PostgreSQL (optional)
 - Pydantic 2.x
 
 ### Infrastructure
@@ -276,3 +289,37 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
 - Only enable trading permissions on OKX API key (never withdrawal)
 - Use OKX demo trading (https://www.okx.com/demo-trading) for testing
 - Generate encryption key: `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+## Coding Style
+
+- **Python**: 4-space indentation, type-hinted functions, descriptive module names
+  (`trading_session_service.py`). Prefer dataclasses and the enums in
+  `control_plane`. Keep imports sorted (stdlib, third-party, local). `ruff` is the
+  linter/formatter.
+- **TypeScript/React**: functional components, PascalCase filenames
+  (`BacktestView.tsx`), Tailwind utility classes, hooks under `src/hooks/` near
+  their owners. Run `npm run lint` before pushing.
+- **Config** (`*.env`, YAML): never embed secrets. Document required keys in the
+  service docs, not inline.
+
+## Testing Conventions
+
+- pytest for Python packages and services. Tests live beside the implementation
+  (e.g. `packages/control_plane/tests/`), named `test_<unit>.py`, with reusable
+  fixtures.
+- Web console tests (vitest or Playwright) go under `apps/web/src/__tests__`;
+  snapshot tests sit next to their components.
+- Prioritise coverage of trading-critical paths: strategy evaluation, order
+  placement, WebSocket broadcasting. Add a regression test when patching these.
+- Container smoke tests are required for the changes listed under Working Rules —
+  see also `services/api/setup_and_test.sh` for in-container API smoke checks.
+
+## Commits & Pull Requests
+
+- Conventional Commit prefixes, with a scope where it helps: `feat(api): ...`,
+  `fix:`, `refactor:`, `chore:`, `docs:`. English.
+- A PR states its motivation and its testing evidence (`pytest`, `npm run lint`,
+  Compose logs), and links the issue or runbook. Include screenshots or terminal
+  captures for UI and backtest changes.
+- Keep PRs atomic — backend, frontend, or infra separately, unless the change has
+  to land in sync.
