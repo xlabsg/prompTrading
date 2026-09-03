@@ -570,75 +570,6 @@ Based on your analysis:
 Always be specific and actionable in your recommendations.
 """
 
-STRATEGY_QA_SYSTEM_PROMPT = """You are an expert quantitative trading strategy assistant.
-The user's trading strategy has already been generated and is stored in their workspace.
-Your task is to answer questions, explain the strategy's logic, indicators, signal generation rules, risk management, and analyze backtest results.
-
-Guidelines:
-1. Answer clearly, accurately, and concisely in well-structured markdown.
-2. Reference the actual strategy code and backtest results provided in the context.
-3. This is an informational conversation. Do NOT output [READY] or [REFINE] tags, and do NOT emit raw JSON configuration blocks.
-4. If the user asks for suggestions or optimizations, provide concrete recommendations. If they want to apply code modifications, explain that they can confirm with an explicit modification instruction (such as '把止损调整为 3%').
-"""
-
-
-def _classify_done_chat_intent(message: str) -> str:
-    """Classify user intent when strategy is in DONE status.
-
-    Returns:
-        'refine': User explicitly requests code modification, parameter change, or strategy tuning.
-        'chat': User is asking questions, requesting explanation, inspecting code/backtests, or conversing.
-    """
-    cleaned = (message or "").strip().lower()
-    if not cleaned:
-        return "chat"
-
-    # 1. Check strong question/explanation prefixes and patterns
-    qa_starters = (
-        "为什么", "怎么", "如何", "什么是", "解释", "描述", "说明", "讲讲", "分析",
-        "介绍", "总结", "读一下", "看一下", "看下", "有何", "原理", "逻辑", "告诉我",
-        "查一下", "帮我分析", "帮我看看", "表现如何", "怎么样", "为啥", "给我描述",
-        "给我讲讲", "给我解释", "给我看看",
-        "why", "how", "what", "explain", "describe", "analyze", "summary",
-        "summarize", "tell me", "show me", "check", "inspect", "overview",
-    )
-
-    qa_anywhere = (
-        "描述一下", "描述该", "描述这个", "解释一下", "说明一下", "讲讲", "原理是什么",
-        "逻辑是什么", "怎么算的", "什么原理", "为什么会", "表现怎么样", "回测情况",
-    )
-
-    if any(cleaned.startswith(prefix) for prefix in qa_starters) or any(phrase in cleaned for phrase in qa_anywhere):
-        return "chat"
-
-    if cleaned.endswith("？") or cleaned.endswith("?"):
-        qa_question_signals = ("吗", "能不能", "可以吗", "怎么", "如何", "是否", "可不可以", "行不行", "can we", "can you", "is it possible", "how to")
-        if any(sig in cleaned for sig in qa_question_signals):
-            return "chat"
-
-    # 2. Modification verbs / action patterns
-    chinese_modify_patterns = [
-        r"(?:把|将).*(?:改|调|设|换)",
-        r"(?:改成|改为|修改|调整为|重命名为|替换为|重写|设为|设置为)",
-        r"(?:增加|添加|加上|引入|新建).*(?:指标|条件|规则|过滤|止损|止盈|仓位|逻辑|参数)",
-        r"(?:删除|去掉|移除|去除).*(?:指标|条件|规则|过滤|做空|做多|止损|止盈|逻辑)",
-        r"(?:优化|修改|重写|调整).*(?:代码|策略|入场|出场|信号|止损|止盈|参数)",
-    ]
-    english_modify_patterns = [
-        r"(?:\b|^)(?:change|modify|update|tune|adjust|rewrite|refactor)(?:\b|$)",
-        r"(?:\b|^)(?:set|switch)\s+.*\s+(?:to|into)(?:\b|$)",
-        r"(?:\b|^)(?:add|insert|include)\s+.*(?:\b)(?:filter|indicator|stop loss|take profit|rule|condition|parameter|logic)(?:\b|$)",
-        r"(?:\b|^)(?:remove|delete|drop)\s+.*(?:\b)(?:short|long|filter|indicator|rule|condition|logic)(?:\b|$)",
-    ]
-
-    has_modify_intent = any(re.search(pat, cleaned) for pat in (chinese_modify_patterns + english_modify_patterns))
-    if has_modify_intent:
-        return "refine"
-
-    # Default safely to chat
-    return "chat"
-
-
 STRATEGY_NAME_MAX_CHARS = 20
 
 
@@ -1738,14 +1669,8 @@ def chat_with_strategy(
     if strategy.chat_history is None:
         strategy.chat_history = []
     
-    # If strategy code has already been generated, classify intent into Q&A or refine
-    is_refinement_mode = False
-    is_done_qa_mode = False
-    if strategy.chat_status == ChatStatus.DONE:
-        if _classify_done_chat_intent(req.message) == "refine":
-            is_refinement_mode = True
-        else:
-            is_done_qa_mode = True
+    # If strategy code has already been generated, all interaction is handled by Tau.
+    is_done_mode = strategy.chat_status == ChatStatus.DONE
 
     user_message = req.message
 
@@ -1755,7 +1680,7 @@ def chat_with_strategy(
 
     # Call LLM with appropriate prompt
     try:
-        if is_refinement_mode:
+        if is_done_mode:
             strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
             has_code = os.path.isfile(strategy_code_path)
             if not has_code:
@@ -1828,36 +1753,6 @@ def chat_with_strategy(
                 config=strategy.chat_config,
                 refine_proposal=None,
             )
-        elif is_done_qa_mode:
-            strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
-            strategy_code = _read_strategy_code(strategy_code_path)
-            backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
-            qa_prompt = STRATEGY_QA_SYSTEM_PROMPT
-            if strategy_code:
-                qa_prompt += f"\n\nCurrent strategy code (`strategy.py`):\n```python\n{strategy_code[:8000]}\n```"
-            if backtest_context:
-                qa_prompt += f"\n\nLatest backtest results:\n{backtest_context[:4000]}"
-            llm_history = _append_language_to_history(history, user_message)
-            llm_history = _sanitize_llm_messages(llm_history)
-            reply = _call_chat_llm(
-                llm_history,
-                system_prompt=qa_prompt,
-                json_mode=False,
-            )
-            clean_reply = reply.strip()
-            _append_assistant_message(history, clean_reply)
-            strategy.chat_history = history
-            strategy.chat_status = ChatStatus.DONE
-            strategy.updated_at = datetime.now(timezone.utc)
-            db.commit()
-            db.refresh(strategy)
-            return ChatResponse(
-                reply=clean_reply,
-                status=ChatStatus.DONE,
-                chat_history=history,
-                config=strategy.chat_config,
-                refine_proposal=None,
-            )
         else:
             llm_history = _append_language_to_history(history, user_message)
             llm_history = _sanitize_llm_messages(llm_history)
@@ -1915,14 +1810,8 @@ def chat_with_strategy_stream(
     if strategy.chat_history is None:
         strategy.chat_history = []
     
-    # If strategy code has already been generated, classify intent into Q&A or refine
-    is_refinement_mode = False
-    is_done_qa_mode = False
-    if strategy.chat_status == ChatStatus.DONE:
-        if _classify_done_chat_intent(req.message) == "refine":
-            is_refinement_mode = True
-        else:
-            is_done_qa_mode = True
+    # If strategy code has already been generated, all interaction is handled by Tau.
+    is_done_mode = strategy.chat_status == ChatStatus.DONE
 
     user_message = req.message
 
@@ -1934,7 +1823,7 @@ def chat_with_strategy_stream(
 
     early_reply: str | None = None
 
-    if is_refinement_mode:
+    if is_done_mode:
         strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
         has_code = os.path.isfile(strategy_code_path)
         if not has_code:
@@ -1946,16 +1835,6 @@ def chat_with_strategy_stream(
         system_prompt = CHAT_SYSTEM_PROMPT
     elif user_message.strip() == "/generate_overview":
         pass
-    elif is_done_qa_mode:
-        chat_history = llm_history
-        strategy_code_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "strategy.py")
-        strategy_code = _read_strategy_code(strategy_code_path)
-        backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
-        system_prompt = STRATEGY_QA_SYSTEM_PROMPT
-        if strategy_code:
-            system_prompt += f"\n\nCurrent strategy code (`strategy.py`):\n```python\n{strategy_code[:8000]}\n```"
-        if backtest_context:
-            system_prompt += f"\n\nLatest backtest results:\n{backtest_context[:4000]}"
     else:
         chat_history = llm_history
         system_prompt = CHAT_SYSTEM_PROMPT
@@ -2029,8 +1908,8 @@ def chat_with_strategy_stream(
             )
             return
 
-        if is_refinement_mode:
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'refine_start', 'path': 'strategy.py', 'message': '正在分析修改需求并准备更新 strategy.py...'}, ensure_ascii=False)}\n\n"
+        if is_done_mode:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': 'Agent 正在思考与处理...'}, ensure_ascii=False)}\n\n"
             progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
 
             def _push_progress(event: dict[str, Any]) -> None:
@@ -2135,10 +2014,7 @@ def chat_with_strategy_stream(
             )
             return
 
-        if is_done_qa_mode:
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略逻辑与代码...'}, ensure_ascii=False)}\n\n"
-        else:
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略需求与交易逻辑...'}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': '正在分析策略需求与交易逻辑...'}, ensure_ascii=False)}\n\n"
 
         try:
             full_reply = _call_chat_llm(
@@ -2150,19 +2026,13 @@ def chat_with_strategy_stream(
             yield f"data: {json.dumps({'type': 'error', 'content': str(e)})}\n\n"
             return
 
-        if is_done_qa_mode:
-            clean_reply = full_reply.strip()
-            new_status = ChatStatus.DONE
-            config = strategy.chat_config
-            yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'}, ensure_ascii=False)}\n\n"
-        else:
-            # Parse full response (normal chat flow)
-            new_status, clean_reply, config = _parse_chat_response(full_reply)
+        # Parse full response (normal chat flow)
+        new_status, clean_reply, config = _parse_chat_response(full_reply)
 
-            if new_status == ChatStatus.READY and config:
-                yield f"data: {json.dumps({'type': 'progress', 'stage': 'ready', 'path': 'strategy.py', 'message': '正在生成 strategy.py 策略配置...'}, ensure_ascii=False)}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'}, ensure_ascii=False)}\n\n"
+        if new_status == ChatStatus.READY and config:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'ready', 'path': 'strategy.py', 'message': '正在生成 strategy.py 策略配置...'}, ensure_ascii=False)}\n\n"
+        else:
+            yield f"data: {json.dumps({'type': 'progress', 'stage': 'replying', 'message': '正在组织回复内容...'}, ensure_ascii=False)}\n\n"
 
         # Stream the reply content in smooth chunks for SSE typewriter effect
         chunk_size = 12
@@ -2179,12 +2049,11 @@ def chat_with_strategy_stream(
                 updated_history.append(_build_assistant_message(clean_reply))
 
                 strat.chat_history = updated_history
-                if not is_refinement_mode and not is_done_qa_mode:
-                    strat.chat_status = new_status
-                    if new_status == ChatStatus.READY and config:
-                        strat.chat_config = config
-                    elif new_status == ChatStatus.CHATTING:
-                        strat.chat_config = None
+                strat.chat_status = new_status
+                if new_status == ChatStatus.READY and config:
+                    strat.chat_config = config
+                elif new_status == ChatStatus.CHATTING:
+                    strat.chat_config = None
 
                 strat.updated_at = datetime.now(timezone.utc)
                 session.commit()
