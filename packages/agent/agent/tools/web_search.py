@@ -172,9 +172,9 @@ class DuckDuckGoSearchTool(BaseTool):
         return results
 
     def _search_wikipedia(self, query: str, max_results: int) -> list[dict[str, str]]:
-        # Strip generic prompt words for encyclopedic lookup
-        clean_query = re.sub(r"(?i)(please|search|research|write|implement|strategy|python|formula|code)", "", query).strip()
-        clean_query = clean_query or query
+        clean_query = (query or "").strip()
+        if not clean_query:
+            return []
 
         url = (
             "https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit="

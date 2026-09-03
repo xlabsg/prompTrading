@@ -58,14 +58,21 @@ class TestDAGEngine(unittest.TestCase):
         self.assertLess(t1 - t0, 0.09)
 
     def test_intent_routing_heuristics(self):
-        # Fast track prompts
+        # Fast track prompts: standard quant terms must NOT falsely trigger search
         self.assertFalse(should_trigger_deep_research("write a simple EMA crossover"))
         self.assertFalse(should_trigger_deep_research("buy when close > ema 20"))
+        self.assertFalse(should_trigger_deep_research("编写一个资金费率套利策略"))
+        self.assertFalse(should_trigger_deep_research("implement a VWAP mean reversion strategy"))
 
-        # Deep research prompts
+        # Deep research prompts: explicit research / paper / external sources
         self.assertTrue(should_trigger_deep_research("search for the latest funding rate arbitrage strategy"))
         self.assertTrue(should_trigger_deep_research("implement the Hull Moving Average formula from research paper"))
         self.assertTrue(should_trigger_deep_research("convert this TradingView PineScript supertrend indicator"))
+        self.assertTrue(should_trigger_deep_research("请联网调研最新波动率通道突破策略"))
+
+        # Custom classifier injection test
+        custom_mock = lambda prompt: (True, "mocked query")
+        self.assertTrue(should_trigger_deep_research("any prompt", classifier=custom_mock))
 
     def test_smart_strategy_pipeline_fast_track(self):
         dag = build_smart_strategy_dag()

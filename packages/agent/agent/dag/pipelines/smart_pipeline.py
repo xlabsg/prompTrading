@@ -9,31 +9,47 @@ from agent.tools import init_default_tools
 
 logger = logging.getLogger(__name__)
 
-# Heuristic keywords (bilingual) that signal an exploratory / deep research prompt
-_RESEARCH_KEYWORDS = frozenset({
-    # English
-    "search", "research", "paper", "arxiv", "find", "explore", "latest",
-    "hull", "supertrend", "vwap", "funding", "arbitrage", "pinescript",
-    "tradingview", "orderbook", "machine learning", "neural", "kalman",
-    "garch", "copula", "stat arb", "reinforcement", "alpha",
-    # Chinese
-    "联网", "调研", "搜索", "前沿", "研报", "论文", "最新",
-    "套利", "资金费率", "超买超卖", "动态波动", "机器学习",
+# Core intent signals indicating explicit user request for external research or 3rd-party code conversion
+_EXTERNAL_RESEARCH_SIGNALS = frozenset({
+    "search", "research", "paper", "arxiv", "explore",
+    "tradingview", "pinescript",
+    "联网", "调研", "搜索", "查阅", "论文", "前沿", "研报",
 })
 
 
-def should_trigger_deep_research(prompt: str) -> bool:
-    """Evaluates whether the user's prompt warrants a web research pre-flight step."""
-    if not prompt:
-        return False
+def evaluate_research_intent(
+    prompt: str,
+    classifier: Any = None,
+) -> tuple[bool, str]:
+    """Evaluates whether the user prompt requests external research or 3rd-party conversion.
+
+    Returns:
+        tuple of (needs_search: bool, search_query: str)
+    """
+    if not prompt or not prompt.strip():
+        return False, ""
+
+    # 1. Custom or LLM-based intent classifier if supplied
+    if classifier is not None and callable(classifier):
+        try:
+            res = classifier(prompt)
+            if isinstance(res, tuple):
+                return bool(res[0]), str(res[1])
+            return bool(res), f"{prompt.strip()} trading strategy"
+        except Exception as e:
+            logger.warning("Custom intent classifier failed: %s", e)
+
+    # 2. Semantic evaluation: check if prompt expresses external research or conversion intent
     lower = prompt.lower()
-    for kw in _RESEARCH_KEYWORDS:
-        if kw in lower:
-            return True
-    # If prompt is long and detailed (>120 chars) and asks for specific indicators
-    if len(prompt) > 120 and ("indicator" in lower or "strategy" in lower or "formula" in lower):
-        return True
-    return False
+    needs_search = any(sig in lower for sig in _EXTERNAL_RESEARCH_SIGNALS)
+    search_query = f"{prompt.strip()} trading strategy" if needs_search else ""
+    return needs_search, search_query
+
+
+def should_trigger_deep_research(prompt: str, classifier: Any = None) -> bool:
+    """Evaluates whether the user's prompt warrants a web research pre-flight step."""
+    needs_search, _ = evaluate_research_intent(prompt, classifier=classifier)
+    return needs_search
 
 
 def build_smart_strategy_dag() -> DAG:
@@ -43,23 +59,21 @@ def build_smart_strategy_dag() -> DAG:
     # Node 1: Fast Intent Router
     async def _router_action(ctx: DAGContext) -> dict[str, Any]:
         prompt = ctx.get("prompt", "")
-        needs_search = should_trigger_deep_research(prompt)
+        classifier = ctx.get("intent_classifier")
+        needs_search, search_query = evaluate_research_intent(prompt, classifier=classifier)
         track = "deep_research_track" if needs_search else "fast_track"
         ctx.set("needs_web_search", needs_search)
+        ctx.set("search_query", search_query)
         ctx.set("needs_market_analysis", True)
         ctx.set("execution_track", track)
         ctx.log(f"Intent routed to: '{track}' (needs_web_search={needs_search})")
-        return {"track": track, "needs_search": needs_search}
+        return {"track": track, "needs_search": needs_search, "search_query": search_query}
 
     # Node 2A: Web Search (executed conditionally on deep track)
     async def _search_action(ctx: DAGContext) -> Any:
-        import re
         prompt = ctx.get("prompt", "")
         search_tool = tools.require("web_search")
-        # Strip generic instruction filler words to focus search on core indicators/concepts
-        clean_q = re.sub(r"(?i)(请|联网|调研|搜索|编写|实现|一个|基于|策略|量化|代码|结合)", " ", prompt).strip()
-        clean_q = re.sub(r"\s+", " ", clean_q) or prompt
-        query = f"{clean_q} trading strategy"
+        query = ctx.get("search_query") or f"{prompt.strip()} trading strategy"
         ctx.log(f"Performing web search for: '{query}'")
         res = await search_tool.run(query=query, max_results=3)
         return res.data if res.success else []
