@@ -41,11 +41,11 @@ def generate_all_templates_performance():
 
                 try:
                     generate_template_performance_data(db, template.id)
-                    print(f"  ✅ 完成")
+                    print("  ✅ 完成")
                 except Exception as e:
                     print(f"  ⚠️  失败: {e}")
 
-            print(f"\n✅ 所有模板性能数据生成完成！")
+            print("\n✅ 所有模板性能数据生成完成！")
             return True
 
     except Exception as e:

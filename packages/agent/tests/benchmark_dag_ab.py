@@ -10,6 +10,7 @@ TEST_CASES = [
         "prompt": "编写 5/20 EMA 双均线金叉策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": False,
     },
     {
         "id": "CASE-2-COMPLEX",
@@ -17,6 +18,7 @@ TEST_CASES = [
         "prompt": "请联网调研 Supertrend 动态波动率通道突破并带 ATR 追踪止损策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": True,
     },
     {
         "id": "CASE-3-LOOKAHEAD-TRAP",
@@ -24,6 +26,7 @@ TEST_CASES = [
         "prompt": "编写利用未来收盘价对比当前价的短线高频策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": True,
+        "needs_web_search": False,
     },
     {
         "id": "CASE-4-REGIME-AWARE",
@@ -31,6 +34,7 @@ TEST_CASES = [
         "prompt": "调研并编写适合当前 BTC 波动率状态的布林带均值回归策略",
         "symbol": "BTC-USDT",
         "has_lookahead_trap": False,
+        "needs_web_search": True,
     },
 ]
 
@@ -72,6 +76,7 @@ async def run_side_b(case: dict) -> dict:
             "prompt": case["prompt"],
             "symbol": case["symbol"],
             "interval": "1h",
+            "needs_web_search": case.get("needs_web_search", False),
             "custom_generator": mock_generator,
         },
     )
@@ -133,8 +138,8 @@ async def main():
 
     print("=============================== 综合对照统计 ===============================")
     print(f"1. 简单策略直通零延迟: Side A = 0.00s | Side B = {results_b[0]['preflight_latency_s']}s (Fast Track 自动跳过搜索)")
-    print(f"2. 复杂策略背景知识注入率: Side A = 0% | Side B = 100% (精准触发 Supertrend 调研 + BTC ATR 行情诊断)")
-    print(f"3. 未来函数 (Lookahead Bias) 拦截率: Side A = 0% (严重漏洞静默放行) | Side B = 100% (AST 精准拦截)")
+    print("2. 复杂策略背景知识注入率: Side A = 0% | Side B = 100% (精准触发 Supertrend 调研 + BTC ATR 行情诊断)")
+    print("3. 未来函数 (Lookahead Bias) 拦截率: Side A = 0% (严重漏洞静默放行) | Side B = 100% (AST 精准拦截)")
     print(f"4. 综合策略健壮度平均分: Side A = {avg_score_a:.1f} / 100 | Side B = {avg_score_b:.1f} / 100")
     print("==========================================================================")
 

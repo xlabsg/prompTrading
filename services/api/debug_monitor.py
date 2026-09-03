@@ -4,6 +4,8 @@
 import sys
 sys.path.insert(0, '/app')
 
+from sqlalchemy import select
+
 from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import TradingConfig, TradingSession, StrategyExchangeAccount
 from control_plane.enums import TradingSessionStatus

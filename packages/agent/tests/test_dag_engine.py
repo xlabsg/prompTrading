@@ -58,14 +58,18 @@ class TestDAGEngine(unittest.TestCase):
         self.assertLess(t1 - t0, 0.09)
 
     def test_intent_routing_heuristics(self):
-        # Fast track prompts
+        # Default with no classifier: no heuristic guessing, safely returns False
         self.assertFalse(should_trigger_deep_research("write a simple EMA crossover"))
-        self.assertFalse(should_trigger_deep_research("buy when close > ema 20"))
+        self.assertFalse(should_trigger_deep_research("编写一个资金费率套利策略"))
+        self.assertFalse(should_trigger_deep_research("implement a VWAP mean reversion strategy"))
 
-        # Deep research prompts
-        self.assertTrue(should_trigger_deep_research("search for the latest funding rate arbitrage strategy"))
-        self.assertTrue(should_trigger_deep_research("implement the Hull Moving Average formula from research paper"))
-        self.assertTrue(should_trigger_deep_research("convert this TradingView PineScript supertrend indicator"))
+        # Classifier delegation test: semantic model / mock cleanly decides
+        def research_classifier(p: str) -> tuple[bool, str]:
+            return ("research" in p.lower() or "调研" in p, "mock query")
+
+        self.assertTrue(should_trigger_deep_research("research the Hull Moving Average formula", classifier=research_classifier))
+        self.assertTrue(should_trigger_deep_research("请调研最新波动率通道突破策略", classifier=research_classifier))
+        self.assertFalse(should_trigger_deep_research("write a simple EMA crossover", classifier=research_classifier))
 
     def test_smart_strategy_pipeline_fast_track(self):
         dag = build_smart_strategy_dag()
@@ -93,6 +97,7 @@ class TestDAGEngine(unittest.TestCase):
         initial_state = {
             "prompt": "research the Supertrend breakout strategy from TradingView",
             "symbol": "BTC-USDT",
+            "needs_web_search": True,
         }
 
         ctx = asyncio.run(runner.run(dag, initial_state))

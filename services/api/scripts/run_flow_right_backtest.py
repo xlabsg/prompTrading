@@ -166,7 +166,7 @@ def generate_flow_signals(
 def run_flow_right_backtest(args: BacktestArgs) -> dict[str, Any]:
     """Run backtest for flow_right strategy."""
     print(f"\n{'='*60}")
-    print(f"Flow Right Strategy Backtest")
+    print("Flow Right Strategy Backtest")
     print(f"{'='*60}")
     print(f"Symbol: {args.symbol}")
     print(f"Interval: {args.interval}")

@@ -40,7 +40,7 @@ def setup_template_performance_schedule():
 
             db.flush()
 
-            print(f"✅ Templates 性能更新配置完成:")
+            print("✅ Templates 性能更新配置完成:")
             print(f"   - 启用: {schedule.enabled}")
             print(f"   - Cron: {schedule.cron_expression} (每天凌晨 2 点 UTC)")
             print(f"   - 每批处理: {schedule.templates_per_batch} 个模板")

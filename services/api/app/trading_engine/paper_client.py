@@ -127,7 +127,8 @@ class PaperExchangeClient:
                 continue
             avg_px = float(pos_data.get("avgPx", 0.0))
             curr_px = self._fetch_public_ticker_price(sym)
-            upl = (curr_px - avg_px) * pos_size if pos_side == "long" else (avg_px - curr_px) * abs(pos_size) if (pos_side := ("long" if pos_size > 0 else "short")) else 0.0
+            pos_side = "long" if pos_size > 0 else "short"
+            upl = (curr_px - avg_px) * pos_size if pos_side == "long" else (avg_px - curr_px) * abs(pos_size)
             total_upl += upl
             total_margin += (curr_px * abs(pos_size)) / max(1, self.leverage.get(sym, 1))
 

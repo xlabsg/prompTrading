@@ -175,7 +175,7 @@ def seed_templates():
                 StrategyTemplate.is_featured == True
             ).count()
 
-            print(f"\n✅ 模板初始化完成！")
+            print("\n✅ 模板初始化完成！")
             print(f"   - 总模板数: {template_count}")
             print(f"   - 精选模板: {featured_count}")
 
@@ -183,7 +183,7 @@ def seed_templates():
                 StrategyTemplate.updated_at.desc()
             ).all()
 
-            print(f"\n📊 已初始化的模板:")
+            print("\n📊 已初始化的模板:")
             for tmpl in templates:
                 featured = "⭐ " if tmpl.is_featured else "   "
                 risk = tmpl.risk_level or "unknown"
