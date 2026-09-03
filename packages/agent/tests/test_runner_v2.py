@@ -10,7 +10,10 @@ import pytest
 from agent import runner_v2
 from agent import tau_driver
 
-STRATEGY_SRC = "def generate_signals(data, params):\n    return {'target_weights': []}\n"
+STRATEGY_SRC = (
+    "def generate_signals(data, params):\n"
+    "    return {'target_weights': [0.0] * len(data), 'weight_reason': ['hold'] * len(data)}\n"
+)
 OVERVIEW_SRC = "# Summary\n\nDoes things.\n\n# Flow Animation\n\n```mermaid\ngraph TD;A-->B;\n```\n"
 
 
@@ -224,20 +227,16 @@ def test_max_turns_ignores_garbage(monkeypatch):
     assert runner_v2._max_turns() is None
 
 
-def test_workspace_problems_names_each_missing_artifact(tmp_path):
+def test_workspace_problems_names_missing_strategy(tmp_path):
     problems = runner_v2._workspace_problems(str(tmp_path))
     assert any("strategy.py" in p for p in problems)
-    assert any("overview.md" in p for p in problems)
 
     (tmp_path / "strategy.py").write_text(STRATEGY_SRC)
     (tmp_path / "overview.md").write_text(OVERVIEW_SRC)
     assert runner_v2._workspace_problems(str(tmp_path)) == []
 
 
-def test_workspace_problems_rejects_overview_without_diagram(tmp_path):
+def test_workspace_problems_overview_is_non_blocking(tmp_path):
     (tmp_path / "strategy.py").write_text(STRATEGY_SRC)
-    (tmp_path / "overview.md").write_text("# Summary\n\nNo diagram here.\n")
-
-    problems = runner_v2._workspace_problems(str(tmp_path))
-    assert len(problems) == 1
-    assert "mermaid" in problems[0]
+    # overview.md is non-blocking because runner_v2 auto-generates it if absent
+    assert runner_v2._workspace_problems(str(tmp_path)) == []

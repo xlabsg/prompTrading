@@ -26,10 +26,19 @@ from tau_agent.tools import (
     ToolUpdateCallback,
 )
 from tau_agent.types import JSONValue
-from tau_coding.extensions import ExtensionAPI, ToolCallHookEvent, ToolCallHookResult
+from tau_coding.extensions import (
+    ExtensionAPI,
+    ToolCallHookEvent,
+    ToolCallHookResult,
+    ToolResultHookEvent,
+    ToolResultHookResult,
+)
 
 from agent.backtest_tool import BacktestBudget, BacktestDataset
 from agent.protocol import OVERVIEW_FILE, PROTOCOL, STRATEGY_FILE
+
+# Reference to the active ExtensionAPI for logging custom entries.
+_TAU_API: ExtensionAPI | None = None
 
 # One tau process is one agent session, so a module-level dataset and budget are
 # that session's dataset and budget. The budget must live here rather than in the
@@ -68,6 +77,14 @@ def _workspace_problems(workspace: str) -> list[str]:
                     )
             except Exception as e:
                 problems.append(f"- {STRATEGY_FILE} validation error: {e}")
+
+    overview_path = os.path.join(workspace, OVERVIEW_FILE)
+    if not os.path.isfile(overview_path):
+        problems.append(f"- {OVERVIEW_FILE} does not exist yet.")
+    elif PROTOCOL.overview_required_marker not in _read(overview_path):
+        problems.append(
+            f"- {OVERVIEW_FILE} has no {PROTOCOL.overview_required_marker} diagram block."
+        )
 
     return problems
 
@@ -122,6 +139,26 @@ async def _run_backtest(
             f"\n\nThe last {_BUDGET.stall_limit} runs did not improve "
             f"{_BUDGET.score_key}. Prefer finalising over another parameter tweak."
         )
+
+    if _TAU_API is not None and isinstance(metrics, dict):
+        try:
+            params_dict = (
+                dict(arguments.get("params"))
+                if isinstance(arguments.get("params"), Mapping)
+                else {}
+            )
+            await _TAU_API.append_entry(
+                "promptrading.backtest",
+                {
+                    "run": _BUDGET.runs_used,
+                    "max_runs": _BUDGET.max_runs,
+                    "params": params_dict,
+                    "metrics": metrics,
+                    "ok": bool(result.get("ok")),
+                },
+            )
+        except Exception as exc:
+            print(f"[agent] tau append_entry failed: {exc}", file=sys.stderr)
 
     return AgentToolResult(
         content=[TextContent(text=report)],
@@ -268,6 +305,8 @@ def _budget_section() -> str:
 
 def setup(tau: ExtensionAPI) -> None:
     """Register this platform's tools, protocol and budget with the session."""
+    global _TAU_API
+    _TAU_API = tau
     tau.register_tool(_BACKTEST_TOOL)
     tau.register_tool(_TASK_DONE_TOOL)
     tau.add_prompt_section("Strategy Protocol", _protocol_section())
@@ -276,3 +315,60 @@ def setup(tau: ExtensionAPI) -> None:
         f"Write both {STRATEGY_FILE} and {OVERVIEW_FILE}, then call task_done."
     )
     tau.on("tool_call", _block_exhausted_backtest)
+    if os.getenv("AGENT_TAU_LINT_HOOK", "1") != "0":
+        tau.on("tool_result", _audit_code_tool_result)
+
+
+async def _audit_code_tool_result(
+    event: ToolResultHookEvent,
+    context: object,
+) -> ToolResultHookResult | None:
+    """Inspect strategy.py changes on write/edit to provide immediate static feedback."""
+    del context
+    if event.tool_name not in ("write", "edit"):
+        return None
+
+    path_arg = str(event.arguments.get("path") or "")
+    if not (path_arg == STRATEGY_FILE or path_arg.endswith("/" + STRATEGY_FILE)):
+        return None
+
+    strategy_path = os.path.join(_WORKSPACE, STRATEGY_FILE)
+    if not os.path.isfile(strategy_path):
+        return None
+
+    source = _read(strategy_path)
+    if not source:
+        return None
+
+    issues: list[str] = []
+    if f"def {PROTOCOL.entry_function}" not in source:
+        issues.append(
+            f"Missing required entry point: `def {PROTOCOL.entry_function}(data, params)`."
+        )
+
+    try:
+        from agent.strategy_lint import dry_run_strategy, lint_and_heal_strategy_code
+
+        healed, fixes = lint_and_heal_strategy_code(source)
+        if fixes:
+            with open(strategy_path, "w", encoding="utf-8") as handle:
+                handle.write(healed)
+            source = healed
+        ok, dry_err = dry_run_strategy(source)
+        if not ok:
+            issues.append(f"Dry-run execution failed: {dry_err}")
+    except SyntaxError as exc:
+        issues.append(f"Syntax error: {exc}")
+    except Exception as exc:
+        issues.append(f"Validation error: {exc}")
+
+    if not issues:
+        return None
+
+    existing_text = event.result.text or ""
+    warning_block = (
+        "\n\n[WARNING - STRATEGY CODE VALIDATION ISSUE DETECTED]\n"
+        + "\n".join(f"- {issue}" for issue in issues)
+        + f"\nPlease fix the above issue(s) in {STRATEGY_FILE} immediately before calling backtest or task_done."
+    )
+    return ToolResultHookResult(content=existing_text + warning_block)

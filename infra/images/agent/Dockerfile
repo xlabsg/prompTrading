@@ -28,6 +28,7 @@ ENV PYTHONPATH=/app
 # LLM_BASE_URL points at a gateway. `tau setup` only writes files, so it is safe
 # to resolve at build time.
 COPY packages/agent/skills /root/.tau/skills
+COPY packages/agent/skills /app/skills
 RUN python -m agent.tau_config
 
 CMD ["python", "-m", "agent.runner_v2"]

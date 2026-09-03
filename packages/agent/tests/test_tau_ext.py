@@ -15,7 +15,10 @@ import sys
 import anyio
 import pytest
 
-STRATEGY_SRC = "def generate_signals(data, params):\n    return {'target_weights': []}\n"
+STRATEGY_SRC = (
+    "def generate_signals(data, params):\n"
+    "    return {'target_weights': [0.0] * len(data), 'weight_reason': ['hold'] * len(data)}\n"
+)
 OVERVIEW_SRC = "# Summary\n\nDoes things.\n\n```mermaid\ngraph TD;A-->B;\n```\n"
 
 pytest.importorskip("tau_agent", reason="tau-ai is only installed in the agent image")
@@ -160,3 +163,76 @@ def test_other_tools_are_not_blocked(ext):
     )
 
     assert outcome is None
+
+
+def test_audit_tool_result_ignores_non_strategy_files(ext):
+    fake_event = type(
+        "Event",
+        (),
+        {
+            "tool_name": "write",
+            "arguments": {"path": "overview.md"},
+            "result": type("R", (), {"text": "ok"})(),
+        },
+    )()
+    outcome = anyio.run(lambda: ext._audit_code_tool_result(fake_event, None))
+    assert outcome is None
+
+
+def test_audit_tool_result_warns_on_invalid_strategy(ext):
+    (ext.workspace / "strategy.py").write_text("x = 1\n")
+    fake_event = type(
+        "Event",
+        (),
+        {
+            "tool_name": "write",
+            "arguments": {"path": "strategy.py"},
+            "result": type("R", (), {"text": "ok"})(),
+        },
+    )()
+    outcome = anyio.run(lambda: ext._audit_code_tool_result(fake_event, None))
+    assert outcome is not None
+    assert "WARNING - STRATEGY CODE VALIDATION ISSUE DETECTED" in outcome.content
+    assert "Missing required entry point" in outcome.content
+
+
+def test_audit_tool_result_passes_on_valid_strategy(ext):
+    (ext.workspace / "strategy.py").write_text(STRATEGY_SRC)
+    fake_event = type(
+        "Event",
+        (),
+        {
+            "tool_name": "edit",
+            "arguments": {"path": "strategy.py"},
+            "result": type("R", (), {"text": "ok"})(),
+        },
+    )()
+    outcome = anyio.run(lambda: ext._audit_code_tool_result(fake_event, None))
+    assert outcome is None
+
+
+def test_backtest_records_custom_entry_via_tau_api(ext, monkeypatch):
+    recorded = []
+
+    class FakeTauApi:
+        async def append_entry(self, namespace, data):
+            recorded.append((namespace, data))
+
+    ext._TAU_API = FakeTauApi()
+
+    async def fake_run_process(command, *, input, check):
+        payload = {
+            "ok": True,
+            "report": "ok",
+            "metrics": {"sharpe_ratio": 1.5},
+        }
+        return type("P", (), {"stdout": json.dumps(payload).encode(), "returncode": 0})()
+
+    monkeypatch.setattr(ext.anyio, "run_process", fake_run_process)
+
+    _call(ext._run_backtest, params={"period": 20})
+
+    assert len(recorded) == 1
+    assert recorded[0][0] == "promptrading.backtest"
+    assert recorded[0][1]["metrics"] == {"sharpe_ratio": 1.5}
+    assert recorded[0][1]["params"] == {"period": 20}

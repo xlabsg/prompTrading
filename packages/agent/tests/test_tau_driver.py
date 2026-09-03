@@ -53,6 +53,28 @@ def test_build_command_always_passes_model_explicitly():
     assert command[command.index("-e") + 1] == "/e.py"
 
 
+def test_build_command_includes_thinking_and_session():
+    command = tau_driver.build_command(
+        workspace="/w",
+        provider="anthropic",
+        model="claude-sonnet-4-6",
+        thinking_level="high",
+        session_id="parent-session-123",
+    )
+    assert "--thinking" in command
+    assert command[command.index("--thinking") + 1] == "high"
+    assert "--session" in command
+    assert command[command.index("--session") + 1] == "parent-session-123"
+
+
+def test_session_id_and_trace_html_are_recorded(tmp_path, clean_env, monkeypatch):
+    result = _run_with_fake(tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=lambda: [])
+
+    assert result.session_id == "test-session-xyz"
+    assert result.trace_html_path is not None
+    assert os.path.basename(result.trace_html_path) == "tau_trace.html"
+
+
 def test_settles_and_records_the_turn(tmp_path, clean_env, monkeypatch):
     result = _run_with_fake(tmp_path, monkeypatch, SIMPLE_SCRIPT, validate=lambda: [])
 
@@ -204,7 +226,7 @@ def test_non_json_output_is_skipped(tmp_path, clean_env, monkeypatch):
 # Stands in for `tau --mode rpc`: replays a JSONL script for each prompt it is
 # given. Kept unindented at module level so the generated file needs no dedent.
 _FAKE_TAU_SOURCE = """\
-import json, sys, time
+import json, sys, time, os
 
 script = json.loads(sys.argv[1])
 hang = sys.argv[2] == "1"
@@ -215,6 +237,13 @@ STATS = {
     "command": "get_session_stats",
     "success": True,
     "data": {"tokens": {"input": 100, "output": 20, "total": 120}, "cost": 0.0031},
+}
+
+STATE = {
+    "type": "response",
+    "command": "get_state",
+    "success": True,
+    "data": {"sessionId": "test-session-xyz"},
 }
 
 
@@ -230,6 +259,15 @@ for line in sys.stdin:
     command = json.loads(line)
     if command.get("type") == "get_session_stats":
         emit(STATS)
+        continue
+    if command.get("type") == "get_state":
+        emit(STATE)
+        continue
+    if command.get("type") == "export_html":
+        out = command.get("outputPath") or "tau_trace.html"
+        with open(out, "w") as f:
+            f.write("<html><body>Trace</body></html>")
+        emit({"type": "response", "command": "export_html", "success": True, "data": {"path": out}})
         continue
     if command.get("type") != "prompt":
         continue

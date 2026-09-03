@@ -284,7 +284,34 @@ You are working inside the strategy version workspace. Files present: {files}
   something specific each time and check whether {score_key} improves.
 - Stop tuning when the budget is spent or the metrics stop improving, then
   write `{overview_file}` and call `task_done`.
+- On-demand quant skills (indicators, patterns, risk, optimization) are available under `.tau/skills/`. Read them with `read` if you need formula or convention guidance.
 """
+
+
+def _seed_skills(version_dir: str) -> None:
+    """Ensure built-in .tau/skills are populated in the workspace for on-demand inspection."""
+    if os.getenv("AGENT_TAU_SKILLS", "1") == "0":
+        return
+    import shutil
+
+    target_skills_dir = os.path.join(version_dir, ".tau", "skills")
+    os.makedirs(target_skills_dir, exist_ok=True)
+    candidates = [
+        os.path.join(os.path.dirname(__file__), "..", "skills"),  # local dev / git repo
+        "/app/skills",  # container runtime
+        "/root/.tau/skills",  # container home
+    ]
+    for src_dir in candidates:
+        if os.path.isdir(src_dir):
+            for entry in os.listdir(src_dir):
+                skill_dir = os.path.join(src_dir, entry)
+                dst_skill_dir = os.path.join(target_skills_dir, entry)
+                if os.path.isdir(skill_dir) and not os.path.exists(dst_skill_dir):
+                    try:
+                        shutil.copytree(skill_dir, dst_skill_dir)
+                    except Exception:
+                        pass
+            break
 
 
 def _seed_workspace(version_dir: str, strategy_dir: str) -> list[str]:
@@ -293,6 +320,7 @@ def _seed_workspace(version_dir: str, strategy_dir: str) -> list[str]:
     The agent works on the version directory so a run is reproducible and never
     corrupts the live strategy; `strategy_dir` is only updated after success.
     """
+    _seed_skills(version_dir)
     seeded: list[str] = []
     for name in (
         "strategy.py",
@@ -344,6 +372,8 @@ def _session_stats(session: "tau_driver.TauSessionResult | None") -> dict[str, A
     if session is None:
         return {}
     return {
+        "session_id": session.session_id,
+        "trace_html_path": session.trace_html_path,
         "turns": session.turns,
         "follow_ups": session.follow_ups,
         "tool_calls": session.tool_calls,
@@ -547,6 +577,8 @@ def main() -> int:
     agent_summary = ""
     stop_reason = "task_done"
     session: tau_driver.TauSessionResult | None = None
+    parent_session_id = (os.getenv("PARENT_TAU_SESSION_ID") or "").strip() or None
+    thinking_level = (os.getenv("AGENT_TAU_THINKING_LEVEL") or "").strip() or None
     try:
         session = tau_driver.run_session(
             task=task,
@@ -554,6 +586,8 @@ def main() -> int:
             provider=tau_target.provider,
             model=tau_target.model,
             extension_path=TAU_EXTENSION_PATH,
+            thinking_level=thinking_level,
+            session_id=parent_session_id,
             validate=lambda: _workspace_problems(version_dir),
             env=tau_target.credential_env(),
         )
@@ -663,6 +697,7 @@ def main() -> int:
         "provider": tau_target.provider if used_llm else None,
         "base_url": tau_target.base_url if used_llm else None,
         "pipeline": "tau",
+        "tau_session_id": session.session_id if session else None,
         "tau_session": _session_stats(session),
         "summary": summary,
         "params_schema": params_schema,
@@ -681,6 +716,7 @@ def main() -> int:
         "strategy_protocol.json",
         "params_schema.json",
         "strategy_meta.json",
+        "tau_trace.html",
         OVERVIEW_FILE,
     ):
         src = os.path.join(version_dir, name)
