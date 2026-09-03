@@ -270,10 +270,12 @@ class LiveBroker:
 
         total = 0.0
         for pos in positions:
-            if pos.inst_id != symbol:
+            pos_inst = getattr(pos, "inst_id", None) or (pos.get("instId") if isinstance(pos, dict) else None)
+            if pos_inst != symbol:
                 continue
             try:
-                size = float(pos.pos or 0)
+                raw_sz = getattr(pos, "pos", None) if not isinstance(pos, dict) else pos.get("pos")
+                size = float(raw_sz or 0)
             except (TypeError, ValueError):
                 size = 0.0
             total += abs(size)
@@ -434,10 +436,16 @@ class LiveBroker:
         except Exception as exc:  # pragma: no cover
             logger.error("Failed to fetch balance: %s", exc)
             return 0.0
+        if isinstance(balances, dict):
+            try:
+                return float(balances.get("totalEq", balances.get("availBal", 0.0)))
+            except (TypeError, ValueError):
+                return 0.0
         total = 0.0
         for bal in balances:
             try:
-                eq = float(getattr(bal, "eqUsd", None) or bal.eq or 0)
+                raw_eq = getattr(bal, "eqUsd", None) or getattr(bal, "eq", None) if not isinstance(bal, dict) else (bal.get("eqUsd") or bal.get("eq"))
+                eq = float(raw_eq or 0)
             except (TypeError, ValueError):
                 eq = 0.0
             total += max(eq, 0.0)
@@ -451,20 +459,24 @@ class LiveBroker:
             return {}
         snapshot: dict[str, dict[str, float]] = {}
         for pos in positions:
-            if pos.inst_id not in symbols:
+            pos_inst = getattr(pos, "inst_id", None) or (pos.get("instId") if isinstance(pos, dict) else None)
+            if pos_inst not in symbols:
                 continue
-            side = (pos.pos_side or "net").lower()
+            raw_side = getattr(pos, "pos_side", None) if not isinstance(pos, dict) else pos.get("posSide")
+            side = (raw_side or "net").lower()
             try:
-                size = float(pos.pos or 0.0)
+                raw_sz = getattr(pos, "pos", None) if not isinstance(pos, dict) else pos.get("pos")
+                size = float(raw_sz or 0.0)
             except (TypeError, ValueError):
                 size = 0.0
             try:
-                mark_px = float(pos.mark_px or pos.avg_px or 0.0)
+                raw_px = getattr(pos, "mark_px", None) or getattr(pos, "avg_px", None) if not isinstance(pos, dict) else (pos.get("markPx") or pos.get("avgPx"))
+                mark_px = float(raw_px or 0.0)
             except (TypeError, ValueError):
                 mark_px = 0.0
             notional = abs(size) * max(mark_px, 0.0)
             entry = snapshot.setdefault(
-                pos.inst_id,
+                pos_inst,
                 {"long_notional": 0.0, "short_notional": 0.0, "gross_notional": 0.0},
             )
             if side == "short" or (side == "net" and size < 0):
