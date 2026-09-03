@@ -11,7 +11,6 @@ from control_plane.enums import (
     ChatStatus,
     JobStatus,
     JobType,
-    SandboxStatus,
     StrategyRole,
     SignalStatus,
     TradeStatus,
@@ -240,20 +239,8 @@ class JobResponse(BaseModel):
 class TriggerJobResponse(BaseModel):
     job: JobResponse
     backtest_run: Optional[BacktestRunResponse] = None
-    sandbox_url: Optional[str] = None
     strategy_version: Optional[StrategyVersionResponse] = None
     strategy: Optional[StrategyResponse] = None  # For repo import - the created/linked strategy
-
-
-class SandboxCreateResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    strategy_id: str
-    status: SandboxStatus
-    created_at: datetime
-    stopped_at: Optional[datetime] = None
-    url_path: str
 
 
 # --- Repositories & search ---

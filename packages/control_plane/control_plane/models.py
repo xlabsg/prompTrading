@@ -11,7 +11,6 @@ from control_plane.enums import (
     JobStatus,
     JobType,
     LogLevel,
-    SandboxStatus,
     TradingSessionStatus,
     OrderSide,
     OrderType,
@@ -59,7 +58,6 @@ class Strategy(Base):
 
     versions: Mapped[list["StrategyVersion"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
     backtests: Mapped[list["BacktestRun"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
-    sandboxes: Mapped[list["SandboxSession"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
     trading_config: Mapped[Optional["TradingConfig"]] = relationship(back_populates="strategy", cascade="all, delete-orphan", uselist=False)
     members: Mapped[list["StrategyMember"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
     exchange_accounts: Mapped[list["StrategyExchangeAccount"]] = relationship(back_populates="strategy", cascade="all, delete-orphan")
@@ -228,27 +226,6 @@ class BacktestRun(Base):
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     strategy: Mapped["Strategy"] = relationship(back_populates="backtests")
-
-
-class SandboxSession(Base):
-    __tablename__ = "sandbox_sessions"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    strategy_id: Mapped[str] = mapped_column(ForeignKey("strategies.id", ondelete="CASCADE"), index=True)
-
-    status: Mapped[SandboxStatus] = mapped_column(
-        SAEnum(SandboxStatus, native_enum=False), default=SandboxStatus.STARTING, nullable=False
-    )
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    stopped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    secret_token: Mapped[str] = mapped_column(String(64))
-    container_id: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
-
-    # Path prefix mounted by traefik: /sandbox/<id>/
-    url_path: Mapped[str] = mapped_column(String(200))
-
-    strategy: Mapped["Strategy"] = relationship(back_populates="sandboxes")
 
 
 class TradingConfig(Base):
