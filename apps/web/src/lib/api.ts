@@ -44,6 +44,8 @@ import type {
     BacktestSignalEvent,
     SubscribeRequest,
     SubscribeResponse,
+    ForkTemplateRequest,
+    ForkTemplateResponse,
     SubscriptionListResponse,
     SubscriptionResponse,
     SyncResultResponse,
@@ -694,6 +696,12 @@ export const templatesApi = {
 
     get: (id: string) =>
         fetchApi<TemplateDetail>(`/api/templates/${id}`),
+
+    fork: (templateId: string, req: ForkTemplateRequest) =>
+        fetchApi<ForkTemplateResponse>(`/api/templates/${templateId}/fork`, {
+            method: "POST",
+            body: JSON.stringify(req),
+        }),
 
     subscribe: (templateId: string, req: SubscribeRequest) =>
         fetchApi<SubscribeResponse>(`/api/templates/${templateId}/subscribe`, {

@@ -8,8 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { authApi, subscriptionsApi, templatesApi } from "@/lib/api";
 import type { SubscriptionResponse, TemplateDetail } from "@/lib/types";
-import { SignalSubscribeDialog } from "@/components/template/SignalSubscribeDialog";
-import { TradingSubscribeDialog } from "@/components/template/TradingSubscribeDialog";
+import { ForkTemplateDialog } from "@/components/template/ForkTemplateDialog";
 import BacktestView from "@/components/console/BacktestView";
 import { useTranslation } from "react-i18next";
 
@@ -25,8 +24,7 @@ export function TemplateConsole() {
     const activeTab = isTemplateTab(tab) ? tab : ("backtest" as TemplateTab);
     const { t } = useTranslation();
 
-    const [signalDialogOpen, setSignalDialogOpen] = useState(false);
-    const [tradingDialogOpen, setTradingDialogOpen] = useState(false);
+    const [forkDialogOpen, setForkDialogOpen] = useState(false);
 
     const authQuery = useQuery({
         queryKey: ["auth-me"],
@@ -71,30 +69,23 @@ export function TemplateConsole() {
                     <ArrowLeft className="mr-2 h-4 w-4" />
                     {t("common.back")}
                 </Button>
-                {subscription ? (
-                    <>
-                        <Button
-                            onClick={() => navigate(`/strategy/${subscription.strategy_id}/backtest`)}
-                            title={t("templates.openCopyTooltip")}
-                        >
-                            <Copy className="mr-2 h-4 w-4" />
-                            {t("templates.openCopy")}
-                        </Button>
-                        <Button variant="outline" onClick={() => navigate("/subscriptions")}>
-                            {t("subscriptions.manage")}
-                        </Button>
-                    </>
-                ) : (
-                    <>
-                        <Button onClick={() => setSignalDialogOpen(true)} disabled={!template}>
-                            <Bell className="mr-2 h-4 w-4" />
-                            {t("templates.subscribeSignals")}
-                        </Button>
-                    </>
+                {subscription && (
+                    <Button
+                        onClick={() => navigate(`/strategy/${subscription.strategy_id}/overview`)}
+                        title={t("templates.openCopyTooltip")}
+                        variant="outline"
+                    >
+                        <Copy className="mr-2 h-4 w-4" />
+                        {t("templates.openCopy")}
+                    </Button>
                 )}
+                <Button onClick={() => setForkDialogOpen(true)} disabled={!template}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    {t("templates.useTemplate", "使用模版")}
+                </Button>
             </div>
         );
-    }, [navigate, subscription, template]);
+    }, [navigate, subscription, template, t]);
 
     return (
         <>
@@ -161,8 +152,7 @@ export function TemplateConsole() {
                 </div>
             </MainLayout>
 
-            <SignalSubscribeDialog template={template} open={signalDialogOpen} onOpenChange={setSignalDialogOpen} />
-            <TradingSubscribeDialog template={template} open={tradingDialogOpen} onOpenChange={setTradingDialogOpen} />
+            <ForkTemplateDialog template={template} open={forkDialogOpen} onOpenChange={setForkDialogOpen} />
         </>
     );
 }

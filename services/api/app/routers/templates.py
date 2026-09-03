@@ -23,17 +23,20 @@ from sqlalchemy import Float, case, cast, select, func
 from sqlalchemy.orm import Session
 
 from control_plane.enums import (
+    StrategyRole,
     StrategyTemplateType,
     SubscriptionStatus,
 )
 from control_plane.models import (
     Strategy,
     StrategyExchangeAccount,
+    StrategyMember,
     StrategySubscription,
     StrategyTemplate,
     StrategyVersion,
     User,
 )
+from control_plane.templates import instantiate_strategy_from_template
 from control_plane.workspaces import (
     init_strategy_workspace,
     snapshot_current_strategy_to_version,
@@ -91,6 +94,20 @@ class TemplateListResponse(BaseModel):
     """Response for listing templates."""
     total: int
     templates: list[TemplateListItem]
+
+
+class ForkTemplateRequest(BaseModel):
+    """Request to fork a strategy template into a personal strategy."""
+    name: str = Field(..., min_length=1, max_length=200, description="Name for your strategy copy")
+    description: Optional[str] = Field(None, max_length=1000, description="Optional strategy description")
+
+
+class ForkTemplateResponse(BaseModel):
+    """Response after forking a strategy template."""
+    strategy_id: str
+    strategy_name: str
+    version_id: str
+    message: str
 
 
 class TelegramConfigRequest(BaseModel):
@@ -350,6 +367,80 @@ async def get_template(
     return TemplateDetailResponse(**template_to_detail(template))
 
 
+@router.post("/templates/{template_id}/fork", response_model=ForkTemplateResponse)
+async def fork_template(
+    template_id: str,
+    req: ForkTemplateRequest,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> ForkTemplateResponse:
+    """
+    Fork a strategy template - creates a real strategy for the user with template code.
+
+    This will:
+    1. Create a new Strategy record owned by the user
+    2. Add StrategyMember with role ADMIN
+    3. Create StrategyVersion with version 1
+    4. Write real template code and spec into strategy workspace files & snapshot to version
+    5. Initialize Git repository and commit
+    """
+    user = get_current_user(request, db)
+
+    template = db.query(StrategyTemplate).filter_by(id=template_id).first()
+    if not template:
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    strategy_id = str(uuid.uuid4())
+    version_id = str(uuid.uuid4())
+
+    strategy = Strategy(
+        id=strategy_id,
+        name=req.name.strip(),
+        chat_status="done",
+        chat_config={"description": req.description or template.description, "source": "template_fork", "template_id": template.id},
+    )
+    db.add(strategy)
+
+    member = StrategyMember(
+        strategy_id=strategy_id,
+        user_id=user.id,
+        role=StrategyRole.ADMIN,
+    )
+    db.add(member)
+
+    version = StrategyVersion(
+        id=version_id,
+        strategy_id=strategy_id,
+        version=1,
+        workspace_path=f"versions/{version_id}/",
+        prompt=template.prompt,
+        llm_meta={
+            "source": "template_fork",
+            "template_id": template.id,
+            "template_name": template.name,
+            "template_version": template.version,
+        },
+    )
+    db.add(version)
+
+    instantiate_strategy_from_template(
+        settings.workspaces_dir,
+        strategy_id=strategy_id,
+        version_id=version_id,
+        template=template,
+    )
+
+    template.subscriber_count += 1
+    db.commit()
+
+    return ForkTemplateResponse(
+        strategy_id=strategy_id,
+        strategy_name=strategy.name,
+        version_id=version_id,
+        message=f"Strategy '{strategy.name}' successfully created from template '{template.name}'.",
+    )
+
+
 @router.post("/templates/{template_id}/subscribe", response_model=SubscribeResponse)
 async def subscribe_template(
     template_id: str,
@@ -362,10 +453,12 @@ async def subscribe_template(
 
     This will:
     1. Create a new Strategy record
-    2. Create a StrategyVersion with the template's code
-    3. Create a StrategyExchangeAccount with provided credentials
-    4. Create a TradingConfig with user's trading parameters
-    5. Create a StrategySubscription linking everything
+    2. Add StrategyMember with role ADMIN
+    3. Create a StrategyVersion with the template's code
+    4. Write real template code and spec into strategy workspace files
+    5. Create a StrategyExchangeAccount with provided credentials
+    6. Create a TradingConfig with user's trading parameters
+    7. Create a StrategySubscription linking everything
     """
     user = get_current_user(request, db)
 
@@ -394,10 +487,22 @@ async def subscribe_template(
     )
     db.add(strategy)
 
-    # Create strategy version from template
+    member = StrategyMember(
+        strategy_id=strategy_id,
+        user_id=user.id,
+        role=StrategyRole.ADMIN,
+    )
+    db.add(member)
+
+    # Create strategy version from template with actual code
     version_id = str(uuid.uuid4())
     workspace_path = f"versions/{version_id}/"
-    init_strategy_workspace(settings.workspaces_dir, strategy_id)
+    instantiate_strategy_from_template(
+        settings.workspaces_dir,
+        strategy_id=strategy_id,
+        version_id=version_id,
+        template=template,
+    )
 
     version = StrategyVersion(
         id=version_id,
@@ -516,10 +621,12 @@ async def unsubscribe_template(
         raise HTTPException(status_code=404, detail="Subscription not found")
 
     # Get template for counter update
-    template = db.query(StrategyTemplate).filter_by(id=template_id).first()
+    strategy = db.query(Strategy).filter_by(id=subscription.strategy_id).first()
 
-    # Delete the subscription (cascade will delete strategy and related records)
+    # Delete the subscription and associated strategy
     db.delete(subscription)
+    if strategy:
+        db.delete(strategy)
 
     if template:
         template.subscriber_count = max(0, template.subscriber_count - 1)
@@ -624,7 +731,12 @@ async def sync_subscription(
     new_version_num = _next_version_number(db, subscription.strategy_id)
     version_id = str(uuid.uuid4())
     workspace_path = f"versions/{version_id}/"
-    init_strategy_workspace(settings.workspaces_dir, subscription.strategy_id)
+    instantiate_strategy_from_template(
+        settings.workspaces_dir,
+        strategy_id=subscription.strategy_id,
+        version_id=version_id,
+        template=template,
+    )
 
     version = StrategyVersion(
         id=version_id,

@@ -625,9 +625,25 @@ const en = {
     count: "{{count}} templates",
     browse: "Browse Templates",
     openCopy: "Open My Copy",
-    openCopyTooltip: "Open your strategy copy created from this template",
     createCopy: "Create Copy",
     createCopyTooltip: "Create a tradable copy (requires API keys)",
+    forkTitle: "Create Strategy from Template",
+    forkSubtitle: "Clone this proven template to your workspace to backtest, live trade, or refine with AI.",
+    forkSuccess: "Strategy created successfully!",
+    forking: "Creating...",
+    createStrategy: "Create Strategy",
+    forkErrors: {
+      nameRequired: "Strategy name is required",
+      failed: "Failed to create strategy",
+    },
+    fields: {
+      strategyName: "Strategy Name",
+      description: "Strategy Description (optional)",
+    },
+    placeholders: {
+      strategyName: "Enter strategy name...",
+      description: "Briefly describe your strategy goals...",
+    },
     filters: {
       allTypes: "All types",
       builtin: "Built-in",
