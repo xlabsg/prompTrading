@@ -100,7 +100,12 @@ class E2EClient:
 
 @pytest.fixture(scope="session")
 def e2e_api_base_url() -> str:
-    return os.getenv("E2E_API_BASE_URL", "http://api:8000").rstrip("/")
+    url = os.getenv("E2E_API_BASE_URL", "http://api:8000").rstrip("/")
+    try:
+        requests.get(f"{url}/health", timeout=1.0)
+    except Exception:
+        pytest.skip(f"E2E API service is not running or not reachable at {url}")
+    return url
 
 
 @pytest.fixture(scope="session")
