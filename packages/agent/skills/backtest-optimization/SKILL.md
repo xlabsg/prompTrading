@@ -1,22 +1,54 @@
 ---
 name: backtest-optimization
-description: How to interpret backtest reports, diagnose Sharpe and Drawdown bottlenecks, and iterate on strategy parameters without overfitting. Read after calling backtest.
+description: Diagnose backtest metrics, troubleshoot bottlenecks, and follow disciplined iteration. Read after calling backtest or before parameter fine-tuning.
 ---
 
-# Backtest Report Interpretation & Strategy Iteration
+# Backtest Diagnostics & Iterative Optimization
 
-## 1. Primary Evaluation Metrics
-When `backtest` finishes, evaluate:
-- **Sharpe Ratio**: Annualized excess return per unit of volatility.
-  - `< 0.8`: Sub-optimal or noisy.
-  - `1.0 - 1.5`: Solid baseline.
-  - `> 2.0`: Strong, but check for lookahead bias or overfitting.
-- **Max Drawdown (MDD)**: Maximum peak-to-trough decline.
-  - If MDD > 25%, look into adding a trend filter or tighter ATR trailing stop.
-- **Win Rate vs Profit Factor**: High win rate with huge single losses indicates missing stop-loss; low win rate with high profit factor indicates trend-following behavior.
-- **Total Trades / Turnover**: Fewer than 5 trades over 500+ bars is statistically insignificant; more than 1 trade every 2 bars is likely overtrading on noise.
+Backtests are limited by an evaluation budget (e.g. 5 runs). Spend every run deliberately.
+**Never** change random numbers without an economic hypothesis.
 
-## 2. Iteration Discipline (Avoiding Overfitting)
-- **Limit Parameter Search**: Adjust parameters based on market hypotheses, NOT by brute-force sweeping numbers.
-- **Stall Limit**: If 3 consecutive backtest runs do not improve Sharpe ratio, STOP parameter tweaking and finalize the strategy. Over-optimizing on the cached dataset causes severe out-of-sample degradation.
-- **Robustness Check**: A parameter should be stable across neighbor values (e.g., if period=20 works, period=18 and period=22 should also be reasonably profitable, not catastrophically negative).
+---
+
+## 1. Diagnostic Decision Tree
+
+### Issue A: Low Sharpe Ratio (< 0.8)
+- **Check Trade Count**:
+  - If `< 5` trades over 1000+ bars: Your entry condition is too strict. Loosen parameters (e.g., lower RSI threshold, shorten EMA periods).
+  - If `> 200` trades: Overtrading on noise. Add a trend filter (e.g., ADX > 20 or `close > 50-EMA`) or implement a minimum deadband.
+- **Check Win Rate vs Profit Factor**:
+  - High win rate (>65%) but low profit factor (<1.1): The strategy lets losses run while cutting winners short. Add an ATR trailing stop.
+  - Low win rate (<40%) with high profit factor (>1.8): Typical of trend following. Ensure you have enough bars to capture large tails.
+
+### Issue B: Severe Max Drawdown (> 25%)
+- **Remedy 1**: Add Volatility Scaling (read `.tau/skills/risk-management/SKILL.md`).
+- **Remedy 2**: Tighten exit rules — exit when the fast moving average crosses under the slow moving average instead of waiting for a stop loss.
+- **Remedy 3**: Add Regime Detection — do not trade during low-volatility chop.
+
+### Issue C: Unrealistic Sharpe Ratio (> 3.5)
+- **Warning**: Almost certainly a bug or lookahead leakage!
+- Run:
+  ```bash
+  pt-quant check strategy.py
+  ```
+- Inspect whether you accidentally used `shift(-1)` or evaluated future prices.
+
+---
+
+## 2. Recommended Workflow with `pt-quant`
+
+Before spending a precious `backtest` run:
+```bash
+# 1. Check syntax, imports, and lookahead leaks
+pt-quant check strategy.py
+
+# 2. Verify return dictionary structure and array length in-memory
+pt-quant dry-run strategy.py
+```
+Only when both succeed, call the `backtest` tool.
+
+---
+
+## 3. The 3-Run Stall Rule
+If 3 consecutive backtest runs do not improve your primary target score (`sharpe_ratio`), **STOP tweaking parameters**.
+Over-optimizing on the cached dataset causes severe out-of-sample degradation. Proceed to write `overview.md` and call `task_done`.

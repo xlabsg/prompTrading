@@ -522,7 +522,7 @@ const ConsoleSidebar = ({
 
     return (
         <motion.div
-            className="border-r border-border bg-card/50 flex flex-col w-full h-full min-h-0"
+            className="border-r border-border bg-card/50 flex flex-col w-full h-full min-h-0 min-w-0 overflow-hidden"
         >
             {/* Header with Back Button */}
             <div className="h-14 px-4 flex items-center justify-between border-b border-border">
@@ -601,9 +601,9 @@ const ConsoleSidebar = ({
             )}
 
             {/* Chat Messages */}
-            <div className="flex-1 min-h-0 relative">
-                <ScrollArea className="h-full" ref={scrollRef}>
-                    <div className="p-4 space-y-4">
+            <div className="flex-1 min-h-0 min-w-0 relative">
+                <ScrollArea className="h-full w-full" ref={scrollRef}>
+                    <div className="p-4 space-y-4 max-w-full">
                     {chatHistory.length === 0 && !pendingUserMessage ? (
                         <div className="text-center py-8">
                             <MessageSquare className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
@@ -627,22 +627,42 @@ const ConsoleSidebar = ({
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         className={cn(
-                                            "flex",
+                                            "flex w-full min-w-0",
                                             msg.role === "user" ? "justify-end" : "justify-start"
                                         )}
                                     >
                                         <div
                                             className={cn(
-                                                "max-w-[92%] rounded-2xl px-4 py-2.5 text-sm",
+                                                "max-w-[92%] min-w-0 rounded-2xl px-4 py-2.5 text-sm",
                                                 msg.role === "user"
                                                     ? "bg-primary text-primary-foreground rounded-br-md"
                                                     : "bg-muted text-foreground rounded-bl-md"
                                             )}
                                         >
                                             {msg.role === "assistant" ? (
-                                                <div className="space-y-2">
-                                                    <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
-                                                        <ReactMarkdown>{displayText}</ReactMarkdown>
+                                                <div className="space-y-2 min-w-0">
+                                                    <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word] leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2 prose-pre:max-w-full prose-pre:overflow-x-auto">
+                                                        <ReactMarkdown
+                                                            components={{
+                                                                pre({ children }) {
+                                                                    return <pre className="overflow-x-auto max-w-full rounded-md bg-background/50 p-2 text-xs">{children}</pre>;
+                                                                },
+                                                                code({ className, children, ...props }) {
+                                                                    const isInline = !className && typeof children === "string" && !children.includes("\n");
+                                                                    return isInline ? (
+                                                                        <code className="break-all rounded bg-background/40 px-1 py-0.5 text-xs" {...props}>
+                                                                            {children}
+                                                                        </code>
+                                                                    ) : (
+                                                                        <code className={cn("break-words", className)} {...props}>
+                                                                            {children}
+                                                                        </code>
+                                                                    );
+                                                                },
+                                                            }}
+                                                        >
+                                                            {displayText}
+                                                        </ReactMarkdown>
                                                     </div>
                                                     {hasDetails && (
                                                         <Button
@@ -657,15 +677,35 @@ const ConsoleSidebar = ({
                                                         </Button>
                                                     )}
                                                     {hasDetails && showDetails && (
-                                                        <div className="border-t border-border/40 pt-2">
-                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:overflow-x-auto prose-pre:whitespace-pre prose-pre:max-w-full">
-                                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                        <div className="border-t border-border/40 pt-2 min-w-0">
+                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word] prose-p:my-1 prose-ul:my-1 prose-li:my-0 prose-pre:overflow-x-auto prose-pre:whitespace-pre prose-pre:max-w-full">
+                                                                <ReactMarkdown
+                                                                    components={{
+                                                                        pre({ children }) {
+                                                                            return <pre className="overflow-x-auto max-w-full rounded-md bg-background/50 p-2 text-xs">{children}</pre>;
+                                                                        },
+                                                                        code({ className, children, ...props }) {
+                                                                            const isInline = !className && typeof children === "string" && !children.includes("\n");
+                                                                            return isInline ? (
+                                                                                <code className="break-all rounded bg-background/40 px-1 py-0.5 text-xs" {...props}>
+                                                                                    {children}
+                                                                                </code>
+                                                                            ) : (
+                                                                                <code className={cn("break-words", className)} {...props}>
+                                                                                    {children}
+                                                                                </code>
+                                                                            );
+                                                                        },
+                                                                    }}
+                                                                >
+                                                                    {msg.content}
+                                                                </ReactMarkdown>
                                                             </div>
                                                         </div>
                                                     )}
                                                 </div>
                                             ) : (
-                                                <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                                <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] leading-relaxed">
                                                     {msg.content}
                                                 </p>
                                             )}
@@ -679,10 +719,10 @@ const ConsoleSidebar = ({
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="flex justify-end"
+                                    className="flex justify-end w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-br-md">
-                                        <p className="whitespace-pre-wrap break-words leading-relaxed">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-br-md">
+                                        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] [word-break:break-word] leading-relaxed">
                                             {pendingUserMessage}
                                         </p>
                                     </div>
@@ -694,13 +734,33 @@ const ConsoleSidebar = ({
                                 <motion.div
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
-                                    className="flex justify-start"
+                                    className="flex justify-start w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
                                         {streamingMessage ? (
-                                            <div className="space-y-2">
-                                                <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
-                                                    <ReactMarkdown>{cleanSummaryText(streamingMessage) || streamingMessage}</ReactMarkdown>
+                                            <div className="space-y-2 min-w-0">
+                                                <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word] leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2 prose-pre:max-w-full prose-pre:overflow-x-auto">
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            pre({ children }) {
+                                                                return <pre className="overflow-x-auto max-w-full rounded-md bg-background/50 p-2 text-xs">{children}</pre>;
+                                                            },
+                                                            code({ className, children, ...props }) {
+                                                                const isInline = !className && typeof children === "string" && !children.includes("\n");
+                                                                return isInline ? (
+                                                                    <code className="break-all rounded bg-background/40 px-1 py-0.5 text-xs" {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                ) : (
+                                                                    <code className={cn("break-words", className)} {...props}>
+                                                                        {children}
+                                                                    </code>
+                                                                );
+                                                            },
+                                                        }}
+                                                    >
+                                                        {cleanSummaryText(streamingMessage) || streamingMessage}
+                                                    </ReactMarkdown>
                                                 </div>
                                                 {(streamingProgressMessage || streamingProgressPath) && (
                                                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1.5 border-t border-border/30">
@@ -731,9 +791,9 @@ const ConsoleSidebar = ({
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="flex justify-start"
+                                    className="flex justify-start w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
                                         <div className="text-sm text-foreground font-medium mb-2">
                                             {t("liveTrading.ready")}
                                         </div>
@@ -774,9 +834,9 @@ const ConsoleSidebar = ({
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="flex justify-start"
+                                    className="flex justify-start w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
                                         <div className="text-sm text-foreground font-medium mb-2">
                                             {t("liveTrading.generateFailedTitle")}
                                         </div>
@@ -791,9 +851,9 @@ const ConsoleSidebar = ({
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
-                                    className="flex justify-start"
+                                    className="flex justify-start w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
                                         <Button
                                             size="sm"
                                             variant="outline"
