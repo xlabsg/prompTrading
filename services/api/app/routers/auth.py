@@ -15,29 +15,19 @@ from app.admin import is_admin_request
 from app.deps import get_db
 from app.schemas import (
     AuthMeResponse,
-    InviteCreateRequest,
-    InviteResponse,
-    InviteValidateRequest,
-    InviteValidateResponse,
     OAuthStartRequest,
     OAuthStartResponse,
 )
 from app.settings import settings
-from control_plane.models import InviteCode, OAuthAccount, PendingOAuth, User, UserSession
+from control_plane.models import OAuthAccount, PendingOAuth, User, UserSession
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-
-DEBUG_INVITE_CODE = "LOCAL_DEBUG_INVITE"
 
 
 def _is_local_dev() -> bool:
     host = urlparse(settings.public_base_url).hostname
     return host in {"localhost", "127.0.0.1", "0.0.0.0"}
-
-
-def _is_debug_invite(code: str) -> bool:
-    return _is_local_dev() and code == DEBUG_INVITE_CODE
 
 
 def _get_or_create_debug_user(db: Session) -> User:
@@ -48,21 +38,6 @@ def _get_or_create_debug_user(db: Session) -> User:
         db.add(user)
         db.flush()
     return user
-
-
-def _get_invite(db: Session, code: str) -> InviteCode:
-    invite = db.execute(select(InviteCode).where(InviteCode.code == code)).scalar_one_or_none()
-    if invite is None:
-        raise HTTPException(status_code=400, detail="invalid_invite")
-    if invite.expires_at and invite.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=400, detail="invite_expired")
-    if invite.used_count >= invite.max_uses:
-        raise HTTPException(status_code=400, detail="invite_exhausted")
-    return invite
-
-
-def _consume_invite(invite: InviteCode) -> None:
-    invite.used_count += 1
 
 
 def _build_google_auth_url(state: str) -> str:
@@ -192,47 +167,6 @@ def auth_me(request: Request, db: Session = Depends(get_db)) -> AuthMeResponse:
     return AuthMeResponse(user=user, is_admin=is_admin)
 
 
-@router.post("/auth/invites/validate", response_model=InviteValidateResponse)
-def validate_invite(req: InviteValidateRequest, db: Session = Depends(get_db)) -> InviteValidateResponse:
-    code = req.code.strip()
-    if not code or _is_debug_invite(code):
-        return InviteValidateResponse(valid=True)
-    try:
-        _get_invite(db, code)
-    except Exception:
-        # Invite check is temporarily disabled
-        pass
-    return InviteValidateResponse(valid=True)
-
-
-@router.post("/auth/invites", response_model=InviteResponse)
-def create_invite(
-    req: InviteCreateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-) -> InviteResponse:
-    existing_user = db.execute(select(User).limit(1)).scalar_one_or_none()
-    user = None
-    if existing_user is not None:
-        user = get_current_user(request, db)
-    code = (req.code or secrets.token_urlsafe(6)).strip()
-    if not code:
-        raise HTTPException(status_code=400, detail="invalid_invite_code")
-    existing = db.execute(select(InviteCode).where(InviteCode.code == code)).scalar_one_or_none()
-    if existing:
-        raise HTTPException(status_code=409, detail="invite_code_exists")
-    invite = InviteCode(
-        code=code,
-        max_uses=req.max_uses or 1,
-        expires_at=req.expires_at,
-        created_by_user_id=user.id if user else None,
-    )
-    db.add(invite)
-    db.commit()
-    db.refresh(invite)
-    return invite
-
-
 @router.post("/auth/oauth/{provider}/start", response_model=OAuthStartResponse)
 def oauth_start(
     provider: str,
@@ -240,8 +174,11 @@ def oauth_start(
     response: Response,
     db: Session = Depends(get_db),
 ) -> OAuthStartResponse:
-    invite_code = req.invite_code.strip()
-    if _is_debug_invite(invite_code):
+    # If in local dev and OAuth provider credentials are not configured, log in automatically as local dev user
+    if _is_local_dev() and (
+        (provider == "google" and not settings.google_oauth_client_id)
+        or (provider == "github" and not settings.github_oauth_client_id)
+    ):
         user = _get_or_create_debug_user(db)
         token = create_session(db, user)
         db.commit()
@@ -256,21 +193,11 @@ def oauth_start(
         redirect_path = req.redirect_path or "/"
         return OAuthStartResponse(auth_url=f"{settings.public_base_url}{redirect_path}")
 
-    # Invite code is optional for registration
-    invite_id = None
-    if invite_code:
-        try:
-            invite = _get_invite(db, invite_code)
-            invite_id = invite.id
-        except Exception:
-            invite_id = None
-
     state = secrets.token_urlsafe(32)
     redirect_path = req.redirect_path or "/"
     pending = PendingOAuth(
         provider=provider,
         state=state,
-        invite_id=invite_id,
         redirect_path=redirect_path,
         expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
     )
@@ -356,15 +283,7 @@ def oauth_callback(
             )
             db.add(account)
         else:
-            # New user registration - invite code is optional (open registration)
-            if pending.invite_id is not None:
-                invite = db.get(InviteCode, pending.invite_id)
-                if invite is not None:
-                    try:
-                        _consume_invite(invite)
-                    except Exception:
-                        pass
-
+            # New user registration (open registration)
             user = User(
                 email=oauth_profile.get("email"),
                 name=oauth_profile.get("name"),

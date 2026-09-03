@@ -89,10 +89,6 @@ export interface SubscriptionStatusResponse {
     strategies_used: number;
 }
 
-export interface InviteValidateResponse {
-    valid: boolean;
-}
-
 export interface OAuthStartResponse {
     auth_url: string;
 }

@@ -891,7 +891,16 @@ def _build_strategy_agent_task(
         "1. If the user is asking questions, seeking explanations, or analyzing the strategy/backtest: "
         "inspect workspace files (e.g. strategy.py, overview.md) and answer clearly in your final response. "
         "Do NOT modify any files.\n"
-        "2. If the user explicitly requests code or parameter changes: modify strategy.py accordingly.\n\n"
+        "2. If the user explicitly requests code or parameter changes: modify strategy.py accordingly.\n"
+        "3. UI Action Protocol: If the user requests to run a backtest, test the strategy, or if you modified the strategy code and recommend testing it, append an action block at the very end of your final response:\n"
+        "```action:backtest\n"
+        "{\n"
+        '  "symbol": "<symbol, e.g. BTC-USDT>",\n'
+        '  "range": "<e.g. 30d, 90d, 1y>",\n'
+        '  "interval": "<e.g. 1h, 15m, 1d>",\n'
+        '  "initial_cash": 10000\n'
+        "}\n"
+        "```\n\n"
         "Safety constraints:\n"
         "- `generate_signals(data, params)` must remain runnable, deterministic, and return target_weights (values in [-1, 1]) and weight_reason.\n"
         "- No unauthorized network requests, external file I/O, or destructive commands."

@@ -69,7 +69,7 @@ const en = {
     welcomeBack: "Welcome back",
     signInSubtitle: "Sign in to your account",
     createAccount: "Create new account",
-    createAccountSubtitle: "Enter invite code and complete registration",
+    createAccountSubtitle: "Sign in with OAuth to get started",
     inviteCode: "Invite Code",
     invitePlaceholder: "Please enter an invite code",
     register: "Register",

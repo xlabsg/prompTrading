@@ -114,25 +114,12 @@ class UserSession(Base):
     user: Mapped["User"] = relationship(back_populates="sessions")
 
 
-class InviteCode(Base):
-    __tablename__ = "invite_codes"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    code: Mapped[str] = mapped_column(String(64), unique=True, index=True)
-    max_uses: Mapped[int] = mapped_column(Integer, default=1)
-    used_count: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
-    expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_by_user_id: Mapped[Optional[str]] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
-
-
 class PendingOAuth(Base):
     __tablename__ = "pending_oauth"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
     provider: Mapped[str] = mapped_column(String(50), index=True)
     state: Mapped[str] = mapped_column(String(128), unique=True, index=True)
-    invite_id: Mapped[Optional[str]] = mapped_column(ForeignKey("invite_codes.id", ondelete="CASCADE"), index=True, nullable=True)
     redirect_path: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

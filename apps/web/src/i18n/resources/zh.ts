@@ -69,7 +69,7 @@ const zh = {
     welcomeBack: "欢迎回来",
     signInSubtitle: "登录你的账户",
     createAccount: "创建新账户",
-    createAccountSubtitle: "输入邀请码完成注册",
+    createAccountSubtitle: "使用 OAuth 登录即可开始",
     inviteCode: "邀请码",
     invitePlaceholder: "请输入邀请码",
     register: "注册",

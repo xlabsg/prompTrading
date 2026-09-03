@@ -1,0 +1,24 @@
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+    "E501",  # Line too long
+    "E402",  # Module level import not at top
+    "E712",  # Comparison to True should be `cond is True` (conflicts with SQLAlchemy column == True)
+    "E741",  # Ambiguous variable name
+    "F401",  # Unused import
+    "F841",  # Unused variable
+]
+exclude = [
+    ".git",
+    "__pycache__",
+    "node_modules",
+    "dist",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".ruff_cache",
+]

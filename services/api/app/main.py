@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 
 from control_plane.db import create_db_engine, create_session_factory
-from control_plane.models import Base, InviteCode
+from control_plane.models import Base
 from app.routers import backtests, internal, jobs, markets, portfolio, sandbox, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops
 from app.routers import strategy_accounts, strategy_members, strategy_workspace
 from app.routers import auth as auth_router
@@ -96,70 +96,6 @@ async def _wait_for_redis(redis_url: str, timeout_s: float = 30.0) -> redis.Redi
     raise RuntimeError("redis_not_ready") from last_err
 
 
-def _dev_invite_seeding_enabled() -> bool:
-    """本地开发种子数据开关，默认关闭。"""
-    return os.getenv("SEED_DEV_INVITE_CODES", "").strip().lower() in {"1", "true", "yes"}
-
-
-def _ensure_permanent_invite_codes(session_factory) -> list[str]:
-    """确保固定的永久 invite codes 存在（无过期，可多次使用，仅供本地开发）
-
-    这些是硬编码在公开源码里的已知码，任何人都能用它们在部署实例上注册，
-    因此默认不创建。仅当显式设置 SEED_DEV_INVITE_CODES=true 时启用。
-    """
-    if not _dev_invite_seeding_enabled():
-        return []
-    permanent_codes = [
-        "dev-unlimited",  # 开发环境无限使用
-        "test-unlimited",  # 测试环境无限使用
-        "demo-user",  # 演示用户
-    ]
-    created = []
-    with session_factory() as db:
-        for code in permanent_codes:
-            existing = db.execute(
-                select(InviteCode.id).where(InviteCode.code == code)
-            ).scalar_one_or_none()
-            if not existing:
-                db.add(InviteCode(
-                    code=code,
-                    max_uses=999999,  # 接近无限次使用
-                    expires_at=None,  # 永不过期
-                ))
-                created.append(code)
-        if created:
-            db.commit()
-    return created
-
-
-def _ensure_invite_codes(
-    session_factory,
-    target_count: int,
-    expires_in_days: int = 30,
-) -> list[str]:
-    now = datetime.now(timezone.utc)
-    with session_factory() as db:
-        valid_invites = db.execute(
-            select(InviteCode).where(
-                (InviteCode.expires_at.is_(None)) | (InviteCode.expires_at > now),
-                InviteCode.used_count < InviteCode.max_uses,
-            )
-        ).scalars().all()
-        needed = max(0, target_count - len(valid_invites))
-        if needed == 0:
-            return []
-        expires_at = now + timedelta(days=expires_in_days)
-        created_codes: list[str] = []
-        for _ in range(needed):
-            code = secrets.token_urlsafe(6)
-            while db.execute(select(InviteCode.id).where(InviteCode.code == code)).scalar_one_or_none():
-                code = secrets.token_urlsafe(6)
-            db.add(InviteCode(code=code, max_uses=1, expires_at=expires_at))
-            created_codes.append(code)
-        db.commit()
-        return created_codes
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     os.makedirs(settings.workspaces_dir, exist_ok=True)
@@ -190,59 +126,6 @@ async def lifespan(app: FastAPI):
     app.state.db_engine = engine
     app.state.session_factory = session_factory
     app.state.redis = rds
-
-    # Ensure permanent invite codes (dev/test)
-    permanent_created = _ensure_permanent_invite_codes(session_factory)
-    if permanent_created:
-        logger.warning(f"Created permanent invite codes: {', '.join(permanent_created)}")
-
-    # Ensure regular invite codes
-    created_invites = _ensure_invite_codes(session_factory, target_count=10, expires_in_days=30)
-    if created_invites:
-        logger.warning(f"Created {len(created_invites)} new regular invite codes")
-
-    # 仅在本地开发时把邀请码打印到日志；生产环境只记录数量，
-    # 避免有效邀请码泄露到日志聚合系统里。
-    with session_factory() as db:
-        now = datetime.now(timezone.utc)
-
-        # Get permanent codes (no expiration)
-        permanent_codes = db.execute(
-            select(InviteCode.code).where(
-                InviteCode.expires_at.is_(None),
-                InviteCode.used_count < InviteCode.max_uses,
-            )
-        ).scalars().all()
-
-        # Get regular codes (with expiration)
-        regular_codes = db.execute(
-            select(InviteCode.code).where(
-                InviteCode.expires_at.is_not(None),
-                InviteCode.expires_at > now,
-                InviteCode.used_count < InviteCode.max_uses,
-            )
-        ).scalars().all()
-
-        logger.info(
-            "invite codes available: %d permanent, %d regular",
-            len(permanent_codes),
-            len(regular_codes),
-        )
-
-        if (permanent_codes or regular_codes) and _dev_invite_seeding_enabled():
-            logger.warning("=" * 80)
-            logger.warning("AVAILABLE INVITE CODES:")
-            if permanent_codes:
-                logger.warning("")
-                logger.warning("  Permanent (unlimited use):")
-                for code in permanent_codes:
-                    logger.warning(f"    • {code}")
-            if regular_codes:
-                logger.warning("")
-                logger.warning("  Regular (single use, expires in 30 days):")
-                for code in regular_codes:
-                    logger.warning(f"    • {code}")
-            logger.warning("=" * 80)
     try:
         yield
     finally:
