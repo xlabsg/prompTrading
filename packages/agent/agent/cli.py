@@ -330,32 +330,72 @@ def cmd_indicators(args: argparse.Namespace) -> int:
         print(f"  # e.g., result = {target}(data['close'], ...)")
         return 0
 
-    # List all available indicators
-    available = []
-    for attr in dir(bt_ind):
-        if attr.startswith("_"):
-            continue
-        obj = getattr(bt_ind, attr, None)
-        if callable(obj):
-            available.append(attr)
+    # List available indicators grouped or filtered by category
+    categories_def = {
+        "atomic": {
+            "title": "Layer 1: Atomic Time-Series Operators (Alpha 101/Qlib Primitives)",
+            "names": ["ts_rank", "ts_corr", "ts_cov", "ts_decay_linear", "ts_zscore", "ts_max", "ts_min", "ts_diff", "ts_returns", "safe_div"],
+        },
+        "modern": {
+            "title": "Layer 2: Modern Quant & Crypto Technical Indicators",
+            "names": ["supertrend", "vwap", "keltner_channel", "donchian_channel", "stoch_rsi", "cmf", "bollinger_bands"],
+        },
+        "crypto": {
+            "title": "Crypto-Native Derivative Factor Helpers",
+            "names": ["funding_rate_zscore", "oi_momentum"],
+        },
+        "core": {
+            "title": "Core Trend, Momentum & Crossings",
+            "names": ["sma", "ema", "rsi", "atr", "zscore", "cross_over", "cross_under"],
+        },
+    }
 
-    available.sort()
+    selected_cat = getattr(args, "category", "all") or "all"
+
     print("==================================================")
-    print("      PLATFORM BUILT-IN VECTORIZED INDICATORS     ")
+    print("      PLATFORM BUILT-IN QUANTITATIVE OPERATORS    ")
     print("==================================================")
-    print("Usage: from backtest.indicators import <indicator>")
+    print("Usage: from backtest.indicators import <name> (or import ta)")
     print("Run `pt-quant indicators <name>` for detailed signature.")
+    print("Run `pt-quant indicators --category [atomic|modern|crypto|core|talib]`")
     print("Run `pt-quant indicators --source okx` for OKX Agent Trade Kit indicators.\n")
-    for name in available:
-        try:
-            fn = getattr(bt_ind, name)
-            sig = inspect.signature(fn)
-            doc_first = (inspect.getdoc(fn) or "").split("\n")[0]
-            print(f"  • {name}{sig}")
-            if doc_first:
-                print(f"      {doc_first}")
-        except Exception:
-            print(f"  • {name}")
+
+    if selected_cat == "talib":
+        print("--- TA-Lib C-Accelerated Indicators ---")
+        talib_funcs = []
+        for attr in dir(bt_ind):
+            if attr.startswith("_"):
+                continue
+            is_categorized = any(attr in c["names"] for c in categories_def.values())
+            if not is_categorized:
+                talib_funcs.append(attr)
+        talib_funcs.sort()
+        if not talib_funcs:
+            print("  (TA-Lib C-library not present in this local environment; available inside container)")
+        else:
+            for name in talib_funcs:
+                print(f"  • {name}")
+        print("==================================================")
+        return 0
+
+    for cat_key, cat_info in categories_def.items():
+        if selected_cat not in ("all", cat_key):
+            continue
+        print(f"--- {cat_info['title']} ---")
+        for name in cat_info["names"]:
+            fn = getattr(bt_ind, name, None)
+            if fn is None or not callable(fn):
+                continue
+            try:
+                sig = inspect.signature(fn)
+                doc_first = (inspect.getdoc(fn) or "").split("\n")[0]
+                print(f"  • {name}{sig}")
+                if doc_first:
+                    print(f"      {doc_first}")
+            except Exception:
+                print(f"  • {name}")
+        print()
+
     print("==================================================")
     return 0
 
@@ -386,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     p_ind = subparsers.add_parser("indicators", help="Introspect platform indicators")
     p_ind.add_argument("name", nargs="?", help="Specific indicator name to inspect")
     p_ind.add_argument("--source", choices=["platform", "okx"], default="platform", help="Indicator source (platform or okx)")
+    p_ind.add_argument("--category", choices=["all", "atomic", "modern", "crypto", "core", "talib"], default="all", help="Indicator category")
 
     args = parser.parse_args(argv)
     if not args.command:

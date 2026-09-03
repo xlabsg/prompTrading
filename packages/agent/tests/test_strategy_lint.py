@@ -55,6 +55,47 @@ def generate_signals(data: pd.DataFrame, params: dict) -> dict:
         self.assertFalse(ok)
         self.assertIn("missing required key 'target_weights'", err)
 
+    def test_dry_run_with_quant_indicators_and_crypto_factors(self):
+        code = """
+import numpy as np
+import pandas as pd
+from backtest.indicators import (
+    supertrend,
+    ts_corr,
+    vwap,
+    funding_rate_zscore,
+    oi_momentum,
+    donchian_channel,
+)
+
+def generate_signals(data: pd.DataFrame, params: dict) -> dict:
+    st = supertrend(data["high"], data["low"], data["close"], period=10)
+    pv_corr = ts_corr(data["close"], data["volume"], window=14)
+    v_line = vwap(data["high"], data["low"], data["close"], data["volume"])
+    fr_z = funding_rate_zscore(data["funding_rate"], window=20)
+    oi_roc = oi_momentum(data["open_interest"], window=10)
+    dc = donchian_channel(data["high"], data["low"], window=20, shift=True)
+
+    long_cond = (st.direction == 1.0) & (data["close"] > v_line) & (fr_z < 1.5)
+    short_cond = (st.direction == -1.0) & (data["close"] < v_line) & (fr_z > -1.5)
+
+    target_weights = np.zeros(len(data), dtype=float)
+    weight_reason = np.full(len(data), "Cash", dtype=object)
+
+    target_weights[long_cond] = 1.0
+    weight_reason[long_cond] = "Bullish Trend"
+
+    target_weights[short_cond] = -1.0
+    weight_reason[short_cond] = "Bearish Trend"
+
+    return {
+        "target_weights": target_weights.tolist(),
+        "weight_reason": weight_reason.tolist(),
+    }
+"""
+        ok, err = dry_run_strategy(code)
+        self.assertTrue(ok, f"Dry-run failed: {err}")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -133,6 +133,8 @@ def dry_run_strategy(
         "low": low,
         "close": close,
         "volume": vol,
+        "funding_rate": np.random.normal(0.0001, 0.0002, bars),
+        "open_interest": 100000.0 + np.cumsum(np.random.randn(bars) * 500),
     })
 
     # 3. Prepare isolated execution namespace
@@ -144,6 +146,8 @@ def dry_run_strategy(
     try:
         import ta
         ns["ta"] = ta
+        from backtest import indicators
+        ns["indicators"] = indicators
     except Exception:
         pass
 

@@ -114,3 +114,9 @@ def bbands(close, timeperiod: int = 20, nbdevup: float = 2.0, nbdevdn: float = 2
 
 def __getattr__(name: str):
     return getattr(_ind, name)
+
+
+def __dir__() -> list[str]:
+    base = set(globals().keys())
+    base.update(dir(_ind))
+    return sorted(base)

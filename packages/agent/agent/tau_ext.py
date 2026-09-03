@@ -320,6 +320,19 @@ def _quant_toolkit_section() -> str:
     )
 
 
+def _strategy_design_section() -> str:
+    return (
+        "Design Principles:\n"
+        "- The patterns in `.tau/skills/` are architectural primitives, NOT templates to regurgitate. "
+        "Synthesize novel combinations tailored specifically to the user's prompt, asset dynamics, and timeframe.\n"
+        "- Do not default to trivial moving-average crossovers unless specifically requested. Combine orthogonal dimensions: "
+        "Regime Identification (volatility/trend/crowding) + Alpha Core (momentum/reversion/breakout) + "
+        "Confirmation (volume/VWAP/funding rate) + Dynamic Sizing (continuous scaling or vol-targeting).\n"
+        "- Both `from backtest.indicators import ...` and `import ta` are fully supported with C-accelerated TA-Lib, "
+        "modern indicators (supertrend, vwap, keltner_channel, donchian_channel, stoch_rsi, cmf), and atomic operators (ts_rank, ts_corr, ts_decay_linear)."
+    )
+
+
 def setup(tau: ExtensionAPI) -> None:
     """Register this platform's tools, protocol and budget with the session."""
     global _TAU_API
@@ -327,6 +340,7 @@ def setup(tau: ExtensionAPI) -> None:
     tau.register_tool(_BACKTEST_TOOL)
     tau.register_tool(_TASK_DONE_TOOL)
     tau.add_prompt_section("Strategy Protocol", _protocol_section())
+    tau.add_prompt_section("Strategy Design Principles", _strategy_design_section())
     tau.add_prompt_section("Backtest Budget", _budget_section())
     tau.add_prompt_section("Quant Toolkit & Skills", _quant_toolkit_section())
     tau.add_prompt_guideline(
