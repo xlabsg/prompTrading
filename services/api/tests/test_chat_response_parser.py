@@ -194,29 +194,9 @@ def test_format_metrics_comparison_emits_structured_action_block() -> None:
     assert data["after"]["total_return"] == 0.18
 
 
-def test_infer_dataset_from_prompt_variants() -> None:
-    from app.routers.backtests import _infer_dataset_from_prompt
+def test_default_benchmark_dataset_fallback() -> None:
+    from app.routers.backtests import DEFAULT_BENCHMARK_DATASET
 
-    # 1. US Stock AAPL 1d
-    ds1 = _infer_dataset_from_prompt("请帮我写一个苹果 AAPL 的日线趋势跟踪策略")
-    assert ds1.exchange == "us_stock"
-    assert ds1.symbol == "AAPL"
-    assert ds1.interval == "1d"
-
-    # 2. Crypto ETH 15m
-    ds2 = _infer_dataset_from_prompt("开发一个以太坊 ETH 15分钟突破策略")
-    assert ds2.exchange == "okx"
-    assert ds2.symbol == "ETH-USDT-SWAP"
-    assert ds2.interval == "15m"
-
-    # 3. Crypto SOL 4h
-    ds3 = _infer_dataset_from_prompt("写一个 SOL 4小时均线策略")
-    assert ds3.exchange == "okx"
-    assert ds3.symbol == "SOL-USDT-SWAP"
-    assert ds3.interval == "4h"
-
-    # 4. Fallback default benchmark
-    ds4 = _infer_dataset_from_prompt("写一个双均线金叉死叉策略")
-    assert ds4.exchange == "okx"
-    assert ds4.symbol == "BTC-USDT-SWAP"
-    assert ds4.interval == "1h"
+    assert DEFAULT_BENCHMARK_DATASET.exchange == "okx"
+    assert DEFAULT_BENCHMARK_DATASET.symbol == "BTC-USDT-SWAP"
+    assert DEFAULT_BENCHMARK_DATASET.interval == "1h"

@@ -60,26 +60,26 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
     const roadmapFeatures = [
         {
             icon: Zap,
-            title: "多交易所低延迟直连",
-            description: "支持 OKX、Binance、Bybit 现货与永续合约原生 WebSocket / REST 极速撮合。",
+            title: t("liveTradingRoadmap.features.directApiTitle"),
+            description: t("liveTradingRoadmap.features.directApiDesc"),
             badge: "Direct API",
         },
         {
             icon: Shield,
-            title: "独立沙箱风控守护",
-            description: "脱离 Web 服务的 7x24 高可用执行守护进程，集成移动止盈止损、自动对账与硬核熔断。",
+            title: t("liveTradingRoadmap.features.riskEngineTitle"),
+            description: t("liveTradingRoadmap.features.riskEngineDesc"),
             badge: "Risk Engine",
         },
         {
             icon: Bell,
-            title: "毫秒级多端成交告警",
-            description: "每次信号触发、挂单及成交毫秒级推送到 Telegram Bot、Discord 及 Webhook 回调。",
+            title: t("liveTradingRoadmap.features.alertsTitle"),
+            description: t("liveTradingRoadmap.features.alertsDesc"),
             badge: "Alerts",
         },
         {
             icon: Layers,
-            title: "免托管资金安全隔离",
-            description: "仅需只读及交易权限，零提现风险；API Key 采用硬件加密机级隔离存储。",
+            title: t("liveTradingRoadmap.features.securityTitle"),
+            description: t("liveTradingRoadmap.features.securityDesc"),
             badge: "Security",
         },
     ];
@@ -91,15 +91,15 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                 <div className="text-center space-y-4">
                     <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 text-xs font-semibold">
                         <Sparkles size={13} />
-                        <span>PRO PRODUCT LINE · COMING SOON</span>
+                        <span>{t("liveTradingRoadmap.badge")}</span>
                     </div>
 
                     <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-foreground">
-                        PrompTrading Pro 实盘交易引擎
+                        {t("liveTradingRoadmap.title")}
                     </h1>
 
                     <p className="text-muted-foreground text-base max-w-2xl mx-auto leading-relaxed">
-                        为严肃量化交易打造的独立执行网关。策略在研究端经严谨回测后，一键无缝部署至高可用执行沙箱，实现 7×24 小时真实市场自动对齐。
+                        {t("liveTradingRoadmap.description")}
                     </p>
                 </div>
 
@@ -108,26 +108,26 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                     <CardHeader className="text-center pb-2">
                         <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
                             <Radio className="w-5 h-5 text-primary animate-pulse" />
-                            <span>申请加入 Pro 实盘内测候补名单</span>
+                            <span>{t("liveTradingRoadmap.waitlistTitle")}</span>
                         </CardTitle>
                         <CardDescription className="text-sm">
-                            实盘网关首批名额开放中，登记邮箱即可获得早期测试邀请与专属手续费折扣
+                            {t("liveTradingRoadmap.waitlistDesc")}
                         </CardDescription>
                     </CardHeader>
                     <CardContent className="pt-4 pb-6">
                         {isSubmitted ? (
                             <div className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400 text-center">
                                 <CheckCircle2 className="w-8 h-8 text-green-500" />
-                                <div className="font-semibold text-base">已成功加入候补名单！</div>
+                                <div className="font-semibold text-base">{t("liveTradingRoadmap.waitlistSuccessTitle")}</div>
                                 <div className="text-xs text-muted-foreground max-w-md">
-                                    感谢您的关注。实盘独立网关开启首批测试时，我们将第一时间通过邮件通知您。
+                                    {t("liveTradingRoadmap.waitlistSuccessDesc")}
                                 </div>
                             </div>
                         ) : (
                             <form onSubmit={handleJoinWaitlist} className="max-w-md mx-auto flex flex-col sm:flex-row gap-3">
                                 <Input
                                     type="email"
-                                    placeholder="输入您的邮箱地址 (name@example.com)"
+                                    placeholder={t("liveTradingRoadmap.placeholder")}
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     required
@@ -135,7 +135,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                                 />
                                 <Button type="submit" disabled={isSubmitting} className="gap-2 shrink-0">
                                     <Sparkles size={15} />
-                                    <span>{isSubmitting ? "登记中..." : "立即加入 Waitlist"}</span>
+                                    <span>{isSubmitting ? t("liveTradingRoadmap.submitting") : t("liveTradingRoadmap.submit")}</span>
                                 </Button>
                             </form>
                         )}
@@ -145,10 +145,10 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                 {/* Architecture & Roadmap Highlights */}
                 <div className="space-y-4">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-lg font-bold text-foreground">独立实盘产品线架构亮点</h2>
+                        <h2 className="text-lg font-bold text-foreground">{t("liveTradingRoadmap.roadmapTitle")}</h2>
                         <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Lock size={12} />
-                            企业级高可用独立服务
+                            {t("liveTradingRoadmap.roadmapSubtitle")}
                         </span>
                     </div>
 
@@ -180,7 +180,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                 {strategy && (
                     <div className="p-4 rounded-xl border border-border/80 bg-muted/30 flex flex-col sm:flex-row items-center justify-between gap-4">
                         <div className="text-xs text-muted-foreground text-center sm:text-left">
-                            当前策略：<strong className="text-foreground">{strategy.name}</strong> 已完成向量化回测验证
+                            {t("liveTradingRoadmap.currentStrategy", { name: strategy.name })}
                         </div>
                         <div className="flex items-center gap-3 w-full sm:w-auto justify-center">
                             <Button
@@ -190,7 +190,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                                 onClick={() => navigate(`/strategy/${strategy.id}/code`)}
                             >
                                 <Code size={14} />
-                                <span>查看策略源码</span>
+                                <span>{t("liveTradingRoadmap.viewCode")}</span>
                             </Button>
                             <Button
                                 size="sm"
@@ -198,7 +198,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                                 onClick={() => navigate(`/strategy/${strategy.id}/backtest`)}
                             >
                                 <LineChart size={14} />
-                                <span>前往回测看板</span>
+                                <span>{t("liveTradingRoadmap.goToBacktest")}</span>
                                 <ArrowRight size={13} />
                             </Button>
                         </div>
