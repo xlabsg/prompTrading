@@ -133,6 +133,24 @@ def _build_trades_from_weights(ts: np.ndarray, close: np.ndarray, w: np.ndarray)
             entry_i = i
             entry_side = side
 
+    if current_side != 0 and entry_i is not None and entry_i < n - 1:
+        pnl = (close[-1] - close[entry_i]) * entry_side
+        ret = pnl / close[entry_i] if close[entry_i] != 0 else 0.0
+        rows.append(
+            {
+                "entry_i": entry_i,
+                "exit_i": n - 1,
+                "entry_ts": int(ts[entry_i]),
+                "exit_ts": int(ts[-1]),
+                "side": "long" if entry_side > 0 else "short",
+                "entry_price": float(close[entry_i]),
+                "exit_price": float(close[-1]),
+                "pnl": float(pnl),
+                "return": float(ret),
+                "duration_bars": int(n - 1 - entry_i),
+            }
+        )
+
     return pd.DataFrame(rows)
 
 
@@ -173,6 +191,12 @@ def run_backtest(
         # rebalance at bar i close for next bar
         equity[i] = equity[i] * (1.0 - tx_cost * abs(w[i] - w[i - 1]))
 
+    # Strategy portfolio bar-to-bar returns
+    strat_r = np.zeros(n, dtype=np.float64)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        strat_r[1:] = np.where(equity[:-1] > 0, equity[1:] / equity[:-1] - 1.0, 0.0)
+        strat_r[np.isnan(strat_r) | np.isinf(strat_r)] = 0.0
+
     dd = _compute_drawdown(equity)
 
     # Benchmark: buy and hold the underlying asset from bar 0 close
@@ -195,7 +219,7 @@ def run_backtest(
             "timestamp": ts,
             "equity": equity,
             "benchmark_equity": benchmark_equity,
-            "returns": r,
+            "returns": strat_r,
             "drawdown": dd,
             "weight": w,
         }
@@ -206,11 +230,20 @@ def run_backtest(
     total_return = equity[-1] / equity[0] - 1.0 if equity[0] != 0 else 0.0
     max_dd = float(dd.min()) if len(dd) else 0.0
 
-    # Sharpe (approx, assumes bar returns are i.i.d.)
+    # Sharpe & Sortino based on strategy returns (assumes bar returns are i.i.d.)
     bars_per_year = _interval_to_bars_per_year(interval)
     sharpe = 0.0
-    if bars_per_year and np.std(r[1:]) > 1e-12:
-        sharpe = float(np.mean(r[1:]) / np.std(r[1:]) * np.sqrt(bars_per_year))
+    sortino = 0.0
+    strat_std = float(np.std(strat_r[1:]))
+    if bars_per_year and strat_std > 1e-12:
+        sharpe = float(np.mean(strat_r[1:]) / strat_std * np.sqrt(bars_per_year))
+
+    downside_r = strat_r[1:][strat_r[1:] < 0]
+    downside_std = float(np.std(downside_r)) if len(downside_r) > 0 else 0.0
+    if bars_per_year and downside_std > 1e-12:
+        sortino = float(np.mean(strat_r[1:]) / downside_std * np.sqrt(bars_per_year))
+    elif bars_per_year and sharpe > 0 and downside_std <= 1e-12:
+        sortino = sharpe
 
     win_rate = None
     profit_factor = None
@@ -230,6 +263,7 @@ def run_backtest(
         "alpha": _safe_float((total_return - benchmark_return) * 100),  # Excess return over benchmark
         "max_drawdown": _safe_float(abs(max_dd) * 100),  # Convert to positive percentage
         "sharpe_ratio": _safe_float(sharpe),  # Renamed from sharpe
+        "sortino_ratio": _safe_float(sortino),
         "num_bars": int(n),
         "total_trades": int(len(trades_df)),  # Renamed from num_trades
         "win_rate": _safe_float(win_rate * 100) if win_rate is not None else None,  # Convert to percentage
