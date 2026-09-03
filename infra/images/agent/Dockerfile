@@ -24,6 +24,10 @@ COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
 
 ENV PYTHONPATH=/app
 
+# Install pt-quant executable wrapper into PATH
+RUN printf '#!/bin/sh\nexec python3 -m agent.cli "$@"\n' > /usr/local/bin/pt-quant \
+    && chmod +x /usr/local/bin/pt-quant
+
 # Skills Tau loads from the user directory, and the provider entry it needs when
 # LLM_BASE_URL points at a gateway. `tau setup` only writes files, so it is safe
 # to resolve at build time.

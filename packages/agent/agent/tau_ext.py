@@ -303,6 +303,17 @@ def _budget_section() -> str:
     )
 
 
+def _quant_toolkit_section() -> str:
+    return (
+        "The CLI utility `pt-quant` is installed and available in bash:\n"
+        "- `pt-quant inspect-data`: View dataset time range, frequency, volatility, and ATR before designing logic.\n"
+        "- `pt-quant check strategy.py`: Statically verify syntax, imports, and scan for lookahead leaks.\n"
+        "- `pt-quant dry-run strategy.py`: Fast in-memory execution to verify target_weights output contract.\n"
+        "- `pt-quant indicators [name]`: Inspect platform built-in vectorized indicators and their parameter signatures.\n\n"
+        "Domain guidance skills are available in `.tau/skills/` (e.g. `data-exploration`, `quant-indicators`, `alpha-patterns`, `risk-management`, `backtest-optimization`). Read them with `read` when needed."
+    )
+
+
 def setup(tau: ExtensionAPI) -> None:
     """Register this platform's tools, protocol and budget with the session."""
     global _TAU_API
@@ -311,6 +322,7 @@ def setup(tau: ExtensionAPI) -> None:
     tau.register_tool(_TASK_DONE_TOOL)
     tau.add_prompt_section("Strategy Protocol", _protocol_section())
     tau.add_prompt_section("Backtest Budget", _budget_section())
+    tau.add_prompt_section("Quant Toolkit & Skills", _quant_toolkit_section())
     tau.add_prompt_guideline(
         f"Write both {STRATEGY_FILE} and {OVERVIEW_FILE}, then call task_done."
     )

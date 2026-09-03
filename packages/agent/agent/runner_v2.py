@@ -284,6 +284,7 @@ You are working inside the strategy version workspace. Files present: {files}
   something specific each time and check whether {score_key} improves.
 - Stop tuning when the budget is spent or the metrics stop improving, then
   write `{overview_file}` and call `task_done`.
+- You can run `pt-quant inspect-data`, `pt-quant check strategy.py`, `pt-quant dry-run strategy.py`, or `pt-quant indicators` using `bash`.
 - On-demand quant skills (indicators, patterns, risk, optimization) are available under `.tau/skills/`. Read them with `read` if you need formula or convention guidance.
 """
 

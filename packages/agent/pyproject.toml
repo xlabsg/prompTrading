@@ -26,6 +26,9 @@ dependencies = [
 observability = ["langfuse>=2.0.0"]
 dev = ["pytest>=8.0"]
 
+[project.scripts]
+pt-quant = "agent.cli:main"
+
 [tool.setuptools.packages.find]
 include = ["agent*"]
 exclude = ["tests*"]

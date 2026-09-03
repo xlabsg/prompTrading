@@ -805,7 +805,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
             <TabsContent value="narrative" className="flex-1 min-h-0 mt-0">
               <ScrollArea className="h-full rounded-md border p-4 bg-muted/10">
                 {hasOverview ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word]">
                     <ReactMarkdown
                       components={{
                         code({ className, children }) {
