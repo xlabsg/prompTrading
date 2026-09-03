@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from control_plane.enums import StrategyRole
-from control_plane.models import StrategyMember, User, UserSession
+from control_plane.models import Strategy, StrategyMember, User, UserSession
 from app.settings import settings
 
 SESSION_COOKIE_NAME = "asp_session"
@@ -81,6 +81,9 @@ def require_strategy_member(
     allowed_roles: list[StrategyRole] | None = None,
 ) -> StrategyMember:
     user = get_current_user(request, db)
+    strat = db.get(Strategy, strategy_id)
+    if strat is None:
+        raise HTTPException(status_code=404, detail="strategy_not_found")
     member = db.execute(
         select(StrategyMember)
         .where(StrategyMember.strategy_id == strategy_id)
@@ -91,7 +94,7 @@ def require_strategy_member(
             member = StrategyMember(
                 strategy_id=strategy_id,
                 user_id=user.id,
-                role=StrategyRole.OWNER,
+                role=StrategyRole.ADMIN,
             )
             db.add(member)
             db.flush()

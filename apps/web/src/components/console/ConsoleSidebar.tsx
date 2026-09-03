@@ -697,14 +697,32 @@ const ConsoleSidebar = ({
                                     className="flex justify-start"
                                 >
                                     <div className="max-w-[92%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
-                                        <div className="flex items-center gap-2 text-muted-foreground">
-                                            <Loader2 size={14} className="animate-spin" />
-                                            <span className="text-sm">
-                                                {streamingProgressMessage || (streamingProgressPath
-                                                    ? t("console.sidebar.editingFile", { path: streamingProgressPath })
-                                                    : t("console.sidebar.aiThinking"))}
-                                            </span>
-                                        </div>
+                                        {streamingMessage ? (
+                                            <div className="space-y-2">
+                                                <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
+                                                    <ReactMarkdown>{cleanSummaryText(streamingMessage) || streamingMessage}</ReactMarkdown>
+                                                </div>
+                                                {(streamingProgressMessage || streamingProgressPath) && (
+                                                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1.5 border-t border-border/30">
+                                                        <Loader2 size={12} className="animate-spin text-primary shrink-0" />
+                                                        <span className="truncate">
+                                                            {streamingProgressMessage || (streamingProgressPath
+                                                                ? t("console.sidebar.editingFile", { path: streamingProgressPath })
+                                                                : null)}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="flex items-center gap-2 text-muted-foreground">
+                                                <Loader2 size={14} className="animate-spin text-primary shrink-0" />
+                                                <span className="text-sm">
+                                                    {streamingProgressMessage || (streamingProgressPath
+                                                        ? t("console.sidebar.editingFile", { path: streamingProgressPath })
+                                                        : t("console.sidebar.aiThinking"))}
+                                                </span>
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             )}
