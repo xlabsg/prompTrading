@@ -151,6 +151,17 @@ def _wait_for_redis(redis_url: str | None, timeout_s: float = 10.0) -> Optional[
 LOG_TAIL_KEY_PREFIX = "jobs:logtail:v1:"
 LAST_LOG_KEY_PREFIX = "jobs:lastlog:v1:"
 CANCEL_KEY_PREFIX = "jobs:cancel:v1:"
+_PROXY_ENV_KEYS = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+    "OKX_BASE_URL",
+)
 
 
 def _publish_log(job_id: str, message: str, rds: Optional[redis.Redis] = None) -> None:
@@ -499,6 +510,11 @@ def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.Docker
                 )
                 if (val := os.getenv(key)) is not None
             },
+            **{
+                key: val
+                for key in _PROXY_ENV_KEYS
+                if (val := os.getenv(key)) is not None
+            },
         },
         volumes={
             settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
@@ -639,6 +655,7 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         "LANGFUSE_TRACING_ENVIRONMENT",
         "LANGFUSE_SESSION_ID",
         "LANGFUSE_USER_ID",
+        *_PROXY_ENV_KEYS,
     ):
         val = os.getenv(key)
         if val:
@@ -1097,6 +1114,7 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
 
     agent_env = {
         "JOB_ID": job.id,
+        "JOB_TYPE": job.type,
         "STRATEGY_ID": strategy_id,
         "VERSION_ID": version_id,
         "PROMPT": prompt,
@@ -1149,6 +1167,7 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         "LANGFUSE_TRACING_ENVIRONMENT",
         "LANGFUSE_SESSION_ID",
         "LANGFUSE_USER_ID",
+        *_PROXY_ENV_KEYS,
     ):
         val = os.getenv(key)
         if val:
@@ -1216,6 +1235,7 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
 
     agent_env = {
         "JOB_ID": job.id,
+        "JOB_TYPE": job.type,
         "STRATEGY_ID": strategy_id,
         "VERSION_ID": version_id,
         "PROMPT": prompt,
@@ -1269,6 +1289,7 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         "LANGFUSE_TRACING_ENVIRONMENT",
         "LANGFUSE_SESSION_ID",
         "LANGFUSE_USER_ID",
+        *_PROXY_ENV_KEYS,
     ):
         val = os.getenv(key)
         if val:

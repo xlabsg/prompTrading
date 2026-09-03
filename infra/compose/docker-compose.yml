@@ -41,6 +41,12 @@ services:
       LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
       # Trading API encryption key (required for live trading)
       TRADING_API_ENCRYPTION_KEY: ${TRADING_API_ENCRYPTION_KEY:-}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
     volumes:
       - workspaces:/workspaces
     ports:
@@ -88,6 +94,12 @@ services:
       # Sandbox & Resource Control
       SANDBOX_RUNTIME: ${SANDBOX_RUNTIME:-}
       MIN_AVAILABLE_MEMORY_MB: ${MIN_AVAILABLE_MEMORY_MB:-256}
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
+      http_proxy: ${HTTP_PROXY:-}
+      https_proxy: ${HTTPS_PROXY:-}
+      no_proxy: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - workspaces:/workspaces

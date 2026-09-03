@@ -24,6 +24,11 @@ def load_callable_from_file(file_path: str, func_name: str) -> Callable[..., Any
     if spec is None or spec.loader is None:
         raise RuntimeError(f"failed_to_load_spec: {file_path}")
     module = importlib.util.module_from_spec(spec)
+    try:
+        import ta
+        module.__dict__["ta"] = ta
+    except Exception:
+        pass
     spec.loader.exec_module(module)  # type: ignore[union-attr]
     fn = getattr(module, func_name, None)
     if fn is None or not callable(fn):

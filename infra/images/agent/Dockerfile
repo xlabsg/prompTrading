@@ -18,6 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 COPY packages/agent/agent /app/agent
 COPY packages/backtest/backtest /app/backtest
+COPY packages/backtest/ta.py /app/ta.py
 COPY packages/data/data /app/data
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
 

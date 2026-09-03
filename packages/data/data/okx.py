@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from typing import Optional
 
@@ -25,7 +26,7 @@ class CandlesRequest:
     limit: int = 1000
 
 
-OKX_BASE_URL = "https://www.okx.com"
+OKX_BASE_URL = os.getenv("OKX_BASE_URL", "https://www.okx.com")
 # OKX candle endpoints accept up to 300 bars per request (values above are capped server-side).
 OKX_MAX_LIMIT = 300
 OKX_CANDLES_PATH = "/api/v5/market/candles"

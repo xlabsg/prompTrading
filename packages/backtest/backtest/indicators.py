@@ -13,24 +13,32 @@ except Exception:  # noqa: BLE001
     _talib = None
 
 
-def sma(x: SeriesLike, window: int) -> pd.Series:
+def _resolve_window(window: int, timeperiod: int | None = None, length: int | None = None) -> int:
+    if timeperiod is not None:
+        return int(timeperiod)
+    if length is not None:
+        return int(length)
+    return int(window)
+
+
+def sma(x: SeriesLike, window: int = 10, timeperiod: int | None = None, length: int | None = None) -> pd.Series:
     """Simple moving average."""
     s = pd.Series(x, copy=False).astype(float)
-    w = max(1, int(window))
+    w = max(1, _resolve_window(window, timeperiod, length))
     return s.rolling(w).mean()
 
 
-def ema(x: SeriesLike, window: int) -> pd.Series:
+def ema(x: SeriesLike, window: int = 10, timeperiod: int | None = None, length: int | None = None) -> pd.Series:
     """Exponential moving average (EMA)."""
     s = pd.Series(x, copy=False).astype(float)
-    w = max(1, int(window))
+    w = max(1, _resolve_window(window, timeperiod, length))
     return s.ewm(span=w, adjust=False, min_periods=w).mean()
 
 
-def rsi(close: SeriesLike, window: int = 14) -> pd.Series:
+def rsi(close: SeriesLike, window: int = 14, timeperiod: int | None = None, length: int | None = None) -> pd.Series:
     """Relative Strength Index (RSI), Wilder-style smoothing."""
     c = pd.Series(close, copy=False).astype(float)
-    w = max(1, int(window))
+    w = max(1, _resolve_window(window, timeperiod, length))
     delta = c.diff()
     gain = delta.clip(lower=0.0)
     loss = (-delta).clip(lower=0.0)
