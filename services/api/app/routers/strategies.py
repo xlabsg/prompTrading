@@ -1010,50 +1010,19 @@ def _evaluate_strategy_metrics(strategy_dir: str) -> dict[str, Any] | None:
 
 
 def _format_metrics_comparison(before: dict[str, Any] | None, after: dict[str, Any] | None) -> str:
-    """Format before-and-after backtest metrics comparison in markdown."""
+    """Format before-and-after backtest metrics comparison as language-neutral structured action block."""
     if not after:
         return ""
-    lines = ["\n\n📈 **最新回测评估结果 (BTC 1h 基准)**:"]
-
-    def _fmt_pct(val: Any) -> str:
-        try:
-            return f"{float(val):+.2f}%"
-        except (ValueError, TypeError):
-            return "N/A"
-
-    def _fmt_num(val: Any) -> str:
-        try:
-            return f"{float(val):.2f}"
-        except (ValueError, TypeError):
-            return "N/A"
-
-    ret_after = after.get("total_return")
-    ret_before = before.get("total_return") if before else None
-    if ret_after is not None:
-        delta = f" (相比修改前 {_fmt_pct(ret_before)} → {_fmt_pct(ret_after)})" if ret_before is not None else ""
-        lines.append(f"- **总收益率 (Total Return)**: `{_fmt_pct(ret_after)}`{delta}")
-
-    sharpe_after = after.get("sharpe_ratio")
-    sharpe_before = before.get("sharpe_ratio") if before else None
-    if sharpe_after is not None:
-        delta = f" (相比修改前 {_fmt_num(sharpe_before)} → {_fmt_num(sharpe_after)})" if sharpe_before is not None else ""
-        lines.append(f"- **夏普比率 (Sharpe Ratio)**: `{_fmt_num(sharpe_after)}`{delta}")
-
-    dd_after = after.get("max_drawdown")
-    dd_before = before.get("max_drawdown") if before else None
-    if dd_after is not None:
-        delta = f" (相比修改前 {_fmt_pct(dd_before)} → {_fmt_pct(dd_after)})" if dd_before is not None else ""
-        lines.append(f"- **最大回撤 (Max Drawdown)**: `{_fmt_pct(dd_after)}`{delta}")
-
-    wr_after = after.get("win_rate")
-    if wr_after is not None:
-        lines.append(f"- **胜率 (Win Rate)**: `{_fmt_pct(wr_after).replace('+', '')}`")
-
-    alpha_after = after.get("alpha")
-    if alpha_after is not None:
-        lines.append(f"- **超额收益 (Alpha)**: `{_fmt_pct(alpha_after)}`")
-
-    return "\n".join(lines)
+    payload = {
+        "benchmark": {
+            "exchange": "okx",
+            "symbol": "BTC-USDT-SWAP",
+            "interval": "1h",
+        },
+        "before": before or {},
+        "after": after or {},
+    }
+    return f"\n\n```action:metrics_comparison\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```\n"
 
 
 def _run_autonomous_refine(

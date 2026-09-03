@@ -1422,6 +1422,16 @@ const zh = {
     trendingTitle: "热门管理",
     syncTrending: "同步热门策略",
   },
+  metricsComparison: {
+    title: "最新回测评估 ({{symbol}} {{interval}} 基准)",
+    totalReturn: "总收益率",
+    sharpeRatio: "夏普比率",
+    maxDrawdown: "最大回撤",
+    winRate: "胜率",
+    vsPrevious: "相比修改前",
+    improved: "表现改善",
+    declined: "表现变化",
+  },
 };
 
 export default zh;

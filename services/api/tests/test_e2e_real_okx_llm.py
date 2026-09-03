@@ -18,10 +18,11 @@ from tests.conftest import (
 @pytest.mark.e2e_extended
 @pytest.mark.slow
 @pytest.mark.timeout(3600)
+@pytest.mark.skipif(
+    os.getenv("E2E_REAL_EXTERNAL") not in {"1", "true", "TRUE", "yes", "YES"},
+    reason="Set E2E_REAL_EXTERNAL=1 to enable real external E2E test",
+)
 def test_e2e_generate_and_backtest_real_okx_llm(e2e_client: E2EClient, e2e_strategy_id: str):
-    if os.getenv("E2E_REAL_EXTERNAL") not in {"1", "true", "TRUE", "yes", "YES"}:
-        pytest.skip("Set E2E_REAL_EXTERNAL=1 to enable real external E2E test")
-
     if not (os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("LLM_API_KEY")):
         pytest.skip("No LLM API key configured in environment")
 

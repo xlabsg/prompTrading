@@ -1437,6 +1437,16 @@ const en = {
     trendingTitle: "Trending Admin",
     syncTrending: "Sync trending strategies",
   },
+  metricsComparison: {
+    title: "Backtest Evaluation ({{symbol}} {{interval}} Benchmark)",
+    totalReturn: "Total Return",
+    sharpeRatio: "Sharpe Ratio",
+    maxDrawdown: "Max Drawdown",
+    winRate: "Win Rate",
+    vsPrevious: "vs previous",
+    improved: "Improved",
+    declined: "Changed",
+  },
 };
 
 export default en;

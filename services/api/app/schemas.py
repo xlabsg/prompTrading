@@ -81,7 +81,7 @@ class BacktestCreateRequest(BaseModel):
 
 class GenerateAndBacktestRequest(BaseModel):
     prompt: str
-    dataset: DatasetRequest = Field(default_factory=DatasetRequest)
+    dataset: Optional[DatasetRequest] = None
     params: dict[str, Any] = Field(default_factory=dict)
     llm_meta: dict[str, Any] = Field(default_factory=dict)
 

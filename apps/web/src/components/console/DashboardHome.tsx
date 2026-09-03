@@ -487,13 +487,9 @@ const DashboardHome = ({
 
             const prompt = buildGenerationPrompt(createdStrategy);
 
+            // Backend automatically infers target symbol & interval from prompt, or falls back to standard benchmark
             const result = await strategiesApi.generateAndBacktest(createdStrategy.id, {
                 prompt,
-                dataset: {
-                    exchange: "okx",
-                    symbol: "BTC-USDT-SWAP",
-                    interval: "1h",
-                },
             });
 
             // Poll job status to show real progress

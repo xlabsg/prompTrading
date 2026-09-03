@@ -173,3 +173,50 @@ def test_parse_ready_without_json_falls_back_to_chatting() -> None:
     assert config is None
     assert "请确认以上信息是否正确" in clean_reply
     assert "[READY]" not in clean_reply
+
+
+def test_format_metrics_comparison_emits_structured_action_block() -> None:
+    import json
+    from app.routers.strategies import _format_metrics_comparison
+
+    before = {"total_return": 0.10, "sharpe_ratio": 1.20, "max_drawdown": 0.08, "win_rate": 0.50}
+    after = {"total_return": 0.18, "sharpe_ratio": 1.85, "max_drawdown": 0.05, "win_rate": 0.62}
+
+    output = _format_metrics_comparison(before, after)
+    assert "```action:metrics_comparison" in output
+    assert "BTC-USDT-SWAP" in output
+
+    # Extract JSON and verify fields
+    json_str = output.split("```action:metrics_comparison\n")[1].split("\n```")[0]
+    data = json.loads(json_str)
+    assert data["benchmark"]["symbol"] == "BTC-USDT-SWAP"
+    assert data["before"]["total_return"] == 0.10
+    assert data["after"]["total_return"] == 0.18
+
+
+def test_infer_dataset_from_prompt_variants() -> None:
+    from app.routers.backtests import _infer_dataset_from_prompt
+
+    # 1. US Stock AAPL 1d
+    ds1 = _infer_dataset_from_prompt("请帮我写一个苹果 AAPL 的日线趋势跟踪策略")
+    assert ds1.exchange == "us_stock"
+    assert ds1.symbol == "AAPL"
+    assert ds1.interval == "1d"
+
+    # 2. Crypto ETH 15m
+    ds2 = _infer_dataset_from_prompt("开发一个以太坊 ETH 15分钟突破策略")
+    assert ds2.exchange == "okx"
+    assert ds2.symbol == "ETH-USDT-SWAP"
+    assert ds2.interval == "15m"
+
+    # 3. Crypto SOL 4h
+    ds3 = _infer_dataset_from_prompt("写一个 SOL 4小时均线策略")
+    assert ds3.exchange == "okx"
+    assert ds3.symbol == "SOL-USDT-SWAP"
+    assert ds3.interval == "4h"
+
+    # 4. Fallback default benchmark
+    ds4 = _infer_dataset_from_prompt("写一个双均线金叉死叉策略")
+    assert ds4.exchange == "okx"
+    assert ds4.symbol == "BTC-USDT-SWAP"
+    assert ds4.interval == "1h"

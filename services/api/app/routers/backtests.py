@@ -4,6 +4,7 @@ from collections import OrderedDict
 import json
 import math
 import os
+import re
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -229,6 +230,67 @@ def _normalize_crypto_range(dataset: DatasetRequest) -> DatasetRequest:
     return dataset
 
 
+def _infer_dataset_from_prompt(prompt: str, base_req: DatasetRequest | None = None) -> DatasetRequest:
+    """Infer exchange, symbol, and interval from user prompt with benchmark fallback."""
+    p = (prompt or "").lower()
+
+    exchange = base_req.exchange if base_req is not None else None
+    symbol = base_req.symbol if base_req is not None else None
+    interval = base_req.interval if base_req is not None else None
+
+    # 1. US Stock detection
+    if symbol is None:
+        for kw in ("aapl", "tsla", "nvda", "msft", "googl", "amzn", "meta", "spy", "qqq"):
+            if re.search(rf"\b{kw}\b", p):
+                exchange = exchange or "us_stock"
+                symbol = kw.upper()
+                break
+        if symbol is None and "美股" in p:
+            exchange = exchange or "us_stock"
+            symbol = "SPY"
+
+    # 2. Crypto symbols
+    if symbol is None:
+        if "eth" in p or "以太坊" in p:
+            symbol = "ETH-USDT-SWAP"
+        elif "sol" in p or "solana" in p:
+            symbol = "SOL-USDT-SWAP"
+        elif "doge" in p or "狗狗币" in p:
+            symbol = "DOGE-USDT-SWAP"
+        elif "bnb" in p:
+            symbol = "BNB-USDT-SWAP"
+        else:
+            symbol = "BTC-USDT-SWAP"
+
+    if exchange is None:
+        exchange = "okx"
+
+    # 3. Interval detection
+    if interval is None:
+        if exchange == "us_stock":
+            interval = "1d"
+        elif any(x in p for x in ("15m", "15分", "15 min")):
+            interval = "15m"
+        elif any(x in p for x in ("5m", "5分", "5 min")):
+            interval = "5m"
+        elif any(x in p for x in ("30m", "30分", "30 min")):
+            interval = "30m"
+        elif any(x in p for x in ("4h", "4小时", "4 hour")):
+            interval = "4h"
+        elif any(x in p for x in ("1d", "日线", "daily", "天")):
+            interval = "1d"
+        else:
+            interval = "1h"
+
+    return DatasetRequest(
+        exchange=exchange,
+        symbol=symbol,
+        interval=interval,
+        start_ms=base_req.start_ms if base_req else None,
+        end_ms=base_req.end_ms if base_req else None,
+    )
+
+
 def _create_dataset(db: Session, dataset: DatasetRequest) -> Dataset:
     exchange = (dataset.exchange or "").strip().lower()
     if exchange not in ("binance", "okx", "us_stock"):
@@ -362,7 +424,8 @@ def generate_and_backtest(
         snapshot=False,
     )
 
-    ds = _create_dataset(db, req.dataset)
+    dataset_req = _infer_dataset_from_prompt(req.prompt, req.dataset)
+    ds = _create_dataset(db, dataset_req)
 
     run = BacktestRun(
         strategy_id=strategy_id,
