@@ -57,7 +57,7 @@ jobs:
           pytest -v packages/control_plane
           pytest -v packages/data
           pytest -v packages/backtest
-          pytest -v packages/agent
+          pytest -v packages/agent/tests
           pytest -v services/api
 
   frontend-quality:

@@ -211,7 +211,8 @@ def find_anchor_position(
 
     # Try exact match first
     for i, line in enumerate(lines):
-        if line.strip() == anchor_stripped:
+        line_s = line.strip()
+        if line_s == anchor_stripped or line_s.replace('"', "'") == anchor_stripped.replace('"', "'"):
             return {
                 "found": True,
                 "line_number": i + 1,
@@ -220,7 +221,8 @@ def find_anchor_position(
 
     # Try partial match (fuzzy)
     for i, line in enumerate(lines):
-        if anchor_stripped in line.strip():
+        line_s = line.strip()
+        if anchor_stripped in line_s or anchor_stripped.replace('"', "'") in line_s.replace('"', "'"):
             return {
                 "found": True,
                 "line_number": i + 1,
@@ -297,7 +299,18 @@ def extract_logic_blocks(function_code: str) -> list[dict[str, Any]]:
     blocks = []
     lines = function_code.split("\n")
 
-    for node in tree.body:
+    body_nodes = []
+    has_functions = any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) for node in tree.body)
+    if has_functions:
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                body_nodes.extend(node.body)
+            else:
+                body_nodes.append(node)
+    else:
+        body_nodes = tree.body
+
+    for node in body_nodes:
         if isinstance(node, ast.If):
             source = ast.get_source_segment(function_code, node)
             if source:
