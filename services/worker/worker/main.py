@@ -24,8 +24,8 @@ from sqlalchemy import text, or_, update
 from sqlalchemy.orm import Session
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, SandboxStatus, TrendingBacktestStatus, TrendingSourceType
-from control_plane.models import Base, BacktestRun, Dataset, Job, SandboxSession, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, SearchStats, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
+from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingBacktestStatus, TrendingSourceType
+from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, SearchStats, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
 from control_plane.queue import QUEUE_NAME, job_log_channel
 from control_plane.workspaces import git_commit, init_git_repo
 from worker.settings import settings
@@ -1648,72 +1648,12 @@ def _create_backtest_trending_top_n_job(
     enqueue_job(settings.app_workspaces_dir, job_id, JobType.TRENDING_BACKTEST.value, {"strategy_ids": strategy_ids}, priority="batch", redis_client=rds)
 
 
-def _handle_start_sandbox(db: Session, rds: Optional[redis.Redis], docker_client: docker.DockerClient, job: Job) -> None:
-    """Sandbox feature disabled - Traefik has been removed."""
-    _publish_log(job.id, "Sandbox feature is disabled. Traefik reverse proxy has been removed.", rds=rds)
-    raise RuntimeError(
-        "Sandbox (code-server) feature is disabled. "
-        "Traefik reverse proxy has been removed from the infrastructure. "
-        "Please use your local development environment to edit strategies."
-    )
-
-
-def _handle_stop_sandbox(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    session_id = job.payload["session_id"]
-    session = db.get(SandboxSession, session_id)
-    if session is None:
-        raise RuntimeError(f"sandbox_not_found: {session_id}")
-
-    if session.container_id:
-        try:
-            container = docker_client.containers.get(session.container_id)
-            container.remove(force=True)
-        except Exception:
-            pass
-
-    session.status = SandboxStatus.STOPPED
-    session.stopped_at = _utcnow()
-    db.flush()
-    _publish_log(rds, job.id, "dev sandbox stopped")
-
-
-# --- Job dispatch ----------------------------------------------------------
-#
-# Every handler is normalised to (db, rds, docker_client, job); handlers that do
-# not spawn a container simply ignore docker_client. Template jobs are imported
-# lazily inside their wrappers to keep worker start-up cheap.
-
-
-def _dispatch_repo(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    # REPO_SYNC is handled as a re-run of import over the selected branches.
-    _handle_repo_import(db, rds, job)
-
-
-def _dispatch_template_performance(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    generate_template_performance_data(db, rds, job)
-
-
-def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    from worker.template_backtest_job import handle_template_backtest
-
-    handle_template_backtest(db, rds, docker_client, job)
-
-
-def _dispatch_template_stable5(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    from worker.template_stable5_screening_job import run_template_stable5_screening
-
-    run_template_stable5_screening(db, rds, job)
-
-
 JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
     # MVP core
     JobType.BACKTEST.value: _handle_backtest,
     JobType.GENERATE_STRATEGY.value: _handle_generate_strategy,
     JobType.GENERATE_AND_BACKTEST.value: _handle_generate_and_backtest,
     JobType.REFINE_STRATEGY.value: _handle_refine_strategy,
-    # Sandbox
-    JobType.START_SANDBOX.value: _handle_start_sandbox,
-    JobType.STOP_SANDBOX.value: _handle_stop_sandbox,
     # Repositories
     JobType.REPO_IMPORT.value: _dispatch_repo,
     JobType.REPO_SYNC.value: _dispatch_repo,
@@ -1816,16 +1756,13 @@ def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: doc
             job.finished_at = _utcnow()
             # Ensure related entities reflect failure even if the original transaction rolled back.
             run_id = None
-            session_id = None
             strategy_id = None
             try:
                 if isinstance(job.payload, dict):
                     run_id = job.payload.get("run_id")
-                    session_id = job.payload.get("session_id")
                     strategy_id = job.payload.get("strategy_id")
             except Exception:
                 run_id = None
-                session_id = None
                 strategy_id = None
 
             if run_id:
@@ -1834,11 +1771,6 @@ def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: doc
                     run.status = BacktestStatus.FAILED
                     run.finished_at = _utcnow()
                     run.error_message = err
-
-            if session_id:
-                sess = db.get(SandboxSession, session_id)
-                if sess is not None and sess.status != SandboxStatus.STOPPED:
-                    sess.status = SandboxStatus.FAILED
 
             if strategy_id:
                 strat = db.get(Strategy, strategy_id)

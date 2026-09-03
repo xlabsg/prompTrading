@@ -20,7 +20,6 @@ class Settings(BaseSettings):
     worker_workspaces_volume: str = "workspaces"
     worker_agent_image: str = "prompt-trading-agent:local"
     worker_backtest_image: str = "prompt-trading-backtest:local"
-    worker_dev_image: str = "prompt-trading-dev:local"
     repo_sync_interval_s: int = 900
 
     # Worker execution mode:

@@ -12,7 +12,6 @@ import type {
     BacktestTrade,
     GenerateStrategyRequest,
     RefineStrategyRequest,
-    SandboxSession,
     Repo,
     RepoImportRequest,
     RepoTreeResponse,
@@ -334,26 +333,6 @@ export const marketsApi = {
                 force_refresh: params.force_refresh ? 1 : undefined,
             })}`
         ),
-};
-
-// ============== Sandbox API ==============
-
-export const sandboxApi = {
-    start: (strategyId: string) =>
-        fetchApi<TriggerJobResponse>(`/api/strategies/${strategyId}/sandbox`, {
-            method: "POST",
-        }),
-
-    stop: (sessionId: string) =>
-        fetchApi<Job>(`/api/sandbox/${sessionId}`, {
-            method: "DELETE",
-        }),
-
-    get: (sessionId: string) =>
-        fetchApi<SandboxSession>(`/api/sandbox/${sessionId}`),
-
-    list: (strategyId: string) =>
-        fetchApi<SandboxSession[]>(`/api/strategies/${strategyId}/sandboxes`),
 };
 
 // ============== Repositories API ==============

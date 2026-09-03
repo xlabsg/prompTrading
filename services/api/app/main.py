@@ -16,7 +16,7 @@ from sqlalchemy import select, text
 
 from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import Base
-from app.routers import backtests, internal, jobs, markets, portfolio, sandbox, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops
+from app.routers import backtests, jobs, markets, portfolio, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops
 from app.routers import strategy_accounts, strategy_members, strategy_workspace
 from app.routers import auth as auth_router
 from app.routers import billing as billing_router
@@ -156,9 +156,7 @@ app.include_router(backtests.router, prefix="/api", tags=["backtests"])
 app.include_router(trading.router, prefix="/api", tags=["trading"])
 app.include_router(portfolio.router, tags=["portfolio"])
 app.include_router(jobs.router, prefix="/api", tags=["jobs"])
-app.include_router(sandbox.router, prefix="/api", tags=["sandbox"])
 app.include_router(ws.router, prefix="/ws", tags=["ws"])
-app.include_router(internal.router, prefix="/internal", tags=["internal"])
 app.include_router(auth_router.router, prefix="/api", tags=["auth"])
 app.include_router(billing_router.router, prefix="/api", tags=["billing"])
 app.include_router(repos_router.router, prefix="/api", tags=["repos"])

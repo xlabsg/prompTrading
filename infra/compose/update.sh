@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR"
 COMPOSE="${COMPOSE_CMD:-docker compose}"
 
 RUNTIME_SERVICES=(api worker worker-rpc web)
-TOOLING_SERVICES=(agent-image backtest-image dev-image)
+TOOLING_SERVICES=(agent-image backtest-image)
 
 PULL=1
 BUILD=1

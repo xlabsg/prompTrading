@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     redis_url: Optional[str] = None
     workspaces_dir: str = "/workspaces"
     public_base_url: str = "http://localhost:3000"
-    sandbox_base_url: str = "http://localhost:8080"
     worker_rpc_base_url: str = "http://worker-rpc:8010"
     worker_rpc_token: Optional[str] = None
     worker_rpc_timeout_s: float = 10.0
