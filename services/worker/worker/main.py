@@ -647,6 +647,8 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         "AGENT_MAX_STEPS",
         "AGENT_TAU_EVENT_TIMEOUT_S",
         "AGENT_TAU_MAX_FOLLOW_UPS",
+        "AGENT_TAU_THINKING_LEVEL",
+        "PARENT_TAU_SESSION_ID",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -1159,6 +1161,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         "AGENT_MAX_STEPS",
         "AGENT_TAU_EVENT_TIMEOUT_S",
         "AGENT_TAU_MAX_FOLLOW_UPS",
+        "AGENT_TAU_THINKING_LEVEL",
+        "PARENT_TAU_SESSION_ID",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
@@ -1249,6 +1253,23 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
             agent_env["LLM_MODEL"] = str(llm_meta["model"])
         if llm_meta.get("temperature") is not None:
             agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+        if llm_meta.get("thinking_level"):
+            agent_env["AGENT_TAU_THINKING_LEVEL"] = str(llm_meta["thinking_level"])
+        if llm_meta.get("parent_tau_session_id"):
+            agent_env["PARENT_TAU_SESSION_ID"] = str(llm_meta["parent_tau_session_id"])
+
+    # If parent_version_id is provided, automatically inherit its tau_session_id for continuous memory
+    parent_version_id = job.payload.get("parent_version_id")
+    if parent_version_id and "PARENT_TAU_SESSION_ID" not in agent_env:
+        try:
+            parent_v = db.query(StrategyVersion).filter(StrategyVersion.id == parent_version_id).first()
+            if parent_v and isinstance(parent_v.llm_meta, dict):
+                p_sid = parent_v.llm_meta.get("tau_session_id")
+                if p_sid:
+                    agent_env["PARENT_TAU_SESSION_ID"] = str(p_sid)
+        except Exception:
+            pass
+
     # Pass-through optional LLM env vars into agent sandbox only.
     # Support DeepSeek (OpenAI-compatible) as well.
     for key in (
@@ -1281,6 +1302,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         "AGENT_MAX_STEPS",
         "AGENT_TAU_EVENT_TIMEOUT_S",
         "AGENT_TAU_MAX_FOLLOW_UPS",
+        "AGENT_TAU_THINKING_LEVEL",
+        "PARENT_TAU_SESSION_ID",
         # Langfuse observability
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",

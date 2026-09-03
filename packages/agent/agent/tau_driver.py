@@ -42,6 +42,8 @@ class TauSessionResult:
     """What one driven Tau session produced."""
 
     summary: str = ""
+    session_id: str | None = None
+    trace_html_path: str | None = None
     turns: int = 0
     follow_ups: int = 0
     tool_calls: dict[str, int] = field(default_factory=dict)
@@ -105,6 +107,8 @@ def build_command(
     provider: str,
     model: str,
     extension_path: str | None = None,
+    thinking_level: str | None = None,
+    session_id: str | None = None,
     tau_executable: str | None = None,
 ) -> list[str]:
     """Build the argv for the Tau child process.
@@ -125,6 +129,11 @@ def build_command(
         "--model",
         model,
     ]
+    effective_thinking = thinking_level or os.getenv("AGENT_TAU_THINKING_LEVEL")
+    if effective_thinking and effective_thinking.strip():
+        command += ["--thinking", effective_thinking.strip()]
+    if session_id and session_id.strip():
+        command += ["--session", session_id.strip()]
     if extension_path:
         command += ["-e", extension_path]
     return command
@@ -138,6 +147,8 @@ def run_session(
     model: str,
     validate: Validator,
     extension_path: str | None = None,
+    thinking_level: str | None = None,
+    session_id: str | None = None,
     progress_callback: ProgressCallback | None = None,
     tau_executable: str | None = None,
     env: dict[str, str] | None = None,
@@ -153,6 +164,8 @@ def run_session(
         provider=provider,
         model=model,
         extension_path=extension_path,
+        thinking_level=thinking_level,
+        session_id=session_id,
         tau_executable=tau_executable,
     )
     child_env = {**os.environ, "TAU_WORKSPACE": workspace}
@@ -185,6 +198,7 @@ def run_session(
             progress_callback=progress_callback,
             event_timeout_s=event_timeout_s,
             max_follow_ups=max_follow_ups,
+            workspace=workspace,
         )
     finally:
         _shutdown(proc)
@@ -201,6 +215,7 @@ def _drive(
     progress_callback: ProgressCallback | None,
     event_timeout_s: float,
     max_follow_ups: int,
+    workspace: str,
 ) -> None:
     assert proc.stdout is not None
     reader = _EventReader(proc.stdout)
@@ -221,7 +236,7 @@ def _drive(
 
         problems = validate()
         if not problems:
-            _collect_stats(proc, reader, result, event_timeout_s)
+            _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
             return
 
         result.follow_ups += 1
@@ -250,28 +265,64 @@ def _collect_stats(
     reader: _EventReader,
     result: TauSessionResult,
     event_timeout_s: float,
+    workspace: str | None = None,
 ) -> None:
-    """Record what the session cost, for the run's `llm_meta`.
+    """Record session stats, session id, and HTML trace.
 
     Best effort: a session that produced good artifacts is not a failure just
-    because its accounting could not be read.
+    because its accounting or trace export could not be read.
     """
+    timeout = min(event_timeout_s, 10.0)
+
+    # 1. get_session_stats
     try:
         _send(proc, {"id": 9000, "type": "get_session_stats"})
-        for event in _events(reader, event_timeout_s, proc):
-            if event.get("type") != "response" or event.get("command") != "get_session_stats":
-                continue
-            data = event.get("data")
-            if isinstance(data, dict):
-                tokens = data.get("tokens")
-                if isinstance(tokens, dict):
-                    result.tokens = tokens
-                cost = data.get("cost")
-                if isinstance(cost, (int, float)):
-                    result.cost_usd = float(cost)
-            return
+        for event in _events(reader, timeout, proc):
+            if event.get("type") == "response" and event.get("command") == "get_session_stats":
+                data = event.get("data")
+                if isinstance(data, dict):
+                    tokens = data.get("tokens")
+                    if isinstance(tokens, dict):
+                        result.tokens = tokens
+                    cost = data.get("cost")
+                    if isinstance(cost, (int, float)):
+                        result.cost_usd = float(cost)
+                break
     except (TauSessionError, OSError, ValueError) as exc:
         print(f"[agent] could not read session stats: {exc}", file=sys.stderr)
+
+    # 2. get_state for session_id
+    try:
+        _send(proc, {"id": 9001, "type": "get_state"})
+        for event in _events(reader, timeout, proc):
+            if event.get("type") == "response" and event.get("command") == "get_state":
+                data = event.get("data")
+                if isinstance(data, dict):
+                    sid = data.get("sessionId")
+                    if sid:
+                        result.session_id = str(sid)
+                break
+    except (TauSessionError, OSError, ValueError) as exc:
+        print(f"[agent] could not read session state: {exc}", file=sys.stderr)
+
+    # 3. export_html
+    if workspace:
+        trace_file = os.path.join(workspace, "tau_trace.html")
+        try:
+            _send(proc, {"id": 9002, "type": "export_html", "outputPath": trace_file})
+            for event in _events(reader, timeout, proc):
+                if event.get("type") == "response" and event.get("command") == "export_html":
+                    data = event.get("data")
+                    out_path = (
+                        (data.get("path") if isinstance(data, dict) else None)
+                        or trace_file
+                    )
+                    if os.path.isfile(out_path):
+                        result.trace_html_path = out_path
+                        print(f"[agent] exported session trace to {out_path}", flush=True)
+                    break
+        except (TauSessionError, OSError, ValueError) as exc:
+            print(f"[agent] could not export session html trace: {exc}", file=sys.stderr)
 
 
 def _prompt_command(request_id: int, message: str, behavior: str | None) -> dict[str, Any]:
