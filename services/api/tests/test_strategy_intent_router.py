@@ -159,11 +159,14 @@ def test_chat_with_strategy_qa_vs_refine(monkeypatch):
             )
             db.add(s)
 
-        # 1. Q&A scenario: Fast LLM answer without running autonomous refine
+        # 1. Q&A scenario: Tau does not change files
         with session_scope(session_factory) as db:
             monkeypatch.setattr(
-                "app.routers.strategies._call_chat_llm",
-                lambda *args, **kwargs: "这是一个布林带均值回归策略。",
+                "app.routers.strategies._run_autonomous_refine",
+                lambda *args, **kwargs: {
+                    "agent_summary": "这是一个布林带均值回归策略。",
+                    "files_changed": False,
+                },
             )
             req = ChatRequest(message="解释一下这个策略")
             dummy_request = MagicMock()
@@ -234,12 +237,17 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
             )
             db.add(s)
 
-        # 1. Q&A streaming: Fast LLM answer without running autonomous refine
+        # 1. Q&A streaming: Tau does not modify files
         with session_scope(session_factory) as db:
-            monkeypatch.setattr(
-                "app.routers.strategies._call_chat_llm",
-                lambda *args, **kwargs: "该策略使用了RSI指标。",
-            )
+            def fake_run_qa(*args, **kwargs):
+                on_progress = kwargs.get("on_progress")
+                if on_progress:
+                    on_progress({"tool": "read", "path": "strategy.py", "phase": "executing"})
+                return {
+                    "agent_summary": "该策略使用了RSI指标。",
+                    "files_changed": False,
+                }
+            monkeypatch.setattr("app.routers.strategies._run_autonomous_refine", fake_run_qa)
 
             req = ChatRequest(message="使用了什么指标？")
             dummy_request = MagicMock()
@@ -292,41 +300,5 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
             # Verify version was saved
             versions = db.execute(select(StrategyVersion).where(StrategyVersion.strategy_id == strat_id)).scalars().all()
             assert len(versions) == 1
-
-
-def test_classify_done_chat_intent_qa():
-    from app.routers.strategies import _classify_done_chat_intent
-
-    assert _classify_done_chat_intent("给我描述一下这个策略的逻辑") == "chat"
-    assert _classify_done_chat_intent("解释一下这个策略") == "chat"
-    assert _classify_done_chat_intent("讲讲这个策略的核心逻辑") == "chat"
-    assert _classify_done_chat_intent("说明一下这个策略是怎么产生信号的") == "chat"
-    assert _classify_done_chat_intent("分析一下回测表现") == "chat"
-    assert _classify_done_chat_intent("这个策略的原理是什么？") == "chat"
-    assert _classify_done_chat_intent("为什么最近一笔交易止损了？") == "chat"
-    assert _classify_done_chat_intent("用了什么指标？") == "chat"
-    assert _classify_done_chat_intent("解释一下为什么把均线改成20？") == "chat"
-    assert _classify_done_chat_intent("可以把止损改成3%吗？") == "chat"
-    assert _classify_done_chat_intent("你好") == "chat"
-    assert _classify_done_chat_intent("") == "chat"
-
-
-def test_classify_done_chat_intent_refine():
-    from app.routers.strategies import _classify_done_chat_intent
-
-    assert _classify_done_chat_intent("把止损改成3%") == "refine"
-    assert _classify_done_chat_intent("将周期调整为 4h") == "refine"
-    assert _classify_done_chat_intent("改成双均线策略") == "refine"
-    assert _classify_done_chat_intent("增加一个 14 周期的 RSI 过滤条件") == "refine"
-    assert _classify_done_chat_intent("去掉做空逻辑，只保留做多") == "refine"
-    assert _classify_done_chat_intent("修改入场信号：金叉且在零轴之上") == "refine"
-    assert _classify_done_chat_intent("优化代码，加入移动止盈") == "refine"
-    assert _classify_done_chat_intent("remove short trading logic") == "refine"
-    assert _classify_done_chat_intent("change stop loss to 3%") == "refine"
-    assert _classify_done_chat_intent("add an RSI filter") == "refine"
-
-
-
-
 
 
