@@ -20,7 +20,7 @@ from docker.types import Ulimit
 import redis
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from sqlalchemy import text, or_
+from sqlalchemy import text, or_, update
 from sqlalchemy.orm import Session
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
@@ -271,11 +271,21 @@ def _run_container_and_stream_logs(
         _safe_mkdir(os.path.dirname(log_file_path))
         log_f = open(log_file_path, "w", encoding="utf-8")
 
+    env = dict(environment or {})
+    proxy_val = os.getenv("CONTAINER_HTTP_PROXY") or os.getenv("HTTP_PROXY") or os.getenv("http_proxy")
+    if proxy_val:
+        proxy_val = proxy_val.replace("127.0.0.1", "host.docker.internal").replace("localhost", "host.docker.internal")
+        for k in ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"):
+            if k not in env:
+                env[k] = proxy_val
+    env.setdefault("no_proxy", "127.0.0.1,localhost,api,redis,worker,web,e2e-runner,host.docker.internal")
+    env.setdefault("NO_PROXY", "127.0.0.1,localhost,api,redis,worker,web,e2e-runner,host.docker.internal")
+
     run_kwargs: dict[str, Any] = {
         "image": image,
         "name": name,
         "command": command,
-        "environment": environment or {},
+        "environment": env,
         "volumes": volumes or {},
         "network": network,
         "labels": labels or {},
@@ -283,6 +293,7 @@ def _run_container_and_stream_logs(
         "cap_drop": ["ALL"],
         "security_opt": ["no-new-privileges:true"],
         "pids_limit": pids_limit if pids_limit is not None else 512,
+        "extra_hosts": {"host.docker.internal": "host-gateway"},
     }
     if mem_limit is not None:
         run_kwargs["mem_limit"] = mem_limit
@@ -299,6 +310,16 @@ def _run_container_and_stream_logs(
     sandbox_runtime = settings.sandbox_runtime or os.getenv("SANDBOX_RUNTIME")
     if sandbox_runtime:
         run_kwargs["runtime"] = sandbox_runtime
+
+    if name:
+        try:
+            existing = client.containers.get(name)
+            try:
+                existing.remove(force=True)
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     container = client.containers.run(**run_kwargs)
     stop_event = threading.Event()
@@ -821,7 +842,7 @@ def _enqueue_stale_repo_syncs(session_factory, rds: redis.Redis, *, min_age_s: i
                 .filter(
                     Job.type == JobType.REPO_SYNC,
                     Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
-                    Job.payload["repo_id"].astext == repo.id,
+                    Job.payload["repo_id"].as_string() == repo.id,
                 )
                 .first()
             )
@@ -1669,30 +1690,34 @@ _TRENDING_JOB_TYPES = frozenset(
 def _process_job(session_factory, rds: Optional[redis.Redis], docker_client: docker.DockerClient, job_id: str) -> None:
     # DB/queue are not transactional together; the worker may see the queue message
     # slightly before the DB commit. Retry a bit to avoid dropping jobs.
-    job_found = False
+    claimed = False
     for _ in range(25):
         with session_scope(session_factory) as db:
             job = db.get(Job, job_id)
-            if job is None:
-                job_found = False
-            else:
-                job_found = True
-                # If an admin already cancelled this job, don't override it.
-                if str(job.status) == JobStatus.CANCELLED:
+            if job is not None:
+                # If an admin already cancelled this job, or another consumer already started it, don't re-run.
+                if str(job.status) in (JobStatus.CANCELLED, JobStatus.RUNNING, JobStatus.SUCCEEDED):
                     return
-                if _is_cancel_requested(job_id, rds=rds) and str(job.status) == JobStatus.QUEUED:
+                if _is_cancel_requested(job_id, rds=rds):
                     job.status = JobStatus.CANCELLED
                     job.finished_at = _utcnow()
                     job.error_message = "cancelled"
                     db.flush()
                     return
-                job.status = JobStatus.RUNNING
-                job.started_at = _utcnow()
-                db.flush()
-        if job_found:
-            break
+                # Atomically claim the job
+                stmt = (
+                    update(Job)
+                    .where(Job.id == job_id, Job.status == JobStatus.QUEUED)
+                    .values(status=JobStatus.RUNNING, started_at=_utcnow())
+                )
+                res = db.execute(stmt)
+                if res.rowcount > 0:
+                    claimed = True
+                    break
+                else:
+                    return
         time.sleep(0.2)
-    if not job_found:
+    if not claimed:
         return
 
     try:

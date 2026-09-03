@@ -188,7 +188,7 @@ def _check_no_running_job(db: Session, job_types: list[JobType], *, strategy_id:
         select(Job)
         .where(Job.type.in_(job_types))
         .where(or_(Job.status == JobStatus.QUEUED, Job.status == JobStatus.RUNNING))
-        .where(Job.payload["strategy_id"].astext == strategy_id)
+        .where(Job.payload["strategy_id"].as_string() == strategy_id)
         .limit(1)
     ).scalar_one_or_none()
     if active_job:

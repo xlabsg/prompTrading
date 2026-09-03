@@ -624,7 +624,7 @@ def _cleanup_template_history(
     runs = (
         db.execute(
             select(BacktestRun)
-            .where(BacktestRun.params["template_id"].astext == template_id)
+            .where(BacktestRun.params["template_id"].as_string() == template_id)
             .order_by(BacktestRun.created_at.desc())
         )
         .scalars()

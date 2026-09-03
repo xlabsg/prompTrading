@@ -308,13 +308,13 @@ async def list_templates(
         )
 
     if stable5_only is True:
-        query = query.filter(StrategyTemplate.backtest_summary["stable5"]["qualifies"].astext == "true")
+        query = query.filter(StrategyTemplate.backtest_summary["stable5"]["qualifies"].as_string() == "true")
 
     total = query.count()
     sort_key = (sort or "").strip().lower()
     if sort_key == "stable5":
-        stable5_score = cast(StrategyTemplate.backtest_summary["stable5"]["score"].astext, Float)
-        stable5_qualifies = StrategyTemplate.backtest_summary["stable5"]["qualifies"].astext == "true"
+        stable5_score = cast(StrategyTemplate.backtest_summary["stable5"]["score"].as_string(), Float)
+        stable5_qualifies = StrategyTemplate.backtest_summary["stable5"]["qualifies"].as_string() == "true"
         qualifies_rank = case((stable5_qualifies, 1), else_=0)
         templates = query.order_by(
             qualifies_rank.desc(),

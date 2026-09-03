@@ -51,7 +51,7 @@ def _is_allowed_host(host: str | None, allowlist: list[str]) -> bool:
     h = _normalize_host(host)
     if not h:
         return True
-    if h in ("localhost", "127.0.0.1", "::1"):
+    if h in ("localhost", "127.0.0.1", "::1", "host.docker.internal"):
         return True
     if _is_ip(h):
         return h in allowlist

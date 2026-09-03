@@ -45,11 +45,15 @@ services:
       # LLM request timeouts (seconds)
       LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
       LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+      APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
+      APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
       redis:
         condition: service_healthy
+      worker-rpc:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.urlopen('http://localhost:8000/healthz', timeout=2); raise SystemExit(0 if 200 <= r.status < 300 else 1)"]
       interval: 10s
@@ -119,10 +123,26 @@ services:
       # Fail-fast timeout for strategy name generation (seconds)
       STRATEGY_NAME_LLM_TIMEOUT_S: ${STRATEGY_NAME_LLM_TIMEOUT_S:-20}
       # Schedulers disabled here (safety; mode already prevents starting them)
-      TRENDING_SCHEDULER_ENABLED: "false"
-      TEMPLATE_PERFORMANCE_SCHEDULER_ENABLED: "false"
+      CONTAINER_HTTP_PROXY: ${CONTAINER_HTTP_PROXY:-http://host.docker.internal:6152}
+      CONTAINER_HTTPS_PROXY: ${CONTAINER_HTTPS_PROXY:-http://host.docker.internal:6152}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - workspaces_e2e:/workspaces
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker-rpc:
+    build:
+      context: ../../
+      dockerfile: services/worker/Dockerfile
+    environment:
+      APP_WORKSPACES_DIR: /workspaces
+      WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+    command: ["uvicorn", "worker.rpc_server:app", "--host", "0.0.0.0", "--port", "8010"]
+    expose:
+      - "8010"
+    volumes:
       - workspaces_e2e:/workspaces
     depends_on:
       redis:
