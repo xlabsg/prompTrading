@@ -34,34 +34,41 @@ docker compose -f infra/compose/docker-compose.dev.yml restart api
 
 1. Navigate to http://localhost:3000
 2. Create or select a strategy
-3. Go to **Live Trading** tab
-4. Select **OKX** exchange (Binance/Bybit show "Coming Soon")
-5. Enter API credentials:
-   - API Key
-   - API Secret  
-   - Passphrase
-6. Set risk parameters
-7. Complete configuration
+3. Go to **Exchange Accounts** dialog
+4. Select **OKX** or **Binance**:
+   - **OKX**: Enter API Key, API Secret, Passphrase
+   - **Binance**: Enter API Key, API Secret (Passphrase is not required)
+5. Set risk parameters (max position %, leverage, stop loss, trailing stop)
+6. Complete configuration
 
 ### 4. Start Trading
 
 - Click **"启动交易"** (Start Trading)
-- Monitor real-time PnL and positions
+- Monitor real-time PnL, positions, and orders
 - Click **"停止交易"** (Stop Trading) to stop
 
 ---
 
 ## 📋 What Was Implemented
 
-### Backend
-✅ **OKX SDK Package** - Complete REST API client with authentication  
-✅ **Fernet Encryption** - Secure API credential storage  
+### Backend & Risk Engine
+✅ **Multi-Exchange Execution Engine** - Native `OKXAdapter` and `BinanceAdapter` implementing the `ExchangeAdapter` abstraction  
+✅ **Microsecond Risk Control** - 9 pre-trade validation checks (`RiskValidator`), dynamic TP/SL, and 60-second periodic reconciler  
+✅ **Binance Client & Adapter** - HMAC-SHA256 authenticated REST client with connection pooling, supporting Spot and USDⓈ-M Futures  
+✅ **Fernet Encryption** - Secure API credential storage with environment-backed key  
 ✅ **Trading Engine** - Session manager, order executor, position monitor  
-✅ **API Endpoints** - Config management, session lifecycle, status polling
+
+### AI Agent & Trade Kit Skills
+✅ **OKX Agent Trade Kit Skills** - Pre-built skills under `packages/agent/skills/`:
+   - `okx-cex-market`: 70+ built-in technical indicators (RSI, MACD, BB, ATR, KDJ, AHR999, etc.)
+   - `okx-cex-bot`: Native Spot Grid, Contract Grid, and DCA bot parameterization
+   - `okx-cex-smartmoney`: Whale tracking, consensus positioning, and top trader leaderboards
+   - `binance-cex`: Binance trading conventions, precision filters, and CLI usage
+✅ **Quant Toolkit CLI** - `pt-quant indicators --source okx` for fast introspection
 
 ### Frontend
-✅ **LiveTradingView Component** - Configuration wizard with 4 steps  
-✅ **Exchange Support** - OKX enabled, Binance/Bybit marked "Coming Soon"  
+✅ **LiveTradingView Component** - Configuration wizard with risk parameter controls  
+✅ **Exchange Support** - OKX and Binance fully enabled in UI  
 ✅ **Real-time Updates** - Status polling every 5 seconds  
 ✅ **PnL Display** - Shows total PnL and trade count
 
