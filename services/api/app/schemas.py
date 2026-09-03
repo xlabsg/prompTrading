@@ -324,34 +324,9 @@ class AuthMeResponse(BaseModel):
     is_admin: bool = False
 
 
-class InviteValidateRequest(BaseModel):
-    code: str
-
-
-class InviteValidateResponse(BaseModel):
-    valid: bool
-
-
-class InviteCreateRequest(BaseModel):
-    code: Optional[str] = None
-    max_uses: Optional[int] = 1
-    expires_at: Optional[datetime] = None
-
-
-class InviteResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    code: str
-    max_uses: int
-    used_count: int
-    created_at: datetime
-    expires_at: Optional[datetime] = None
-
-
 class OAuthStartRequest(BaseModel):
-    invite_code: str
     redirect_path: Optional[str] = None
+    invite_code: Optional[str] = None
 
 
 class OAuthStartResponse(BaseModel):

@@ -43,15 +43,6 @@ const AuthError = () => {
           showWaitlist: false,
         });
         break;
-      case "invite_missing":
-      case "invite_expired":
-      case "invite_exhausted":
-        setErrorData({
-          title: t("errors.invalidInviteTitle"),
-          message: t("errors.invalidInviteMessage"),
-          showWaitlist: true,
-        });
-        break;
       default:
         setErrorData({
           title: t("errors.authTitle"),

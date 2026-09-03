@@ -68,7 +68,7 @@ export function AuthDialog({ open, onOpenChange, initialStep = "register" }: Aut
     setError("");
 
     try {
-      const response = await authApi.startOAuth(provider, "", window.location.pathname);
+      const response = await authApi.startOAuth(provider, window.location.pathname);
       window.location.assign(response.auth_url);
     } catch (err: any) {
       const errorMsg = err?.message || "";

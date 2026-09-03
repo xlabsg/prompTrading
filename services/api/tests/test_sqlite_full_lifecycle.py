@@ -12,7 +12,6 @@ from control_plane.models import (
     User,
     UserSession,
     OAuthAccount,
-    InviteCode,
     Strategy,
     StrategyVersion,
     Job,

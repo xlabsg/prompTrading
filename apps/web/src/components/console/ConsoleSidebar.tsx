@@ -536,15 +536,7 @@ const ConsoleSidebar = ({
         if (!text) return;
         if (isStreaming) return;
 
-        // Check if user input directly triggers an action
-        const actionPayload = parseActionFromMessage(text);
-        if (actionPayload) {
-            setMessage("");
-            void executeAction(actionPayload);
-            return;
-        }
-
-        // Always use streaming chat; backend routes analysis/chat/refine automatically.
+        // User messages always flow directly to LLM streaming chat
         sendStreamingMessage(text);
     };
 

@@ -22,7 +22,6 @@ import type {
     GitHubRepo,
     User,
     StrategyMember,
-    InviteValidateResponse,
     OAuthStartResponse,
     ExchangeAccountResponse,
     SignalResponse,
@@ -404,15 +403,10 @@ export const githubApi = {
 
 export const authApi = {
     me: () => fetchApi<{ user: User; is_admin?: boolean }>("/api/auth/me", { suppressAuthDialog: true }),
-    validateInvite: (code: string) =>
-        fetchApi<InviteValidateResponse>("/api/auth/invites/validate", {
-            method: "POST",
-            body: JSON.stringify({ code }),
-        }),
-    startOAuth: (provider: "google" | "github", invite_code: string, redirect_path?: string) =>
+    startOAuth: (provider: "google" | "github", redirect_path?: string) =>
         fetchApi<OAuthStartResponse>(`/api/auth/oauth/${provider}/start`, {
             method: "POST",
-            body: JSON.stringify({ invite_code, redirect_path }),
+            body: JSON.stringify({ redirect_path }),
         }),
     logout: () =>
         fetchApi<{ ok: boolean }>("/api/auth/logout", {
