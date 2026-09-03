@@ -14,7 +14,7 @@ PrompTrading turns a plain-language description — *"a moving average crossover
    Web console (React)
            │
            ▼
-   API (FastAPI) ──────► PostgreSQL · Redis
+   API (FastAPI) ──────► SQLite (default) / PostgreSQL (optional)
            │
            ▼
       Worker ──────► ephemeral Docker containers
@@ -24,7 +24,7 @@ PrompTrading turns a plain-language description — *"a moving average crossover
    Risk engine ──────► OKX (live orders)
 ```
 
-Strategy generation, backtesting, and trading are all queued through Redis and executed asynchronously. The agent and backtest steps run in **throwaway containers**, so generated code never executes in the API process.
+Strategy generation and backtesting jobs are dispatched to the Worker and executed asynchronously. The agent and backtest steps run in **throwaway containers**, so generated code never executes in the API process.
 
 ## Features
 
@@ -73,7 +73,12 @@ Everything lives in `infra/compose/.env`.
 |---|---|
 | `TRADING_API_ENCRYPTION_KEY` | Fernet key encrypting exchange credentials at rest |
 | `LLM_API_KEY` | Key for your LLM provider |
-| `POSTGRES_PASSWORD` | Database password |
+
+**Database (Optional)**
+
+| Variable | Purpose |
+|---|---|
+| `APP_DB_URL` | Database connection URL (defaults to `sqlite:////workspaces/app.db`; PostgreSQL supported via `postgresql+psycopg://...`) |
 
 **LLM selection**
 
