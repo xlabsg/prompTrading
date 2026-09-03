@@ -414,6 +414,7 @@ const DashboardHome = ({
         setStreamingMessage("");
         setStreamingProgressMessage(null);
         setPendingUserMessage(message);
+        setGenerateError(null);
         setChatInput("");
 
         try {
@@ -451,6 +452,8 @@ const DashboardHome = ({
                                 // Refresh strategies to get updated chat history
                                 queryClient.invalidateQueries({ queryKey: ["strategies"] });
                             } else if (data.type === "error") {
+                                const content = String(data.content || "未知错误");
+                                setGenerateError(content);
                                 console.error("SSE error:", data.content);
                             }
                         } catch (parseError) {
@@ -460,6 +463,8 @@ const DashboardHome = ({
                 }
             }
         } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            setGenerateError(errorMsg);
             console.error("Streaming chat error:", error);
         } finally {
             setIsStreaming(false);

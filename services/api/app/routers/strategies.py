@@ -1387,7 +1387,7 @@ def _call_chat_llm(messages: list[dict], system_prompt: str = CHAT_SYSTEM_PROMPT
             "Content-Type": "application/json",
         },
         json=payload,
-        timeout=_get_llm_http_timeout_s(),
+        timeout=(10.0, _get_llm_http_timeout_s()),
     )
     if resp.status_code >= 400:
         _log_llm_http_error(
@@ -1433,7 +1433,7 @@ def _call_chat_llm_stream(messages: list[dict], system_prompt: str = CHAT_SYSTEM
             "Content-Type": "application/json",
         },
         json=payload,
-        timeout=_get_llm_stream_timeout_s(),
+        timeout=(10.0, _get_llm_stream_timeout_s()),
         stream=True,
     )
     resp.raise_for_status()
