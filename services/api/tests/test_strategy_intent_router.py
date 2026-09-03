@@ -98,6 +98,8 @@ def test_run_autonomous_refine_detects_files_changed(monkeypatch):
             f.write("def generate_signals(data, params):\n    return {}\n")
 
         monkeypatch.setattr(strategies.settings, "workspaces_dir", tmpdir)
+        monkeypatch.setenv("OPENAI_API_KEY", "mock-test-key")
+        monkeypatch.setenv("DEEPSEEK_API_KEY", "mock-test-key")
 
         class DummySession:
             def __init__(self, summary):

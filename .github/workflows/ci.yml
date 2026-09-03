@@ -42,7 +42,14 @@ jobs:
           ruff check packages/control_plane services/api
 
       - name: Run Backend Tests
+        env:
+          WORKSPACES_DIR: /tmp/workspaces
+          DB_URL: sqlite:////tmp/app.db
+          JWT_SECRET: ci-testing-jwt-secret-key-1234567890
+          OPENAI_API_KEY: mock-test-key
+          DEEPSEEK_API_KEY: mock-test-key
         run: |
+          mkdir -p /tmp/workspaces
           pytest -v packages/control_plane
           pytest -v services/api
 
