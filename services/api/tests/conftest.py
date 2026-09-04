@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 
 import pytest
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 from sqlalchemy import text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -39,12 +41,30 @@ def last_30d_range_ms() -> tuple[int, int]:
     return start_ms, end_ms
 
 
+def build_retry_session(cookies: dict | None = None) -> requests.Session:
+    sess = requests.Session()
+    retries = Retry(
+        total=5,
+        connect=5,
+        read=5,
+        backoff_factor=0.5,
+        status_forcelist=[502, 503, 504],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retries)
+    sess.mount("http://", adapter)
+    sess.mount("https://", adapter)
+    if cookies:
+        sess.cookies.update(cookies)
+    return sess
+
+
 def wait_for_job_completion(
     client: "E2EClient",
     job_id: str,
     *,
     timeout_s: int = 900,
-    poll_s: float = 5.0,
+    poll_s: float = 2.0,
 ) -> dict:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -61,7 +81,7 @@ def wait_for_backtest_completion(
     run_id: str,
     *,
     timeout_s: int = 900,
-    poll_s: float = 5.0,
+    poll_s: float = 2.0,
 ) -> dict:
     deadline = time.time() + timeout_s
     while time.time() < deadline:
@@ -102,7 +122,9 @@ class E2EClient:
 def e2e_api_base_url() -> str:
     url = os.getenv("E2E_API_BASE_URL", "http://api:8000").rstrip("/")
     try:
-        requests.get(f"{url}/health", timeout=1.0)
+        sess = build_retry_session()
+        sess.get(f"{url}/health", timeout=2.0)
+        sess.close()
     except Exception:
         pytest.skip(f"E2E API service is not running or not reachable at {url}")
     return url
@@ -140,8 +162,7 @@ def e2e_user(e2e_db_session: Session) -> dict:
 
 @pytest.fixture(scope="function")
 def e2e_client(e2e_api_base_url: str, e2e_user: dict) -> E2EClient:
-    sess = requests.Session()
-    sess.cookies.update(e2e_user["cookies"])
+    sess = build_retry_session(e2e_user["cookies"])
     client = E2EClient(base_url=e2e_api_base_url, session=sess)
     yield client
     sess.close()
