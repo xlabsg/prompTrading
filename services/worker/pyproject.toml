@@ -26,7 +26,6 @@ dependencies = [
     "pydantic>=2.11.0,<3",
     "pydantic-settings>=2.8.1",
     "APScheduler>=3.11.0",
-    "openai>=1.65.0",
     "langfuse>=2.60.0",
     "psutil>=7.0.0",
 ]

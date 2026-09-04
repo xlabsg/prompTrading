@@ -237,11 +237,3 @@ class DualStateStore(StateStore):
             return True
         return False
 
-    def force_save(self, state: TradingState) -> None:
-        """强制保存（忽略限流）"""
-        with self._lock:
-            if self.redis_store:
-                self.redis_store.save(state)
-            if self.postgres_store:
-                self.postgres_store.save(state)
-            self._last_save_time[state.session_id] = datetime.utcnow()

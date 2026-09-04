@@ -21,7 +21,6 @@ router = APIRouter()
 
 LOG_TAIL_KEY_PREFIX = "jobs:logtail:v1:"
 LAST_LOG_KEY_PREFIX = "jobs:lastlog:v1:"
-CANCEL_KEY_PREFIX = "jobs:cancel:v1:"
 
 
 def _utcnow() -> datetime:

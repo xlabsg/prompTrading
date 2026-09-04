@@ -281,8 +281,3 @@ class RiskValidator:
         self.daily_pnl_current = Decimal("0")
         logger.info("Daily risk stats reset")
 
-    def update_peak_equity(self, equity: Decimal):
-        """手动更新历史最高权益"""
-        if self.peak_equity is None or equity > self.peak_equity:
-            self.peak_equity = equity
-            logger.info(f"New peak equity: {equity}")

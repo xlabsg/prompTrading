@@ -36,11 +36,6 @@ class ChatStatus(str, Enum):
     DONE = "done"
 
 
-class TradingSessionMode(str, Enum):
-    LIVE = "live"
-    PAPER = "paper"
-
-
 class TradingSessionStatus(str, Enum):
     STARTING = "starting"
     RUNNING = "running"

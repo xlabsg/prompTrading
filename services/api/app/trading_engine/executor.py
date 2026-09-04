@@ -636,15 +636,3 @@ class OrderExecutor:
             logger.error(f"Failed to update order status: {e}", exc_info=True)
             return False
 
-    def cleanup_stale_orders(self):
-        """清理陈旧订单"""
-        try:
-            stale_orders = self.order_manager.get_stale_orders()
-            for order in stale_orders:
-                oid = getattr(order, "exchange_order_id", None) or getattr(order, "client_order_id", None) or getattr(order, "order_id", None)
-                if oid:
-                    logger.warning(f"Cancelling stale order: {oid}")
-                    self.cancel_order(oid)
-
-        except Exception as e:
-            logger.error(f"Failed to cleanup stale orders: {e}", exc_info=True)
