@@ -31,7 +31,7 @@ SIMPLE_SCRIPT = [
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    for name in ("AGENT_TAU_EVENT_TIMEOUT_S", "AGENT_TAU_MAX_FOLLOW_UPS"):
+    for name in ("AGENT_TAU_EVENT_TIMEOUT_S", "AGENT_TAU_MAX_FOLLOW_UPS", "AGENT_MAX_STEPS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -219,6 +219,57 @@ def test_non_json_output_is_skipped(tmp_path, clean_env, monkeypatch):
         preamble="warning: something happened",
     )
     assert result.turns == 1
+
+
+# Three turns in one prompt, so a cap of 2 is reached before the script settles.
+THREE_TURN_SCRIPT = [
+    {"type": "agent_start"},
+    {"type": "turn_end"},
+    {"type": "turn_end"},
+    {"type": "turn_end"},
+    {"type": "message_end", "message": {"content": [{"type": "text", "text": "still going"}]}},
+    {"type": "agent_settled"},
+]
+
+
+def test_turn_budget_is_unbounded_by_default(tmp_path, clean_env, monkeypatch):
+    result = _run_with_fake(tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: [])
+
+    assert result.turns == 3
+    assert result.turn_limit_hit is False
+
+
+def test_turn_budget_stops_the_session(tmp_path, clean_env, monkeypatch):
+    """A capped session gives up rather than running until the container is killed."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+
+    with pytest.raises(tau_driver.TauSessionError, match="agent_turn_limit_reached"):
+        _run_with_fake(
+            tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: ["- strategy.py missing"]
+        )
+
+
+def test_turn_budget_keeps_a_complete_workspace(tmp_path, clean_env, monkeypatch):
+    """Hitting the cap is not a failure when the work is already done."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+
+    result = _run_with_fake(tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: [])
+
+    assert result.turn_limit_hit is True
+    assert result.follow_ups == 0
+
+
+def test_turn_budget_suppresses_follow_ups(tmp_path, clean_env, monkeypatch):
+    """Without the cap the same script would spend its follow-up budget."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+    monkeypatch.setenv("AGENT_TAU_MAX_FOLLOW_UPS", "2")
+
+    with pytest.raises(tau_driver.TauSessionError) as excinfo:
+        _run_with_fake(
+            tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: ["- strategy.py missing"]
+        )
+
+    assert "agent_incomplete_after_follow_ups" not in str(excinfo.value)
 
 
 # --- fake Tau plumbing -------------------------------------------------------

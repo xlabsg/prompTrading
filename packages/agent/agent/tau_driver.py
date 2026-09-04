@@ -32,6 +32,13 @@ _DEFAULT_EVENT_TIMEOUT_S = 300.0
 _DEFAULT_MAX_FOLLOW_UPS = 2
 _SHUTDOWN_GRACE_S = 10.0
 
+# Turn budget for a whole session, follow-ups included. Tau 0.4.1 accepts a
+# `max_turns` on `AgentHarnessConfig` but `tau_coding.session` never sets one,
+# and neither its CLI nor its RPC frontend exposes a knob for it, so the cap has
+# to be enforced out here on the `turn_end` events the driver already counts.
+# 0 (the default) means no cap: the container wall clock is then the only bound.
+_DEFAULT_MAX_TURNS = 0
+
 
 class TauSessionError(RuntimeError):
     """The Tau session could not be driven to a usable result."""
@@ -53,6 +60,7 @@ class TauSessionResult:
     auto_retries: int = 0
     tokens: dict[str, Any] = field(default_factory=dict)
     cost_usd: float | None = None
+    turn_limit_hit: bool = False
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -152,12 +160,18 @@ def run_session(
     progress_callback: ProgressCallback | None = None,
     tau_executable: str | None = None,
     env: dict[str, str] | None = None,
+    max_turns: int | None = None,
 ) -> TauSessionResult:
     """Run `task` in a Tau session until `validate` reports no problems.
 
     `validate` returns a list of human-readable problems with the workspace; an
     empty list means the session succeeded. Each non-empty result is sent back to
     the model as a follow-up message, up to `AGENT_TAU_MAX_FOLLOW_UPS` times.
+
+    `max_turns` caps the whole session, follow-ups included; it defaults to
+    `AGENT_MAX_STEPS`. Hitting it aborts the agent and gives up on follow-ups,
+    so an unproductive loop costs a bounded number of model calls instead of
+    running until the worker kills the container and discards the work.
     """
     command = build_command(
         workspace=workspace,
@@ -174,6 +188,9 @@ def run_session(
 
     event_timeout_s = _env_float("AGENT_TAU_EVENT_TIMEOUT_S", _DEFAULT_EVENT_TIMEOUT_S)
     max_follow_ups = _env_int("AGENT_TAU_MAX_FOLLOW_UPS", _DEFAULT_MAX_FOLLOW_UPS)
+    if max_turns is None:
+        max_turns = _env_int("AGENT_MAX_STEPS", _DEFAULT_MAX_TURNS)
+    turn_budget = max_turns if max_turns and max_turns > 0 else None
 
     print(f"[agent] starting tau: {' '.join(command)}", flush=True)
 
@@ -199,6 +216,7 @@ def run_session(
             event_timeout_s=event_timeout_s,
             max_follow_ups=max_follow_ups,
             workspace=workspace,
+            max_turns=turn_budget,
         )
     finally:
         _shutdown(proc)
@@ -216,6 +234,7 @@ def _drive(
     event_timeout_s: float,
     max_follow_ups: int,
     workspace: str,
+    max_turns: int | None = None,
 ) -> None:
     assert proc.stdout is not None
     reader = _EventReader(proc.stdout)
@@ -232,6 +251,7 @@ def _drive(
             progress_callback=progress_callback,
             event_timeout_s=event_timeout_s,
             proc=proc,
+            max_turns=max_turns,
         )
 
         # Allow validator to inspect the latest model summary text to heal missing files
@@ -242,6 +262,14 @@ def _drive(
         if not problems:
             _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
             return
+
+        # A follow-up costs more turns, and the budget is what just ran out.
+        if result.turn_limit_hit:
+            _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
+            raise TauSessionError(
+                f"agent_turn_limit_reached: stopped after {result.turns} turns "
+                f"(AGENT_MAX_STEPS={max_turns}) with: " + "; ".join(problems)
+            )
 
         result.follow_ups += 1
         if attempt == max_follow_ups:
@@ -350,6 +378,7 @@ def _consume_until_settled(
     progress_callback: ProgressCallback | None,
     event_timeout_s: float,
     proc: subprocess.Popen[str],
+    max_turns: int | None = None,
 ) -> None:
     for event in _events(reader, event_timeout_s, proc):
         kind = event.get("type")
@@ -363,6 +392,21 @@ def _consume_until_settled(
             )
 
         _record(event, kind, result, progress_callback)
+
+        # Abort once, then keep reading: the run is only over at `agent_settled`,
+        # and the workspace it leaves behind may still be publishable.
+        if (
+            max_turns is not None
+            and not result.turn_limit_hit
+            and result.turns >= max_turns
+            and kind != _SETTLED
+        ):
+            result.turn_limit_hit = True
+            print(
+                f"[agent] turn budget exhausted ({result.turns}/{max_turns}), aborting session",
+                flush=True,
+            )
+            _abort(proc)
 
         if kind == _SETTLED:
             return

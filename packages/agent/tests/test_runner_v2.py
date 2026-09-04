@@ -217,16 +217,6 @@ def test_seed_workspace_does_not_overwrite_agent_output(tmp_path):
     assert (version_dir / "strategy.py").read_text() == "new\n"
 
 
-def test_max_turns_from_env(monkeypatch):
-    monkeypatch.setenv("AGENT_MAX_STEPS", "12")
-    assert runner_v2._max_turns() == 12
-
-
-def test_max_turns_ignores_garbage(monkeypatch):
-    monkeypatch.setenv("AGENT_MAX_STEPS", "not-a-number")
-    assert runner_v2._max_turns() is None
-
-
 def test_workspace_problems_names_missing_strategy(tmp_path):
     problems = runner_v2._workspace_problems(str(tmp_path))
     assert any("strategy.py" in p for p in problems)
