@@ -1382,24 +1382,6 @@ const zh = {
     sectorPlaceholder: "全部行业",
     noResults: "暂无结果",
   },
-  symbolMultiSelect: {
-    title: "交易标的",
-    selectedCount: "已选 {{selected}} / {{total}}",
-    searchPlaceholder: "搜索标的...",
-    empty: "未找到标的",
-    errors: {
-      loadSymbols: "加载标的失败",
-    },
-  },
-  reportView: {
-    title: "策略报告",
-    defaultStrategyName: "未命名策略",
-    summaryTitle: "概览",
-    summaryText: "该策略侧重趋势信号与风险控制。",
-    riskTitle: "风险评估",
-    riskGood: "风险检查通过，仓位控制较为稳健。",
-    riskWarn: "请关注回撤并适当调整风控参数。",
-  },
   trendingSection: {
     title: "热门策略",
     viewAll: "查看全部",

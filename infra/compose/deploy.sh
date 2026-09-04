@@ -35,8 +35,8 @@ fi
 # Check if .env file exists
 if [ ! -f "$ENV_FILE" ]; then
     log_error ".env file not found!"
-    log_info "Copy .env.prod.example to .env and configure it:"
-    echo "    cp .env.prod.example .env"
+    log_info "Copy .env.example to .env and configure it:"
+    echo "    cp .env.example .env"
     echo "    nano .env"
     exit 1
 fi

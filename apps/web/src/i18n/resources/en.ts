@@ -1397,24 +1397,6 @@ const en = {
     sectorPlaceholder: "All sectors",
     noResults: "No results",
   },
-  symbolMultiSelect: {
-    title: "Symbols",
-    selectedCount: "{{selected}} / {{total}} selected",
-    searchPlaceholder: "Search symbols...",
-    empty: "No symbols found",
-    errors: {
-      loadSymbols: "Failed to load symbols",
-    },
-  },
-  reportView: {
-    title: "Strategy Report",
-    defaultStrategyName: "Untitled Strategy",
-    summaryTitle: "Summary",
-    summaryText: "This strategy focuses on trend-following signals and risk control.",
-    riskTitle: "Risk Review",
-    riskGood: "Risk checks passed with conservative position sizing.",
-    riskWarn: "Monitor drawdowns and adjust risk limits if needed.",
-  },
   trendingSection: {
     title: "Trending Strategies",
     viewAll: "View all",

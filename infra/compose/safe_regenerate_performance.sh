@@ -24,7 +24,7 @@ sys.path.insert(0, '/app')
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
 from control_plane.models import StrategyTemplate, TemplatePerformanceRun
-from app.services.template_performance_generator import TemplatePerformanceGenerator
+from app.services.template_performance_generator import generate_template_performance_data
 from app.settings import settings
 
 engine = create_db_engine(settings.db_url)
@@ -48,7 +48,7 @@ with session_scope(create_session_factory(engine)) as db:
         else:
             print(f'[{i}/{len(templates)}] {tmpl.name}')
             try:
-                TemplatePerformanceGenerator.generate_performance_data(db, tmpl)
+                generate_template_performance_data(db, tmpl.id)
                 print(f'  ✅ 已生成性能数据')
             except Exception as e:
                 print(f'  ⚠️  失败: {e}')
