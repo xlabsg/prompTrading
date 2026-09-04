@@ -1,0 +1,254 @@
+{
+  "raw_trials": [
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_1",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.9971514407719816,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 0.549771663743426,
+      "max_drawdown": 18.19344528003609,
+      "total_return": 1.5427989149749743,
+      "win_rate": 47.72727272727273
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_1",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.9971533620980311,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 0.46335820907977066,
+      "max_drawdown": 18.408270460219878,
+      "total_return": 1.1769083468541774,
+      "win_rate": 47.72727272727273
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_2",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.6597836647968885,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 0.7515043670827029,
+      "max_drawdown": 14.693223557682844,
+      "total_return": 2.3904303542614525,
+      "win_rate": 23.47826086956522
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_2",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.6617070912609117,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 0.5125878284696054,
+      "max_drawdown": 14.96203428012095,
+      "total_return": 1.382361029706325,
+      "win_rate": 20.869565217391305
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_3",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.9992869921268829,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 4.391564304374434,
+      "max_drawdown": 8.371194553000173,
+      "total_return": 16.47894723773451,
+      "win_rate": 30.909090909090907
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "strategy": "strat_group_a_3",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.9993534020711706,
+      "domains_count": 1,
+      "domains": [
+        "price"
+      ],
+      "sharpe_ratio": 4.280042276743014,
+      "max_drawdown": 8.524225773892645,
+      "total_return": 15.992388096337539,
+      "win_rate": 29.09090909090909
+    },
+    {
+      "group": "Group B (Strict Hierarchy / Buckets)",
+      "strategy": "strat_group_b_1",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.382575806652241,
+      "domains_count": 2,
+      "domains": [
+        "price",
+        "volatility"
+      ],
+      "sharpe_ratio": 4.270882171175559,
+      "max_drawdown": 5.834587751204845,
+      "total_return": 13.707001148492148,
+      "win_rate": 33.33333333333333
+    },
+    {
+      "group": "Group B (Strict Hierarchy / Buckets)",
+      "strategy": "strat_group_b_1",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.38363970580849005,
+      "domains_count": 2,
+      "domains": [
+        "price",
+        "volatility"
+      ],
+      "sharpe_ratio": 4.234549522674435,
+      "max_drawdown": 5.813598167265677,
+      "total_return": 13.544689119494357,
+      "win_rate": 33.33333333333333
+    },
+    {
+      "group": "Group B (Strict Hierarchy / Buckets)",
+      "strategy": "strat_group_b_2",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.3481019490499815,
+      "domains_count": 2,
+      "domains": [
+        "price",
+        "volatility"
+      ],
+      "sharpe_ratio": 0.7925099155886031,
+      "max_drawdown": 15.223306109956948,
+      "total_return": 2.5124996729013693,
+      "win_rate": 23.88059701492537
+    },
+    {
+      "group": "Group B (Strict Hierarchy / Buckets)",
+      "strategy": "strat_group_b_2",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.34605987667375765,
+      "domains_count": 2,
+      "domains": [
+        "price",
+        "volatility"
+      ],
+      "sharpe_ratio": 0.6855917989091703,
+      "max_drawdown": 15.280937135896322,
+      "total_return": 2.0719249137237883,
+      "win_rate": 23.52941176470588
+    },
+    {
+      "group": "Group C (Multi-Tag / Orthogonal Matrix)",
+      "strategy": "strat_group_c_1",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.14050066182345838,
+      "domains_count": 3,
+      "domains": [
+        "price",
+        "volume",
+        "derivatives"
+      ],
+      "sharpe_ratio": 3.032339543653477,
+      "max_drawdown": 8.45014582962057,
+      "total_return": 8.910914780970147,
+      "win_rate": 30.0
+    },
+    {
+      "group": "Group C (Multi-Tag / Orthogonal Matrix)",
+      "strategy": "strat_group_c_1",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.015093436953335362,
+      "domains_count": 3,
+      "domains": [
+        "price",
+        "volume",
+        "derivatives"
+      ],
+      "sharpe_ratio": 3.2397958561366913,
+      "max_drawdown": 9.726515038223326,
+      "total_return": 11.037036872340078,
+      "win_rate": 39.58333333333333
+    },
+    {
+      "group": "Group C (Multi-Tag / Orthogonal Matrix)",
+      "strategy": "strat_group_c_2",
+      "dataset": "OKX_BTC_1H",
+      "collinearity": 0.08057341848120765,
+      "domains_count": 3,
+      "domains": [
+        "atomic_math",
+        "derivatives",
+        "volatility"
+      ],
+      "sharpe_ratio": 3.508914270508174,
+      "max_drawdown": 5.730069023645667,
+      "total_return": 9.706733069555318,
+      "win_rate": 32.0
+    },
+    {
+      "group": "Group C (Multi-Tag / Orthogonal Matrix)",
+      "strategy": "strat_group_c_2",
+      "dataset": "BINANCE_BTC_1H",
+      "collinearity": 0.1386658290834667,
+      "domains_count": 3,
+      "domains": [
+        "atomic_math",
+        "derivatives",
+        "volatility"
+      ],
+      "sharpe_ratio": 0.7167673068414192,
+      "max_drawdown": 6.110321165036236,
+      "total_return": 1.2468861916538287,
+      "win_rate": 18.181818181818183
+    }
+  ],
+  "summary": {
+    "collinearity_mean": {
+      "Group A (Flat / No Classification)": 0.8857393255209778,
+      "Group B (Strict Hierarchy / Buckets)": 0.36509433454611756,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 0.09370833658536702
+    },
+    "collinearity_std": {
+      "Group A (Flat / No Classification)": 0.17428332137867447,
+      "Group B (Strict Hierarchy / Buckets)": 0.020821338522457704,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 0.059339493174617404
+    },
+    "domains_count_mean": {
+      "Group A (Flat / No Classification)": 1.0,
+      "Group B (Strict Hierarchy / Buckets)": 2.0,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 3.0
+    },
+    "sharpe_ratio_mean": {
+      "Group A (Flat / No Classification)": 1.824804774915492,
+      "Group B (Strict Hierarchy / Buckets)": 2.495883352086942,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 2.6244542442849403
+    },
+    "sharpe_ratio_median": {
+      "Group A (Flat / No Classification)": 0.6506380154130644,
+      "Group B (Strict Hierarchy / Buckets)": 2.513529719131519,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 3.136067699895084
+    },
+    "sharpe_ratio_std": {
+      "Group A (Flat / No Classification)": 1.9477976762822844,
+      "Group B (Strict Hierarchy / Buckets)": 2.02913917973331,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 1.286669435143401
+    },
+    "max_drawdown_mean": {
+      "Group A (Flat / No Classification)": 13.858732317492096,
+      "Group B (Strict Hierarchy / Buckets)": 10.538107291080948,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 7.50426276413145
+    },
+    "win_rate_mean": {
+      "Group A (Flat / No Classification)": 33.30039525691699,
+      "Group B (Strict Hierarchy / Buckets)": 28.519168861574478,
+      "Group C (Multi-Tag / Orthogonal Matrix)": 29.94128787878788
+    }
+  }
+}
