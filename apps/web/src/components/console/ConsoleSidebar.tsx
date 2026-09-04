@@ -78,6 +78,7 @@ const ConsoleSidebar = ({
     const [liveDraftStatus, setLiveDraftStatus] = useState<"idle" | "generating" | "ready" | "confirming" | "error">("idle");
     const [liveDraftError, setLiveDraftError] = useState<string | null>(null);
     const [isGeneratingStrategyCode, setIsGeneratingStrategyCode] = useState(false);
+    const [generationProgressMessage, setGenerationProgressMessage] = useState<string | null>(null);
     const [generateStrategyError, setGenerateStrategyError] = useState<string | null>(null);
     const [isRollingBack, setIsRollingBack] = useState(false);
     const [rollbackError, setRollbackError] = useState<string | null>(null);
@@ -428,12 +429,28 @@ const ConsoleSidebar = ({
         if (!strategy || strategy.chat_status !== "ready" || isStreaming || isGeneratingStrategyCode) return;
         setGenerateStrategyError(null);
         setIsGeneratingStrategyCode(true);
+        setGenerationProgressMessage(t("console.sidebar.confirmGenerating"));
         try {
             await strategiesApi.confirmChat(strategy.id);
             const prompt = buildGenerationPrompt(strategy);
             const result = await strategiesApi.generate(strategy.id, { prompt });
             refreshStrategyData();
-            const job = await jobsApi.waitForCompletion(result.job.id, undefined, 2000, 420000);
+            const job = await jobsApi.waitForCompletionWithStream(
+                result.job.id,
+                (evt) => {
+                    if (evt.message) {
+                        setGenerationProgressMessage(evt.message);
+                    } else if (evt.step) {
+                        const stepLabels: Record<string, string> = {
+                            initializing_agent: "正在初始化 Agent 沙箱...",
+                            running_backtest: "正在执行闭环回测...",
+                            auditing_code: "正在验证策略语法与导入...",
+                            finalizing_strategy: "正在发布策略代码...",
+                        };
+                        setGenerationProgressMessage(stepLabels[evt.step] || evt.detail || evt.step);
+                    }
+                }
+            );
             if (job.status !== "succeeded") {
                 throw new Error(`job_failed:${job.error_message || job.id}`);
             }
@@ -443,6 +460,7 @@ const ConsoleSidebar = ({
             setGenerateStrategyError(getGenerateErrorMessage(error));
         } finally {
             setIsGeneratingStrategyCode(false);
+            setGenerationProgressMessage(null);
             refreshStrategyData();
         }
     }, [
@@ -452,6 +470,7 @@ const ConsoleSidebar = ({
         refreshStrategyData,
         onStrategyGenerated,
         getGenerateErrorMessage,
+        t,
     ]);
 
     const handleRollbackToPreviousVersion = useCallback(async () => {
@@ -646,7 +665,7 @@ const ConsoleSidebar = ({
                                 {strategy.chat_status === "ready" && isGeneratingStrategyCode && (
                                     <div className="text-xs text-muted-foreground bg-muted/40 p-2 rounded flex items-center gap-2">
                                         <Loader2 size={12} className="animate-spin" />
-                                        {t("console.sidebar.confirmGenerating")}
+                                        {generationProgressMessage || t("console.sidebar.confirmGenerating")}
                                     </div>
                                 )}
                                 {generateStrategyError && (

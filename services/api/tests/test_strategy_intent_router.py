@@ -344,3 +344,72 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
         done_line = [line for line in events if '"type": "done"' in line][0]
         done_payload = json.loads(done_line.replace("data: ", "").strip())
         assert "Agent 已完成本次修改，并已写入策略工作区。" in done_payload["clean_reply"]
+
+
+@pytest.mark.anyio
+async def test_chat_with_strategy_stream_with_events_jsonl(monkeypatch):
+    from unittest.mock import MagicMock
+    from control_plane.db import create_db_engine, create_session_factory, session_scope
+    from control_plane.models import Base, Strategy, Job
+    from control_plane.enums import ChatStatus
+    from app.routers import strategies
+    from app.routers.strategies import chat_with_strategy_stream, ChatRequest
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "test_events.db")
+        engine = create_db_engine(f"sqlite:///{db_path}")
+        Base.metadata.create_all(engine)
+        session_factory = create_session_factory(engine)
+
+        monkeypatch.setattr(strategies.settings, "workspaces_dir", tmpdir)
+        monkeypatch.setattr("app.routers.strategies.require_strategy_member", lambda *args, **kwargs: None)
+
+        strat_id = "test-strat-events"
+        _strat_dir, strat_py = _make_workspace(tmpdir, strat_id)
+
+        with session_scope(session_factory) as db:
+            db.add(Strategy(id=strat_id, name="Test Strat Events", chat_status=ChatStatus.DONE, chat_history=[]))
+
+        def fake_terminal_state_events(_session_factory, job_id):
+            with session_factory() as session:
+                job = session.get(Job, job_id)
+                version_id = job.payload["version_id"]
+                job.status = "succeeded"
+                session.commit()
+
+            version_dir = os.path.join(tmpdir, strat_id, "versions", version_id)
+            os.makedirs(version_dir, exist_ok=True)
+            with open(os.path.join(version_dir, "llm_meta.json"), "w", encoding="utf-8") as f:
+                json.dump({"agent_summary": "已根据需求优化。", "stop_reason": "task_done", "used_llm": True}, f)
+
+            log_dir = os.path.join(tmpdir, ".queue", "logs")
+            os.makedirs(log_dir, exist_ok=True)
+            events_path = os.path.join(log_dir, f"{job_id}.events.jsonl")
+            with open(events_path, "w", encoding="utf-8") as f:
+                f.write(json.dumps({"type": "step", "step": "auditing_code", "detail": "Checking AST"}) + "\n")
+                f.write(json.dumps({"type": "tool_start", "tool": "edit", "path": "strategy.py", "message": "正在修改 strategy.py..."}) + "\n")
+                f.write(json.dumps({"type": "tool_end", "tool": "edit", "success": True}) + "\n")
+                f.write(json.dumps({"type": "done", "status": "succeeded", "summary": "已根据需求优化。"}) + "\n")
+
+            with open(strat_py, "w", encoding="utf-8") as f:
+                f.write("def generate_signals(data, params):\n    # refined via events\n    return {}\n")
+
+            return "succeeded", ""
+
+        monkeypatch.setattr(strategies, "_job_terminal_state", fake_terminal_state_events)
+        monkeypatch.setattr(strategies, "enqueue_job", lambda *a, **k: None)
+
+        with session_scope(session_factory) as db:
+            resp = chat_with_strategy_stream(
+                strat_id,
+                ChatRequest(message="优化一下止损"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
+            )
+            chunks = [chunk async for chunk in resp.body_iterator]
+
+        joined = "".join(chunks)
+        assert "正在修改 strategy.py..." in joined
+        assert "Agent 已完成本次修改，并已写入策略工作区。" in joined

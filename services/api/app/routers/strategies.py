@@ -958,7 +958,7 @@ def _dispatch_strategy_agent_job(
     return job_id, version_id
 
 
-_AGENT_JOB_POLL_S = 0.5
+_AGENT_JOB_POLL_S = 0.05
 _TOOL_LOG_RE = re.compile(r"^\[agent\] tool (?P<tool>\S+)(?: path=(?P<path>\S+))? \.\.\.$")
 _PROGRESS_TOOLS = {"edit_file", "write_file", "edit", "write", "read_file", "read"}
 _WRITE_TOOLS = {"edit_file", "write_file", "edit", "write"}
@@ -984,15 +984,16 @@ def _stream_agent_job(
     *,
     timeout_s: float,
 ) -> Generator[tuple[str, Any], None, None]:
-    """Yield ("log", line) while the agent container runs, then ("done", (status, error)).
+    """Yield ("log", line) or ("event", evt) while the agent container runs, then ("done", (status, error)).
 
-    Reads the same `.queue/logs/<job_id>.log` the job WebSocket tails; the worker
-    writes it on the shared workspaces volume.
+    Reads `.queue/logs/<job_id>.events.jsonl` if present, falling back to `.queue/logs/<job_id>.log`.
     """
+    events_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.events.jsonl")
     log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
     deadline = time.monotonic() + timeout_s
     handle = None
     pending = ""
+    is_jsonl = False
 
     def _drain() -> Generator[tuple[str, Any], None, None]:
         nonlocal pending
@@ -1002,21 +1003,54 @@ def _stream_agent_job(
                 return
             pending += chunk
             if pending.endswith("\n"):
-                yield "log", pending.rstrip("\r\n")
+                clean = pending.rstrip("\r\n")
                 pending = ""
+                if is_jsonl:
+                    try:
+                        evt = json.loads(clean)
+                        if evt.get("type") == "done":
+                            yield "done", (evt.get("status", "succeeded"), evt.get("error_message", ""))
+                            return
+                        yield "event", evt
+                    except json.JSONDecodeError:
+                        yield "log", clean
+                else:
+                    yield "log", clean
 
     try:
         while True:
-            if handle is None and os.path.exists(log_path):
+            if not is_jsonl and os.path.exists(events_path):
+                if handle is not None:
+                    handle.close()
+                handle = open(events_path, encoding="utf-8", errors="replace")
+                is_jsonl = True
+            elif handle is None and os.path.exists(log_path):
                 handle = open(log_path, encoding="utf-8", errors="replace")
+                is_jsonl = False
+
             if handle is not None:
-                yield from _drain()
+                for item in _drain():
+                    yield item
+                    if item[0] == "done":
+                        return
 
             terminal = _job_terminal_state(session_factory, job_id)
             if terminal is not None:
-                # The container is gone; emit whatever it wrote last.
+                # The container is gone; ensure file is opened and emit whatever it wrote.
+                if not is_jsonl and os.path.exists(events_path):
+                    if handle is not None:
+                        handle.close()
+                    handle = open(events_path, encoding="utf-8", errors="replace")
+                    is_jsonl = True
+                elif handle is None and os.path.exists(log_path):
+                    handle = open(log_path, encoding="utf-8", errors="replace")
+                    is_jsonl = False
+
                 if handle is not None:
-                    yield from _drain()
+                    for item in _drain():
+                        yield item
+                        if item[0] == "done":
+                            return
                 if pending.strip():
                     yield "log", pending.rstrip("\r\n")
                 yield "done", terminal
@@ -1041,7 +1075,26 @@ def _wait_for_agent_job(session_factory, job_id: str, *, timeout_s: float) -> tu
 
 def _agent_progress_event(line: str) -> dict[str, Any] | None:
     """Turn one agent log line into the SSE progress event the console renders."""
-    match = _TOOL_LOG_RE.match(line.strip())
+    stripped = line.strip()
+    if stripped.startswith("[agent:event] "):
+        try:
+            evt = json.loads(stripped[len("[agent:event] "):])
+            if isinstance(evt, dict):
+                evt_type = evt.get("type")
+                if evt_type in ("tool_start", "progress"):
+                    return {
+                        "type": "progress",
+                        "tool": evt.get("tool"),
+                        "path": evt.get("path"),
+                        "message": evt.get("message") or f"正在执行 {evt.get('tool')}...",
+                        "phase": "tool_start",
+                    }
+                elif evt_type in ("tool_end", "token", "step"):
+                    return evt
+        except Exception:
+            pass
+
+    match = _TOOL_LOG_RE.match(stripped)
     if match is None:
         return None
     tool = match.group("tool")
@@ -1929,7 +1982,9 @@ def chat_with_strategy_stream(
                 for kind, payload in _stream_agent_job(
                     session_factory, job_id, timeout_s=_agent_job_timeout_s()
                 ):
-                    if kind == "log":
+                    if kind == "event":
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    elif kind == "log":
                         event = _agent_progress_event(payload)
                         if event is not None:
                             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
@@ -1993,7 +2048,9 @@ def chat_with_strategy_stream(
                 for kind, payload in _stream_agent_job(
                     session_factory, job_id, timeout_s=_agent_job_timeout_s()
                 ):
-                    if kind == "log":
+                    if kind == "event":
+                        yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                    elif kind == "log":
                         event = _agent_progress_event(payload)
                         if event is not None:
                             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"

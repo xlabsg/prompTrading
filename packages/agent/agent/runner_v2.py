@@ -22,6 +22,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Any, Optional
 
@@ -493,14 +494,41 @@ def _print_progress(event: dict[str, Any]) -> None:
         args = event.get("args")
         path = str(args.get("path") or "") if isinstance(args, dict) else ""
         suffix = f" path={os.path.basename(path)}" if path else ""
-        print(f"[agent] tool {event.get('tool')}{suffix} ...", flush=True)
+        tool_name = str(event.get("tool") or "")
+        fname = os.path.basename(path) if path else ""
+        print(f"[agent] tool {tool_name}{suffix} ...", flush=True)
+        action_text = "修改" if tool_name in {"edit_file", "write_file", "edit", "write"} else "阅读"
+        msg = f"正在{action_text} {fname}..." if fname else f"正在执行 {tool_name}..."
+        evt = {
+            "type": "tool_start",
+            "tool": tool_name,
+            "path": fname,
+            "phase": "tool_start",
+            "message": msg,
+            "ts": time.time(),
+        }
+        print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
     elif phase == "tool_end":
         outcome = "error" if event.get("is_error") else "ok"
-        print(f"[agent] tool {event.get('tool')} {outcome}", flush=True)
+        tool_name = str(event.get("tool") or "")
+        print(f"[agent] tool {tool_name} {outcome}", flush=True)
+        evt = {
+            "type": "tool_end",
+            "tool": tool_name,
+            "success": not bool(event.get("is_error")),
+            "ts": time.time(),
+        }
+        print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
     elif phase == "message":
         text = " ".join(str(event.get("text") or "").split())
         if text:
             print(f"[agent] {text[:200]}", flush=True)
+            evt = {
+                "type": "token",
+                "content": text[:200],
+                "ts": time.time(),
+            }
+            print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
 
 
 def _workspace_problems(version_dir: str, message_text: str | None = None) -> list[str]:
@@ -636,6 +664,7 @@ def main() -> int:
     else:
         thinking_level = os.getenv("AGENT_TAU_THINKING_LEVEL")
         parent_session_id = os.getenv("PARENT_TAU_SESSION_ID")
+        print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'initializing_agent', 'detail': f'Starting Tau agent with {tau_target.provider}/{tau_target.model}', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
         try:
             session = tau_driver.run_session(
                 task=task,
@@ -655,6 +684,7 @@ def main() -> int:
             code = _read_text(strat_file)
             _validate_strategy_code(code)
 
+            print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'auditing_code', 'detail': 'Validating strategy syntax and imports', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
             # Post-generation static lint & sandbox dry-run
             from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
             healed, fixes = lint_and_heal_strategy_code(code)
@@ -792,6 +822,7 @@ def main() -> int:
         )
         raise RuntimeError(f"agent_error_fallback: {agent_error}")
 
+    print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'finalizing_strategy', 'detail': 'Publishing strategy to workspace', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
     # Publish to the live strategy dir only once the version is complete.
     for name in (
         "strategy.py",
@@ -814,6 +845,7 @@ def main() -> int:
     print(json.dumps({"backtest_iterations": iteration}, indent=2))
     get_langfuse().flush()
 
+    print(f"[agent:event] {json.dumps({'type': 'done', 'status': 'succeeded', 'summary': agent_summary or summary, 'files_changed': True, 'ts': time.time()}, ensure_ascii=False)}", flush=True)
     print(f"[agent] wrote {STRATEGY_FILE}, strategy_spec.yaml and {OVERVIEW_FILE}")
     return 0
 
