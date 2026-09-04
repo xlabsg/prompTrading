@@ -8,7 +8,6 @@ services:
       APP_DEV_SKIP_AUTH: ${APP_DEV_SKIP_AUTH:-true}
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
-      APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
       APP_PUBLIC_BASE_URL: http://localhost:3000
       APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
       APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
