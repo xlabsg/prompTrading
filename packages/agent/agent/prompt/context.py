@@ -2,7 +2,6 @@
 Context processing utilities for prompt building.
 
 Provides:
-- Improved language detection (keywords + Unicode)
 - Intelligent code truncation (AST-based, not character count)
 - Platform capabilities formatting
 - Smart indicator documentation retrieval
@@ -11,110 +10,9 @@ Provides:
 from __future__ import annotations
 
 import ast
-import re
 from typing import Any
 
 from agent.prompt.indicator_docs import build_indicator_docs
-
-
-# Language-specific keywords for improved detection
-_ZH_KEYWORDS = [
-    "策略",
-    "交易",
-    "均线",
-    "入场",
-    "出场",
-    "回测",
-    "参数",
-    "止损",
-    "止盈",
-    "趋势",
-    "突破",
-    "回调",
-    "震荡",
-    "做多",
-    "做空",
-    "信号",
-    "指标",
-    "布林",
-    " MACD ",
-]
-
-_EN_KEYWORDS = [
-    "strategy",
-    "trading",
-    "moving average",
-    "entry",
-    "exit",
-    "backtest",
-    "parameter",
-    "stop loss",
-    "take profit",
-    "trend",
-    "breakout",
-    "pullback",
-    "range",
-    "long",
-    "short",
-    "signal",
-    "indicator",
-    "bollinger",
-    "macd",
-]
-
-
-def detect_language(text: str) -> str:
-    """Detect the primary language of the input text.
-
-    Uses a combination of:
-    1. Keyword matching (domain-specific terms)
-    2. Unicode range detection (CJK characters)
-
-    Args:
-        text: The text to analyze.
-
-    Returns:
-        "zh" for Chinese, "en" for English (default).
-    """
-    if not text:
-        return "en"
-
-    # Count keyword matches
-    text_lower = text.lower()
-    zh_count = sum(1 for kw in _ZH_KEYWORDS if kw in text)
-    en_count = sum(1 for kw in _EN_KEYWORDS if kw in text_lower)
-
-    # Count CJK characters
-    zh_char_count = sum(1 for ch in text if 0x4E00 <= ord(ch) <= 0x9FFF)
-    total_alpha = sum(1 for ch in text if ch.isalpha())
-
-    # Decision: keywords win, then character ratio
-    if zh_count > en_count:
-        return "zh"
-    if en_count > zh_count:
-        return "en"
-
-    # Fallback to character ratio
-    if total_alpha == 0:
-        return "en"
-    if zh_char_count / total_alpha > 0.3:
-        return "zh"
-    return "en"
-
-
-def build_language_directive(text: str) -> str:
-    """Build a language directive for the LLM.
-
-    Args:
-        text: The text to detect language from.
-
-    Returns:
-        A string instructing the LLM which language to use.
-    """
-    lang = detect_language(text)
-    if lang == "zh":
-        return "请使用中文回复（仅影响摘要/解释，不改变代码或 JSON 字段）。"
-    return "Please respond in English (natural-language only; do not change code or JSON keys)."
 
 
 def prepare_code_context(
@@ -275,8 +173,6 @@ Restrictions:
 
 
 __all__ = [
-    "detect_language",
-    "build_language_directive",
     "prepare_code_context",
     "build_platform_info",
     "build_indicator_docs",
