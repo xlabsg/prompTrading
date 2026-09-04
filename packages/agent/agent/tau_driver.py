@@ -246,6 +246,7 @@ def _drive(
     problems: list[str] = []
 
     for attempt in range(max_follow_ups + 1):
+        _report(progress_callback, {"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."})
         _send(proc, _prompt_command(attempt + 1, message, behavior))
         _consume_until_settled(
             reader=reader,
@@ -487,6 +488,8 @@ def _record(
             progress_callback,
             {"phase": "tool_end", "tool": name, "is_error": is_error},
         )
+        if name != "task_done":
+            _report(progress_callback, {"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."})
     elif kind == "message_end":
         text = _message_text(event.get("message"))
         if text:

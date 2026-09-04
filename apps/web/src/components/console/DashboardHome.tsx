@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
     Send,
@@ -20,6 +20,9 @@ import {
     Download,
     Library,
     Tag,
+    Settings,
+    FileText,
+    FileCode,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -297,7 +300,7 @@ const DashboardHome = ({
     const handleSubmit = (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!prompt.trim() || isCreating) return;
-        if (!isAuthed && typeof window === "undefined") {
+        if (!isAuthed && typeof window !== "undefined") {
             window.localStorage.setItem(
                 STRATEGY_PENDING_STORAGE_KEY,
                 JSON.stringify({ prompt, createdAt: Date.now() })
@@ -521,12 +524,11 @@ const DashboardHome = ({
                     </motion.div>
 
                     {/* Recent Strategies */}
-                    {!createdStrategy && (
-                        <motion.div
-                            initial={{ y: 20, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.4 }}
-                        >
+                    <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.4 }}
+                    >
                             <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-6">
                                 <TabsList className="bg-muted/50">
                                     <TabsTrigger value="recent">{t.tabs.recent}</TabsTrigger>
@@ -610,7 +612,6 @@ const DashboardHome = ({
                                 </div>
                             )}
                         </motion.div>
-                    )}
                 </div>
             </div>
 

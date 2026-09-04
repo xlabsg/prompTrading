@@ -209,6 +209,12 @@ def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
                 _publish_event(job_id, evt_json)
         except Exception:
             pass
+    elif message.startswith("[agent] 大模型思考"):
+        _publish_event(job_id, {
+            "type": "progress",
+            "stage": "thinking",
+            "message": "大模型思考与逻辑推演中...",
+        })
     elif message.startswith("[agent] tool "):
         # Fallback structured event extraction
         match = re.match(r"^\[agent\] tool (\S+)(?: path=(\S+))? (\.\.\.|ok|error)$", message)
@@ -216,8 +222,18 @@ def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
             tool, path, phase_str = match.groups()
             if phase_str == "...":
                 fname = os.path.basename(path) if path else ""
-                action = "修改" if tool in {"edit_file", "write_file", "edit", "write"} else "阅读"
-                msg = f"正在{action} {fname}..." if fname else f"正在执行 {tool}..."
+                if tool == "backtest":
+                    msg = "正在进行历史数据回测计算..."
+                elif tool == "bash":
+                    msg = "正在执行沙箱语法与未来函数审计..."
+                elif tool == "task_done":
+                    msg = "策略生成完毕，正在发布交付物..."
+                elif tool in {"edit_file", "write_file", "edit", "write"}:
+                    msg = f"正在修改 {fname}..." if fname else "正在修改代码..."
+                elif tool in {"read_file", "read"}:
+                    msg = f"正在阅读 {fname}..." if fname else "正在读取文件..."
+                else:
+                    msg = f"正在执行 {tool}..."
                 _publish_event(job_id, {
                     "type": "tool_start",
                     "tool": tool,
@@ -226,10 +242,14 @@ def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
                     "message": msg,
                 })
             else:
+                end_msg = None
+                if tool == "backtest":
+                    end_msg = "回测计算完成，正在评估指标..." if phase_str == "ok" else "回测执行失败"
                 _publish_event(job_id, {
                     "type": "tool_end",
                     "tool": tool,
                     "success": phase_str == "ok",
+                    "message": end_msg,
                 })
 
     # Optional Redis fallback/mirroring
@@ -711,6 +731,8 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(run_dir, "agent.log")
@@ -1265,6 +1287,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")
@@ -1411,6 +1435,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         val = os.getenv(key)
         if val:
             agent_env[key] = val
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")

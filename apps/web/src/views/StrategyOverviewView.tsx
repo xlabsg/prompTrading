@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, GitBranch, Loader2, Pause, Play, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { backtestsApi, strategiesApi } from "@/lib/api";
 import type { BacktestCandle, BacktestSignalEvent, BacktestTrade, BacktestSignalsPayload, Strategy } from "@/lib/types";
 import TradingViewChart from "@/components/charts/TradingViewChart";
@@ -409,6 +410,7 @@ function buildAttributionGraph(events: BacktestSignalEvent[], trades: BacktestTr
 }
 
 const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy }) => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [animateFlow, setAnimateFlow] = useState(true);
   const [timeframe, setTimeframe] = useState<TimeframeOption>("auto");
@@ -788,10 +790,10 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
               )}
             </div>
           </div>
-          {!hasOverview ? (
+          {!hasOverview && strategy?.chat_status === "done" ? (
             <Button onClick={handleGenerate} className="gap-2 shrink-0" disabled={overviewGenerateStatus === "generating"}>
               {overviewGenerateStatus === "generating" ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-              {overviewGenerateStatus === "failed" ? "Retry Workflow & Description" : "Generate Workflow & Description"}
+              {overviewGenerateStatus === "failed" ? t("overview.retryButton") : t("overview.generateButton")}
             </Button>
           ) : null}
         </CardHeader>
@@ -823,20 +825,59 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                   </div>
                 ) : filesQuery.isLoading ? (
                   <div className="text-sm text-muted-foreground">Loading overview...</div>
+                ) : strategy?.chat_status === "generating" ? (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
+                      <Loader2 size={24} className="animate-spin text-primary" />
+                    </div>
+                    <div className="text-center space-y-1.5 max-w-md">
+                      <h4 className="text-base font-semibold text-foreground">
+                        {t("overview.generatingTitle")}
+                      </h4>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        {t("overview.generatingSubtitle")}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                      <Badge variant="outline" className="text-xs py-1 px-2.5 bg-muted/60">
+                        1. {t("overview.milestones.prompt")}
+                      </Badge>
+                      <span className="text-muted-foreground text-xs">→</span>
+                      <Badge variant="outline" className="text-xs py-1 px-2.5 bg-muted/60">
+                        2. {t("overview.milestones.code")}
+                      </Badge>
+                      <span className="text-muted-foreground text-xs">→</span>
+                      <Badge variant="outline" className="text-xs py-1 px-2.5 bg-muted/60">
+                        3. {t("overview.milestones.audit")}
+                      </Badge>
+                      <span className="text-muted-foreground text-xs">→</span>
+                      <Badge variant="outline" className="text-xs py-1 px-2.5 bg-muted/60">
+                        4. {t("overview.milestones.backtest")}
+                      </Badge>
+                      <span className="text-muted-foreground text-xs">→</span>
+                      <Badge variant="outline" className="text-xs py-1 px-2.5 bg-muted/60">
+                        5. {t("overview.milestones.done")}
+                      </Badge>
+                    </div>
+                  </div>
+                ) : strategy?.chat_status !== "done" ? (
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-3 bg-muted/10 p-6 text-center">
+                    <p className="text-sm">{t("overview.waitingForStrategy")}</p>
+                  </div>
                 ) : overviewGenerateStatus === "generating" ? (
                   <div className="flex items-center justify-center h-full text-muted-foreground gap-2">
                     <Loader2 size={16} className="animate-spin" />
-                    <span>Generating overview automatically...</span>
+                    <span>{t("overview.autoGenerating")}</span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-4 bg-muted/10">
-                    <p>No overview markdown available. Auto-generation will run by default.</p>
+                    <p>{t("overview.noOverviewNotice")}</p>
                     {overviewGenerateError ? (
                       <p className="text-xs text-destructive max-w-xl text-center px-4">{overviewGenerateError}</p>
                     ) : null}
                     <Button onClick={handleGenerate} className="gap-2">
                       <Sparkles size={16} />
-                      {overviewGenerateStatus === "failed" ? "Retry Workflow & Description" : "Generate Workflow & Description"}
+                      {overviewGenerateStatus === "failed" ? t("overview.retryButton") : t("overview.generateButton")}
                     </Button>
                   </div>
                 )}
