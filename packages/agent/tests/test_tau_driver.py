@@ -3,6 +3,10 @@
 Every test drives a fake Tau -- a Python process that replays a recorded JSONL
 script -- so the whole file runs without a model, a network, or the real
 `tau` executable.
+
+Scripts use Tau's own wire names (`toolName`, `isError`): `tau_agent.messages.
+WireModel` serialises by camelCase alias, and a fixture in snake_case hid a
+driver that read fields Tau never sends.
 """
 
 from __future__ import annotations
@@ -20,8 +24,8 @@ SIMPLE_SCRIPT = [
     {"type": "response", "command": "prompt", "success": True, "id": 1},
     {"type": "agent_start"},
     {"type": "turn_start"},
-    {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "write", "args": {"path": "strategy.py"}},
-    {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "write", "result": {}, "is_error": False},
+    {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "write", "args": {"path": "strategy.py"}},
+    {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "write", "result": {}, "isError": False},
     {"type": "turn_end"},
     {"type": "message_end", "message": {"content": [{"type": "text", "text": "Wrote the strategy."}]}},
     {"type": "agent_end", "messages": []},
@@ -31,7 +35,7 @@ SIMPLE_SCRIPT = [
 
 @pytest.fixture
 def clean_env(monkeypatch):
-    for name in ("AGENT_TAU_EVENT_TIMEOUT_S", "AGENT_TAU_MAX_FOLLOW_UPS"):
+    for name in ("AGENT_TAU_EVENT_TIMEOUT_S", "AGENT_TAU_MAX_FOLLOW_UPS", "AGENT_MAX_STEPS"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -174,10 +178,10 @@ def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
         {"type": "turn_start"},
         {
             "type": "tool_execution_end",
-            "tool_call_id": "c1",
-            "tool_name": "backtest",
+            "toolCallId": "c1",
+            "toolName": "backtest",
             "result": {"details": {"metrics": {"sharpe_ratio": 1.4}}},
-            "is_error": False,
+            "isError": False,
         },
         {"type": "turn_end"},
         {"type": "agent_settled"},
@@ -188,6 +192,19 @@ def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
 
 
 def test_tool_errors_are_counted(tmp_path, clean_env, monkeypatch):
+    script = [
+        {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "edit", "args": {}},
+        {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "edit", "result": {}, "isError": True},
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.tool_calls == {"edit": 1}
+    assert result.tool_errors == {"edit": 1}
+
+
+def test_snake_case_tool_events_are_still_read(tmp_path, clean_env, monkeypatch):
+    """The fallback in `_wire`, so a change of wire casing is not silent again."""
     script = [
         {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "edit", "args": {}},
         {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "edit", "result": {}, "is_error": True},
@@ -219,6 +236,57 @@ def test_non_json_output_is_skipped(tmp_path, clean_env, monkeypatch):
         preamble="warning: something happened",
     )
     assert result.turns == 1
+
+
+# Three turns in one prompt, so a cap of 2 is reached before the script settles.
+THREE_TURN_SCRIPT = [
+    {"type": "agent_start"},
+    {"type": "turn_end"},
+    {"type": "turn_end"},
+    {"type": "turn_end"},
+    {"type": "message_end", "message": {"content": [{"type": "text", "text": "still going"}]}},
+    {"type": "agent_settled"},
+]
+
+
+def test_turn_budget_is_unbounded_by_default(tmp_path, clean_env, monkeypatch):
+    result = _run_with_fake(tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: [])
+
+    assert result.turns == 3
+    assert result.turn_limit_hit is False
+
+
+def test_turn_budget_stops_the_session(tmp_path, clean_env, monkeypatch):
+    """A capped session gives up rather than running until the container is killed."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+
+    with pytest.raises(tau_driver.TauSessionError, match="agent_turn_limit_reached"):
+        _run_with_fake(
+            tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: ["- strategy.py missing"]
+        )
+
+
+def test_turn_budget_keeps_a_complete_workspace(tmp_path, clean_env, monkeypatch):
+    """Hitting the cap is not a failure when the work is already done."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+
+    result = _run_with_fake(tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: [])
+
+    assert result.turn_limit_hit is True
+    assert result.follow_ups == 0
+
+
+def test_turn_budget_suppresses_follow_ups(tmp_path, clean_env, monkeypatch):
+    """Without the cap the same script would spend its follow-up budget."""
+    monkeypatch.setenv("AGENT_MAX_STEPS", "2")
+    monkeypatch.setenv("AGENT_TAU_MAX_FOLLOW_UPS", "2")
+
+    with pytest.raises(tau_driver.TauSessionError) as excinfo:
+        _run_with_fake(
+            tmp_path, monkeypatch, THREE_TURN_SCRIPT, validate=lambda: ["- strategy.py missing"]
+        )
+
+    assert "agent_incomplete_after_follow_ups" not in str(excinfo.value)
 
 
 # --- fake Tau plumbing -------------------------------------------------------

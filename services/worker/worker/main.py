@@ -721,6 +721,7 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         network=settings.worker_docker_network,
         log_file_path=agent_log_path,
         timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        idle_timeout_s=settings.agent_idle_timeout_s,
         mem_limit=sandbox_opts.get("mem_limit"),
         nano_cpus=sandbox_opts.get("nano_cpus"),
         read_only=sandbox_opts.get("read_only"),
@@ -729,15 +730,15 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         pids_limit=sandbox_opts.get("pids_limit"),
     )
     if agent_exit != 0:
+        msg = (
+            f"agent_container_exit_code={agent_exit}\n"
+            f"--- agent.log tail ---\n{_tail_excerpt(agent_tail)}\n"
+            "See artifact: agent.log"
+        )
         run = db.get(BacktestRun, run_id)
         if run is not None:
             run.status = BacktestStatus.FAILED
             run.finished_at = _utcnow()
-            msg = (
-                f"agent_container_exit_code={agent_exit}\n"
-                f"--- agent.log tail ---\n{_tail_excerpt(agent_tail)}\n"
-                "See artifact: agent.log"
-            )
             run.error_message = msg
             db.flush()
         raise RuntimeError(msg)
@@ -1245,6 +1246,7 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         network=settings.worker_docker_network,
         log_file_path=agent_log_path,
         timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        idle_timeout_s=settings.agent_idle_timeout_s,
         mem_limit=sandbox_opts.get("mem_limit"),
         nano_cpus=sandbox_opts.get("nano_cpus"),
         read_only=sandbox_opts.get("read_only"),
@@ -1386,6 +1388,7 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         network=settings.worker_docker_network,
         log_file_path=agent_log_path,
         timeout_s=settings.agent_job_timeout_s or settings.worker_job_timeout_s,
+        idle_timeout_s=settings.agent_idle_timeout_s,
         mem_limit=sandbox_opts.get("mem_limit"),
         nano_cpus=sandbox_opts.get("nano_cpus"),
         read_only=sandbox_opts.get("read_only"),

@@ -407,23 +407,10 @@ def _session_stats(session: "tau_driver.TauSessionResult | None") -> dict[str, A
         "tool_errors": session.tool_errors,
         "compactions": session.compactions,
         "auto_retries": session.auto_retries,
+        "turn_limit_hit": session.turn_limit_hit,
         "tokens": session.tokens,
         "cost_usd": session.cost_usd,
     }
-
-
-def _max_turns() -> int | None:
-    """Turn budget for the session, from the existing AGENT_MAX_STEPS knob.
-
-    AGENT_MAX_TOKENS is deliberately not consulted any more: Tau sizes its own
-    compaction threshold from the model's context window, which is a better
-    bound than a fixed token count that has to be retuned per model.
-    """
-    raw = (os.getenv("AGENT_MAX_STEPS") or "").strip()
-    try:
-        return int(raw) if raw else None
-    except ValueError:
-        return None
 
 
 def _heal_from_message_text(version_dir: str, text: str) -> None:
@@ -467,6 +454,25 @@ def _heal_from_message_text(version_dir: str, text: str) -> None:
                 print("[agent] auto-healed strategy.py from markdown codeblock in text")
             except Exception:
                 pass
+
+
+def _print_progress(event: dict[str, Any]) -> None:
+    """Echo one driver event to the container log.
+
+    The worker kills a container that has produced no output for
+    `AGENT_IDLE_TIMEOUT_S`. Without this the whole Tau session is silent on
+    stdout, so a healthy agent looked identical to a hung one.
+    """
+    phase = event.get("phase")
+    if phase == "tool_start":
+        print(f"[agent] tool {event.get('tool')} ...", flush=True)
+    elif phase == "tool_end":
+        outcome = "error" if event.get("is_error") else "ok"
+        print(f"[agent] tool {event.get('tool')} {outcome}", flush=True)
+    elif phase == "message":
+        text = " ".join(str(event.get("text") or "").split())
+        if text:
+            print(f"[agent] {text[:200]}", flush=True)
 
 
 def _workspace_problems(version_dir: str, message_text: str | None = None) -> list[str]:
@@ -624,6 +630,7 @@ def main() -> int:
             session = tau_driver.run_session(
                 task=task,
                 workspace=version_dir,
+                progress_callback=_print_progress,
                 provider=tau_target.provider,
                 model=tau_target.model,
                 extension_path=TAU_EXTENSION_PATH,

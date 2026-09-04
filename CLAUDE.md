@@ -186,6 +186,21 @@ stop the loop.
 **Wait for `agent_settled`, never `agent_end`.** `agent_end` carries `will_retry`
 and fires again for every automatic retry.
 
+**The turn budget is enforced by the driver too.** `AgentHarnessConfig.max_turns`
+exists in tau 0.4.1, but `tau_coding.session` never sets it and neither the CLI
+nor the RPC frontend exposes it, so `AGENT_MAX_STEPS` is applied in
+`tau_driver._consume_until_settled`: on reaching the cap it sends `abort`, keeps
+reading to `agent_settled`, and then refuses to spend a follow-up. Unset (the
+default) means no cap, and the container wall clock is the only bound.
+
+**Container timeouts must stay above the driver's own.** The worker kills an
+agent container after `AGENT_IDLE_TIMEOUT_S` of silence (420s, above the driver's
+`AGENT_TAU_EVENT_TIMEOUT_S` of 300s) or `AGENT_JOB_TIMEOUT_S` of wall clock
+(1800s). Both sit above the driver so a stalled session fails with a real
+`tau_event_timeout` message instead of an opaque `exit 124`, and
+`runner_v2` passes `progress_callback=_print_progress` so tool activity keeps the
+idle timer alive during a working session.
+
 **The backtest tool runs in a subprocess** (`agent/backtest_subprocess.py`).
 `run_agent_backtest` installs a process-wide network guard whose allowlist holds
 only the exchange host, so running it in-process would block the agent's own next

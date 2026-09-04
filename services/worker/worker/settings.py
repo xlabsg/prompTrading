@@ -35,8 +35,18 @@ class Settings(BaseSettings):
     # Max silence duration (seconds) with zero log/data output before treating container as dead/hung
     container_idle_timeout_s: int = 120
 
-    # Agent sandbox limits (code generation hard ceiling)
-    agent_job_timeout_s: int = 420
+    # Agent sandbox limits (code generation hard ceiling).
+    #
+    # A generation is a Tau session: up to AGENT_TAU_MAX_FOLLOW_UPS + 1 prompts,
+    # each with several model turns and up to AGENT_BACKTEST_MAX_RUNS backtests
+    # over 2000 bars. 420s did not cover one clean run, so healthy jobs were
+    # killed at the wall clock -- after the model spend, before the version was
+    # published.
+    agent_job_timeout_s: int = 1800
+    # Silence budget for agent containers, kept above the driver's own
+    # AGENT_TAU_EVENT_TIMEOUT_S (300s) so a stalled session fails with the
+    # driver's `tau_event_timeout` rather than an opaque container kill.
+    agent_idle_timeout_s: int = 420
     agent_cpu_limit: float = 1.0  # vCPU cores (0 = no limit)
     agent_memory_limit_mb: int = 1536  # 0 = no limit
     agent_pids_limit: int = 256
