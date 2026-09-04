@@ -1,0 +1,197 @@
+{
+  "trials": [
+    {
+      "group": "Group A (Flat / No Classification)",
+      "trial": 1,
+      "success": false,
+      "error": "Runtime error: numpy boolean subtract, the `-` operator, is not supported, use the bitwise_xor, the `^` operator, or the logical_xor function instead.",
+      "domains_count": 4,
+      "domains": [
+        "trend",
+        "volatility",
+        "momentum",
+        "atomic_math"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 100.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "trial": 2,
+      "success": true,
+      "error": "",
+      "domains_count": 4,
+      "domains": [
+        "trend",
+        "volatility",
+        "momentum",
+        "atomic_math"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "total_return": 0.0,
+      "win_rate": 27.586206896551722
+    },
+    {
+      "group": "Group A (Flat / No Classification)",
+      "trial": 3,
+      "success": true,
+      "error": "",
+      "domains_count": 4,
+      "domains": [
+        "volatility",
+        "trend",
+        "atomic_math",
+        "momentum"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "total_return": 0.0,
+      "win_rate": 39.02439024390244
+    },
+    {
+      "group": "Group B (Strict Single-Bucket Hierarchy)",
+      "trial": 1,
+      "success": false,
+      "error": "Runtime error: '>' not supported between instances of 'SupertrendResult' and 'int'",
+      "domains_count": 5,
+      "domains": [
+        "volatility",
+        "trend",
+        "momentum",
+        "atomic_math",
+        "volume"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 100.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group B (Strict Single-Bucket Hierarchy)",
+      "trial": 2,
+      "success": true,
+      "error": "",
+      "domains_count": 4,
+      "domains": [
+        "volatility",
+        "trend",
+        "atomic_math",
+        "momentum"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 0.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group B (Strict Single-Bucket Hierarchy)",
+      "trial": 3,
+      "success": false,
+      "error": "Runtime error: too many values to unpack (expected 3)",
+      "domains_count": 5,
+      "domains": [
+        "volatility",
+        "crypto_derivatives",
+        "trend",
+        "momentum",
+        "volume"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 100.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group C (Flat Registry + Orthogonal Tags/Roles)",
+      "trial": 1,
+      "success": false,
+      "error": "Runtime error: supertrend() got an unexpected keyword argument 'window'",
+      "domains_count": 6,
+      "domains": [
+        "volatility",
+        "crypto_derivatives",
+        "trend",
+        "momentum",
+        "atomic_math",
+        "volume"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 100.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group C (Flat Registry + Orthogonal Tags/Roles)",
+      "trial": 2,
+      "success": true,
+      "error": "",
+      "domains_count": 1,
+      "domains": [
+        "volatility"
+      ],
+      "sharpe_ratio": -6.001511965719403,
+      "max_drawdown": 16.472324135371196,
+      "total_return": -14.235051356804995,
+      "win_rate": 0.0
+    },
+    {
+      "group": "Group C (Flat Registry + Orthogonal Tags/Roles)",
+      "trial": 3,
+      "success": false,
+      "error": "Runtime error: gradient() got an unexpected keyword argument 'window'",
+      "domains_count": 6,
+      "domains": [
+        "volatility",
+        "crypto_derivatives",
+        "trend",
+        "momentum",
+        "atomic_math",
+        "volume"
+      ],
+      "sharpe_ratio": 0.0,
+      "max_drawdown": 100.0,
+      "total_return": 0.0,
+      "win_rate": 0.0
+    }
+  ],
+  "summary": {
+    "success_mean": {
+      "Group A (Flat / No Classification)": 0.6666666666666666,
+      "Group B (Strict Single-Bucket Hierarchy)": 0.3333333333333333,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": 0.3333333333333333
+    },
+    "domains_count_mean": {
+      "Group A (Flat / No Classification)": 4.0,
+      "Group B (Strict Single-Bucket Hierarchy)": 4.666666666666667,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": 4.333333333333333
+    },
+    "sharpe_ratio_mean": {
+      "Group A (Flat / No Classification)": 0.0,
+      "Group B (Strict Single-Bucket Hierarchy)": 0.0,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": -2.000503988573134
+    },
+    "sharpe_ratio_median": {
+      "Group A (Flat / No Classification)": 0.0,
+      "Group B (Strict Single-Bucket Hierarchy)": 0.0,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": 0.0
+    },
+    "sharpe_ratio_std": {
+      "Group A (Flat / No Classification)": 0.0,
+      "Group B (Strict Single-Bucket Hierarchy)": 0.0,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": 3.4649745489528576
+    },
+    "max_drawdown_mean": {
+      "Group A (Flat / No Classification)": 33.333333333333336,
+      "Group B (Strict Single-Bucket Hierarchy)": 66.66666666666667,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": 72.15744137845707
+    },
+    "total_return_mean": {
+      "Group A (Flat / No Classification)": 0.0,
+      "Group B (Strict Single-Bucket Hierarchy)": 0.0,
+      "Group C (Flat Registry + Orthogonal Tags/Roles)": -4.745017118934999
+    }
+  }
+}

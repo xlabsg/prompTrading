@@ -16,7 +16,14 @@ except Exception:  # noqa: BLE001
     _talib = None
 
 
-def _resolve_window(window: int, timeperiod: int | None = None, length: int | None = None) -> int:
+def _resolve_window(
+    window: int,
+    timeperiod: int | None = None,
+    length: int | None = None,
+    period: int | None = None,
+) -> int:
+    if period is not None:
+        return int(period)
     if timeperiod is not None:
         return int(timeperiod)
     if length is not None:
@@ -215,6 +222,34 @@ def safe_div(num: SeriesLike, denom: SeriesLike, fill: float = 0.0) -> pd.Series
 class SupertrendResult(NamedTuple):
     supertrend: pd.Series
     direction: pd.Series
+    __array_priority__ = 1000
+
+    def __gt__(self, other: Any) -> pd.Series:
+        return self.direction > other
+
+    def __ge__(self, other: Any) -> pd.Series:
+        return self.direction >= other
+
+    def __lt__(self, other: Any) -> pd.Series:
+        return self.direction < other
+
+    def __le__(self, other: Any) -> pd.Series:
+        return self.direction <= other
+
+    def __eq__(self, other: Any) -> pd.Series:  # type: ignore[override]
+        return self.direction == other
+
+    def __ne__(self, other: Any) -> pd.Series:  # type: ignore[override]
+        return self.direction != other
+
+    def __mul__(self, other: Any) -> pd.Series:
+        return self.direction * other
+
+    def __rmul__(self, other: Any) -> pd.Series:
+        return other * self.direction
+
+    def __neg__(self) -> pd.Series:
+        return -self.direction
 
 
 def supertrend(
@@ -223,6 +258,9 @@ def supertrend(
     close: SeriesLike,
     period: int = 10,
     multiplier: float = 3.0,
+    window: int | None = None,
+    timeperiod: int | None = None,
+    length: int | None = None,
 ) -> SupertrendResult:
     """Lookahead-safe SuperTrend indicator.
 
@@ -234,7 +272,7 @@ def supertrend(
     l = _to_series(low, like=h)
     c = _to_series(close, like=h)
     n = len(c)
-    p = max(1, int(period))
+    p = max(1, _resolve_window(window=period if window is None else window, period=period, timeperiod=timeperiod, length=length))
     m = float(multiplier)
 
     vol_atr = atr(h, l, c, window=p).to_numpy()
@@ -423,10 +461,12 @@ def bollinger_bands(
     close: SeriesLike,
     window: int = 20,
     num_std: float = 2.0,
+    period: int | None = None,
+    timeperiod: int | None = None,
 ) -> BollingerBandsResult:
     """Bollinger Bands returning upper, middle, lower, bandwidth, and %B."""
     c = _to_series(close)
-    w = max(1, int(window))
+    w = max(1, _resolve_window(window=window, period=period, timeperiod=timeperiod))
     std_mult = float(num_std)
     mid = c.rolling(w).mean()
     std = c.rolling(w).std(ddof=0)
@@ -447,15 +487,27 @@ def bollinger_bands(
 # Crypto-Native Derivative & Microstructure Factor Helpers
 # =====================================================================
 
-def funding_rate_zscore(funding_rate: SeriesLike, window: int = 72) -> pd.Series:
+def funding_rate_zscore(
+    funding_rate: SeriesLike,
+    window: int = 72,
+    period: int | None = None,
+    timeperiod: int | None = None,
+) -> pd.Series:
     """Standardized z-score of perpetual funding rate to detect squeeze regime."""
-    return zscore(funding_rate, window=window)
+    w = max(2, _resolve_window(window=window, period=period, timeperiod=timeperiod))
+    return zscore(funding_rate, window=w)
 
 
-def oi_momentum(open_interest: SeriesLike, window: int = 24) -> pd.Series:
+def oi_momentum(
+    open_interest: SeriesLike,
+    window: int = 24,
+    period: int | None = None,
+    timeperiod: int | None = None,
+) -> pd.Series:
     """Rate of change (ROC) of open interest over window bars."""
     s = _to_series(open_interest)
-    return s.pct_change(max(1, int(window)))
+    w = max(1, _resolve_window(window=window, period=period, timeperiod=timeperiod))
+    return s.pct_change(w)
 
 
 # =====================================================================
