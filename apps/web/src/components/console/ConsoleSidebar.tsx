@@ -442,10 +442,10 @@ const ConsoleSidebar = ({
                         setGenerationProgressMessage(evt.message);
                     } else if (evt.step) {
                         const stepLabels: Record<string, string> = {
-                            initializing_agent: "正在初始化 Agent 沙箱...",
-                            running_backtest: "正在执行闭环回测...",
-                            auditing_code: "正在验证策略语法与导入...",
-                            finalizing_strategy: "正在发布策略代码...",
+                            initializing_agent: t("console.sidebar.agentSteps.initializing_agent"),
+                            running_backtest: t("console.sidebar.agentSteps.running_backtest"),
+                            auditing_code: t("console.sidebar.agentSteps.auditing_code"),
+                            finalizing_strategy: t("console.sidebar.agentSteps.finalizing_strategy"),
                         };
                         setGenerationProgressMessage(stepLabels[evt.step] || evt.detail || evt.step);
                     }

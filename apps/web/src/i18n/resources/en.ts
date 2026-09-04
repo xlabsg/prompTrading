@@ -141,6 +141,12 @@ const en = {
         snapshot: "Update snapshot",
         validate: "Validate logic",
       },
+      agentSteps: {
+        initializing_agent: "Initializing agent sandbox...",
+        running_backtest: "Running closed-loop backtest...",
+        auditing_code: "Auditing strategy syntax & imports...",
+        finalizing_strategy: "Publishing strategy code...",
+      },
       liveDraftError: "Failed to generate live trading file",
       aiThinking: "AI is thinking...",
       editingFile: "Editing {{path}}...",

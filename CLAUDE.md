@@ -14,6 +14,9 @@ this one.
 - When modifying the worker, Docker orchestration, or agent runtime dependencies,
   verify with a real container smoke test (Worker -> Docker agent/backtest
   lifecycle). In-memory mocks alone are not evidence.
+- All frontend user-facing strings must use i18n (`useTranslation` / `t`) with keys
+  declared in both `zh.ts` and `en.ts`. Never hardcode user-facing text in UI
+  components.
 
 ## Project Overview
 
@@ -321,7 +324,8 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
   linter/formatter.
 - **TypeScript/React**: functional components, PascalCase filenames
   (`BacktestView.tsx`), Tailwind utility classes, hooks under `src/hooks/` near
-  their owners. Run `npm run lint` before pushing.
+  their owners. All user-facing strings must use i18n (`t(...)`) with parity in both
+  `zh.ts` and `en.ts`. Run `npm run lint` before pushing.
 - **Config** (`*.env`, YAML): never embed secrets. Document required keys in the
   service docs, not inline.
 

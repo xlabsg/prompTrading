@@ -140,6 +140,12 @@ const zh = {
         snapshot: "更新版本快照",
         validate: "验证策略逻辑",
       },
+      agentSteps: {
+        initializing_agent: "正在初始化 Agent 沙箱...",
+        running_backtest: "正在执行闭环回测...",
+        auditing_code: "正在验证策略语法与导入...",
+        finalizing_strategy: "正在发布策略代码...",
+      },
       liveDraftError: "生成实盘文件失败",
       aiThinking: "AI 正在思考...",
       editingFile: "正在修改 {{path}}...",
