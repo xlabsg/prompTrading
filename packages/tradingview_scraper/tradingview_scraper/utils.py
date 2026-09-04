@@ -1,7 +1,6 @@
 """Utility functions for TradingView scraper."""
 
 import random
-import string
 
 
 def generate_user_agent() -> str:

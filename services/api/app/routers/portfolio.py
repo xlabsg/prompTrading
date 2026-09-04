@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from control_plane.enums import PositionStatus, TradingSessionStatus
-from control_plane.models import Order, Position, Strategy, StrategyExchangeAccount, TradingConfig, TradingSession
+from control_plane.models import Position, Strategy, StrategyExchangeAccount, TradingConfig, TradingSession
 from app.schemas import ExchangeAccountResponse
 from app.crypto import decrypt_credential
 from app.deps import get_db

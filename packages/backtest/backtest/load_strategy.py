@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
-from types import ModuleType
 from typing import Any, Callable
 
 

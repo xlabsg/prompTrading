@@ -12,12 +12,12 @@ from sqlalchemy.orm import Session
 
 # Control plane imports
 from control_plane.enums import LogLevel, OrderSide, OrderStatus, OrderType, TradeStatus
-from control_plane.models import Order, StrategyExchangeAccount, TradingConfig, TradingSession, TradingTrade
+from control_plane.models import Order, StrategyExchangeAccount, TradingConfig, TradingTrade
 
 # Risk Engine imports
 from risk_engine import (
     RiskValidator, PositionManager, OrderManager,
-    OKXAdapter, BinanceAdapter, BinanceClient,
+    BinanceAdapter, BinanceClient,
     generate_client_order_id,
     OrderSpec as SDKOrderSpec, OrderSide as SDKOrderSide,
     OrderType as SDKOrderType, PositionSide,

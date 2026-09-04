@@ -2,13 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-from typing import Any, Optional
+from typing import Any
 from control_plane.file_queue import (
     FileJobQueue,
-    QueueItem,
-    INTERACTIVE_PRIORITY,
-    BATCH_PRIORITY,
-    resolve_priority,
 )
 
 QUEUE_NAME = "jobs:queue:v1"

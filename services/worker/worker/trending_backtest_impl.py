@@ -10,16 +10,14 @@ from datetime import datetime, timezone, timedelta
 
 from sqlalchemy.orm import Session
 import redis
-import docker
 
 from control_plane.enums import (
-    BacktestStatus, ChatStatus, JobStatus, JobType,
-    StrategyRole, TrendingBacktestStatus
+    ChatStatus, JobStatus, JobType
 )
 from control_plane.versions import create_strategy_version
 from control_plane.models import (
     BacktestRun, Dataset, Job, Strategy,
-    StrategyMember, StrategyVersion, TradingViewTrendingStrategy
+    StrategyVersion, TradingViewTrendingStrategy
 )
 
 logger = logging.getLogger(__name__)
@@ -289,8 +287,6 @@ def create_backtest_jobs(
 ) -> list[Job]:
     """Create BACKTEST jobs."""
     func_logger = logging.getLogger(__name__)
-    import json
-    from control_plane.queue import QUEUE_NAME
 
     jobs = []
     for dataset, run in datasets:

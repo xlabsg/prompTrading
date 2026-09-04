@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable, Any
+from typing import Protocol, runtime_checkable
 
 import pandas as pd
 

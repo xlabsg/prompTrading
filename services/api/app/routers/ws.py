@@ -4,10 +4,8 @@ import asyncio
 import json
 import logging
 
-import redis.asyncio as aioredis
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from control_plane.queue import job_log_channel
 from app.settings import settings
 
 logger = logging.getLogger(__name__)

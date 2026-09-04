@@ -3,12 +3,9 @@ Template Backtest API endpoints
 
 Provides endpoints for running real backtests on strategy templates.
 """
-from datetime import datetime, timezone
-from typing import Any, Optional
 import json
 import os
 from fastapi import APIRouter, Depends, HTTPException
-from starlette.requests import Request
 from starlette.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -16,9 +13,8 @@ from sqlalchemy.orm import Session
 
 from control_plane.models import StrategyTemplate, Job, BacktestRun
 from control_plane.enums import JobType, JobStatus
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from control_plane.workspaces import get_run_dir
-from app.admin import require_admin
 from app.deps import get_db, get_redis
 from app.schemas import BacktestRunResponse
 from app.settings import settings

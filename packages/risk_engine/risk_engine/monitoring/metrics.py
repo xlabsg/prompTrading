@@ -5,7 +5,7 @@ Trading Metrics
 """
 import logging
 from decimal import Decimal
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from ..core import Trade, Position
 
 logger = logging.getLogger(__name__)

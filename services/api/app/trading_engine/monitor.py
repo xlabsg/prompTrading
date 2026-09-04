@@ -6,13 +6,13 @@ Position Monitor with Risk Engine Integration
 import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import Optional, List
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 # Control plane imports
 from control_plane.enums import LogLevel, PositionSide as DBPositionSide, PositionStatus
-from control_plane.models import Position as DBPosition, TradingSession, TradingConfig, StrategyExchangeAccount
+from control_plane.models import Position as DBPosition, TradingConfig, StrategyExchangeAccount
 
 # Risk Engine imports
 from risk_engine import (

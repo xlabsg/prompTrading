@@ -397,7 +397,7 @@ curl http://localhost:8000/subscriptions -H "Cookie: asp_session=YOUR_TOKEN" | j
 
 如果需要添加新的内置模板：
 
-1. 编辑 `packages/control_plane/migrations/seed_templates.sql`
+1. 编辑 `services/api/migrations/seed_templates.sql`
 2. 运行 `python scripts/seed_builtin_templates.py`
 3. 运行 `python scripts/generate_template_performance.py`
 

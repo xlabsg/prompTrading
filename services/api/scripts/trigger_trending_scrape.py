@@ -13,8 +13,6 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
 from control_plane.models import Job
-from control_plane.queue import QUEUE_NAME
-import redis
 from app.settings import settings
 
 

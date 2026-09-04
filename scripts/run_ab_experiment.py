@@ -7,16 +7,13 @@ Compares:
 """
 from __future__ import annotations
 
-import json
-import sys
-from dataclasses import asdict
 import numpy as np
 import pandas as pd
 
 # Import packages
 from agent.strategy_lint import dry_run_strategy, detect_lookahead_bias
-from backtest.robustness import evaluate_strategy_robustness, compute_dsr
-from backtest.alpha_library import calc_supertrend, calc_atr
+from backtest.robustness import evaluate_strategy_robustness
+from backtest.alpha_library import calc_supertrend
 from live_trading_sdk.paper_broker import PaperBroker
 from risk_engine.monitoring.drift_tracker import DriftTracker, BacktestExpectation
 

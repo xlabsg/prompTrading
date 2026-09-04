@@ -8,8 +8,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from control_plane.enums import (
     BacktestStatus,
     ChatStatus,
-    JobStatus,
-    JobType,
     LogLevel,
     TradingSessionStatus,
     OrderSide,
@@ -20,8 +18,6 @@ from control_plane.enums import (
     StrategyRole,
     SignalStatus,
     TradeStatus,
-    TrendingSourceType,
-    TrendingBacktestStatus,
 )
 
 

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.admin import require_admin
 from app.deps import get_db, get_redis
 from app.settings import settings
-from control_plane.enums import JobStatus, JobType
+from control_plane.enums import JobStatus
 from control_plane.models import Job, StrategyTemplate, TradingViewTrendingStrategy
 from control_plane.queue import QUEUE_NAME, get_file_queue, request_cancel_job
 

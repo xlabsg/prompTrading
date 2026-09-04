@@ -3,13 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import time
 from typing import AsyncGenerator
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from control_plane.enums import JobStatus
 from control_plane.models import Job
 from app.deps import get_db, get_session_factory
 from app.schemas import JobResponse

@@ -9,14 +9,11 @@ import sys
 import time
 import queue
 import threading
-import shutil
-import tempfile
 from datetime import datetime, timezone
 
 import json
 import hashlib
 import requests
-import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -35,7 +32,7 @@ from control_plane.models import (
     StrategyMember,
     StrategyVersion,
 )
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from control_plane.workspaces import get_run_dir, git_commit, init_strategy_workspace
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
 from app.deps import get_db, get_redis, get_session_factory

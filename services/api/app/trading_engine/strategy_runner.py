@@ -13,8 +13,6 @@ from types import ModuleType
 from typing import Any, Callable, Optional, List
 
 import pandas as pd
-import requests
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backtest.execution_core import describe_weight_transition
