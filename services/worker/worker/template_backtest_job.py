@@ -326,7 +326,7 @@ def handle_template_backtest(
     if not strategy_code:
         raise RuntimeError(f"template_not_supported: {template_id}")
 
-    logger.info(f"[TEMPLATE_BACKTEST] Using predefined strategy code")
+    logger.info("[TEMPLATE_BACKTEST] Using predefined strategy code")
 
     # Calculate date range (end 1 day ago to ensure data is available)
     end_time = datetime.now(timezone.utc) - timedelta(days=1)
@@ -362,7 +362,7 @@ def handle_template_backtest(
 
     try:
         # Run backtest
-        logger.info(f"[TEMPLATE_BACKTEST] Starting backtest...")
+        logger.info("[TEMPLATE_BACKTEST] Starting backtest...")
         backtest_run = _run_backtest(
             db=db,
             rds=rds,
@@ -382,7 +382,7 @@ def handle_template_backtest(
 
         if backtest_run.status == BacktestStatus.SUCCEEDED:
             # Store results
-            logger.info(f"[TEMPLATE_BACKTEST] Storing results...")
+            logger.info("[TEMPLATE_BACKTEST] Storing results...")
             _store_performance_run(
                 db=db,
                 template_id=template_id,
@@ -393,7 +393,7 @@ def handle_template_backtest(
             )
 
             # Extract and store signals
-            logger.info(f"[TEMPLATE_BACKTEST] Extracting signals...")
+            logger.info("[TEMPLATE_BACKTEST] Extracting signals...")
             _extract_and_store_signals(
                 db=db,
                 template_id=template_id,
@@ -407,13 +407,13 @@ def handle_template_backtest(
                 strategy_id=temp_strategy.id,
             )
 
-            logger.info(f"[TEMPLATE_BACKTEST] Completed successfully")
+            logger.info("[TEMPLATE_BACKTEST] Completed successfully")
 
             template.updated_at = datetime.now(timezone.utc)
             db.commit()
 
     finally:
-        logger.info(f"[TEMPLATE_BACKTEST] Finished")
+        logger.info("[TEMPLATE_BACKTEST] Finished")
 
 
 def _get_or_create_template_strategy(
@@ -716,7 +716,7 @@ def _extract_and_store_signals(
     logger.info(f"[TEMPLATE_BACKTEST] Metrics keys: {list(metrics.keys())}")
 
     if not trades:
-        logger.info(f"[TEMPLATE_BACKTEST] No trades to extract signals from")
+        logger.info("[TEMPLATE_BACKTEST] No trades to extract signals from")
         return
 
     # Get symbol from backtest params

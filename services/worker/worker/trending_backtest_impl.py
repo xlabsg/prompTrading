@@ -132,7 +132,7 @@ def create_temporary_strategy_from_tradingview(
     except ImportError as e:
         raise RuntimeError(f"tradingview_scraper not installed: {e}")
 
-    print(f"[DEBUG] About to create Strategy object")
+    print("[DEBUG] About to create Strategy object")
     print(f"[DEBUG] Creating Strategy with name: {strategy_name}")
     try:
         strategy = Strategy(
@@ -141,21 +141,21 @@ def create_temporary_strategy_from_tradingview(
         )
     except Exception as e:
         import traceback
-        print(f"[DEBUG] Exception during Strategy creation:")
+        print("[DEBUG] Exception during Strategy creation:")
         print(traceback.format_exc())
         raise
-    print(f"[DEBUG] Strategy object created, adding to database")
+    print("[DEBUG] Strategy object created, adding to database")
     db.add(strategy)
-    print(f"[DEBUG] Strategy added to database, flushing...")
+    print("[DEBUG] Strategy added to database, flushing...")
     db.flush()
-    print(f"[DEBUG] Database flush successful")
+    print("[DEBUG] Database flush successful")
 
     from control_plane.workspaces import init_strategy_workspace
-    print(f"[DEBUG] About to call init_strategy_workspace")
+    print("[DEBUG] About to call init_strategy_workspace")
     init_strategy_workspace("/workspaces", strategy.id)
-    print(f"[DEBUG] Workspace initialized")
+    print("[DEBUG] Workspace initialized")
 
-    print(f"[DEBUG] Creating StrategyVersion...")
+    print("[DEBUG] Creating StrategyVersion...")
     version = create_strategy_version(
         db,
         strategy_id=strategy.id,
@@ -169,7 +169,7 @@ def create_temporary_strategy_from_tradingview(
         snapshot=True,
         workspaces_dir="/workspaces",
     )
-    print(f"[DEBUG] StrategyVersion created and snapshotted")
+    print("[DEBUG] StrategyVersion created and snapshotted")
 
     # Commit so strategy is visible to subsequent queries
     db.commit()
@@ -201,7 +201,7 @@ def trigger_llm_conversion(
 
     # If pinescript_source is empty, we're reusing an existing strategy
     if not pinescript_source:
-        func_logger.info(f"Skipping LLM conversion - reusing existing strategy code")
+        func_logger.info("Skipping LLM conversion - reusing existing strategy code")
         return None
 
     conversion_prompt = _build_pinescript_conversion_prompt(

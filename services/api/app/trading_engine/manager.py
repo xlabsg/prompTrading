@@ -359,20 +359,26 @@ class TradingSessionManager:
             ).scalars().all()
 
             # Convert to SDK Order objects for reconciliation
-            from risk_engine import Order as SDKOrder, OrderStatus as SDKOrderStatus, OrderSide, OrderType
+            from risk_engine import Order as SDKOrder, OrderStatus as SDKOrderStatus, OrderSide, OrderType, PositionSide as SDKPositionSide
             from decimal import Decimal
 
             sdk_orders = []
             for db_order in local_orders:
+                side_str = db_order.side.value if hasattr(db_order.side, "value") else str(db_order.side)
+                order_type_str = db_order.order_type.value if hasattr(db_order.order_type, "value") else str(db_order.order_type)
+                status_str = db_order.status.value if hasattr(db_order.status, "value") else str(db_order.status)
                 sdk_order = SDKOrder(
-                    client_order_id=db_order.client_order_id,
+                    order_id=db_order.id,
+                    client_order_id=db_order.client_order_id or db_order.id,
                     exchange_order_id=db_order.exchange_order_id,
                     symbol=db_order.symbol,
-                    side=OrderSide(db_order.side.value),
-                    type=OrderType.MARKET if db_order.type.value == "market" else OrderType.LIMIT,
+                    side=OrderSide(side_str),
+                    order_type=OrderType.MARKET if order_type_str == "market" else OrderType.LIMIT,
+                    position_side=SDKPositionSide.LONG if side_str == "buy" else SDKPositionSide.SHORT,
+                    status=SDKOrderStatus(status_str),
                     size=Decimal(str(db_order.size)),
+                    filled_size=Decimal(str(db_order.filled_size or "0")),
                     price=Decimal(str(db_order.price)) if db_order.price else None,
-                    status=SDKOrderStatus(db_order.status.value),
                 )
                 # Register with order manager
                 self.order_manager.add_order(sdk_order)
