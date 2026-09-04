@@ -42,7 +42,7 @@ jobs:
 
       - name: Lint with Ruff
         run: |
-          ruff check packages/control_plane packages/agent packages/backtest packages/data packages/risk_engine services/api services/worker
+          ruff check .
 
       - name: Run Backend Tests
         env:

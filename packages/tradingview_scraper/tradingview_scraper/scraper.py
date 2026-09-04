@@ -82,7 +82,7 @@ class PineScriptScraper:
                 logger.info(f"  Source code length: {len(result.get('source', ''))} characters")
                 return result
             else:
-                logger.warning(f"API method returned no source code")
+                logger.warning("API method returned no source code")
         except Exception as e:
             logger.warning(f"API method failed with exception: {type(e).__name__}: {e}")
 
@@ -96,7 +96,7 @@ class PineScriptScraper:
                 logger.info(f"  Source code length: {len(result.get('source', ''))} characters")
                 return result
             else:
-                logger.warning(f"HTML method returned no source code")
+                logger.warning("HTML method returned no source code")
         except Exception as e:
             logger.warning(f"HTML method failed with exception: {type(e).__name__}: {e}")
 
@@ -244,7 +244,7 @@ class PineScriptScraper:
                                 logger.info(f"✓ Successfully fetched via pine-facade API (version {version})")
                                 return self._normalize_response(data, script_id, script_url)
                             else:
-                                logger.warning(f"  Response has no 'source' field")
+                                logger.warning("  Response has no 'source' field")
                         except Exception as e:
                             logger.error(f"  Failed to parse JSON response: {type(e).__name__}: {e}")
                             logger.debug(f"  Response text (first 500 chars): {response.text[:500]}")
@@ -276,10 +276,10 @@ class PineScriptScraper:
                     data = response.json()
                     logger.info(f"  Response JSON keys: {list(data.keys())}")
                     if data and ("source" in data or "scriptSource" in data):
-                        logger.info(f"  ✓ Found source code in response!")
+                        logger.info("  ✓ Found source code in response!")
                         return self._normalize_response(data, script_id, script_url)
                     else:
-                        logger.warning(f"  No source code in response")
+                        logger.warning("  No source code in response")
             except Exception as e:
                 logger.warning(f"  Endpoint failed: {type(e).__name__}: {e}")
                 continue

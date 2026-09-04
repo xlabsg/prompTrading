@@ -1,6 +1,4 @@
 import unittest
-import numpy as np
-import pandas as pd
 from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
 
 

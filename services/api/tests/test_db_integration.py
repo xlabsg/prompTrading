@@ -1,13 +1,10 @@
 import os
 import tempfile
-import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import select
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.models import Base, User, Strategy, StrategyTemplate
+from control_plane.models import Base, User, Strategy
 from control_plane.enums import ChatStatus
-from app.settings import settings
 
 
 def test_api_sqlite_session_and_models():

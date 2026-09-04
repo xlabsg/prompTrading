@@ -1,11 +1,10 @@
 import os
 import tempfile
-import pytest
 from sqlalchemy import text, select
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.models import Base, Strategy, StrategyVersion, Job, StrategyTemplate, User
-from control_plane.enums import JobType, JobStatus, ChatStatus
+from control_plane.models import Base, Strategy, StrategyTemplate
+from control_plane.enums import ChatStatus
 
 
 def test_sqlite_engine_wal_and_pragmas():

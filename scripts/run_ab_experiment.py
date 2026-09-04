@@ -145,18 +145,18 @@ def run_ab_experiment():
     # Group A: Baseline
     ok_a, msg_a = dry_run_strategy(STRATEGY_LOOKAHEAD_CODE, strict_lookahead=False)
     # In naive backtest, this strategy would show an astronomical Sharpe of 6.0+
-    print(f"[Group A - Baseline]")
-    print(f"  * Static Check: PASSED (Syntax OK, no lookahead awareness)")
-    print(f"  * Reported Nominal Sharpe: ~6.20 (Hyped, deceptive alpha)")
-    print(f"  * System Decision: DEPLOYABLE TO PRODUCTION! (Catastrophic error in real trading)")
+    print("[Group A - Baseline]")
+    print("  * Static Check: PASSED (Syntax OK, no lookahead awareness)")
+    print("  * Reported Nominal Sharpe: ~6.20 (Hyped, deceptive alpha)")
+    print("  * System Decision: DEPLOYABLE TO PRODUCTION! (Catastrophic error in real trading)")
 
     # Group B: PrompTrading Moat
     ok_b, msg_b = dry_run_strategy(STRATEGY_LOOKAHEAD_CODE, strict_lookahead=True)
     lookahead_issues = detect_lookahead_bias(STRATEGY_LOOKAHEAD_CODE)
-    print(f"\n[Group B - PrompTrading Upgraded]")
+    print("\n[Group B - PrompTrading Upgraded]")
     print(f"  * Static Check: BLOCKED! ({lookahead_issues[0]})")
-    print(f"  * System Decision: REJECTED BEFORE BACKTEST / EXECUTION.")
-    print(f"  * Safety Benefit: Prevented capital wipeout from future data leakage.")
+    print("  * System Decision: REJECTED BEFORE BACKTEST / EXECUTION.")
+    print("  * Safety Benefit: Prevented capital wipeout from future data leakage.")
 
     results["case_1_lookahead"] = {
         "group_a_result": "Passed (False Positive)",
@@ -174,11 +174,11 @@ def run_ab_experiment():
     rets_lucky, sharpe_lucky, mdd_lucky, trades_lucky = run_simulation(df_is, sig_lucky["target_weights"])
 
     # Group A Evaluation (Naive metrics only)
-    print(f"[Group A - Baseline]")
+    print("[Group A - Baseline]")
     print(f"  * Observed Sharpe Ratio: {sharpe_lucky:.2f}")
     print(f"  * Max Drawdown: {mdd_lucky:.2%}")
     print(f"  * Total Trades: {trades_lucky}")
-    print(f"  * Verdict: Accepted (High Sharpe ratio > 2.0).")
+    print("  * Verdict: Accepted (High Sharpe ratio > 2.0).")
 
     # Group B Evaluation (DSR + Monte Carlo + Trade Confidence Penalty)
     rob_lucky = evaluate_strategy_robustness(
@@ -188,7 +188,7 @@ def run_ab_experiment():
         num_trades=trades_lucky,
         trials_count=5,  # 5 trials used
     )
-    print(f"\n[Group B - PrompTrading Upgraded]")
+    print("\n[Group B - PrompTrading Upgraded]")
     print(f"  * Observed Sharpe Ratio: {sharpe_lucky:.2f}")
     print(f"  * Deflated Sharpe (DSR): {rob_lucky.deflated_sharpe_ratio:.2%}")
     print(f"  * Monte Carlo p-value: {rob_lucky.p_value:.3f} (Significance test)")
@@ -215,13 +215,13 @@ def run_ab_experiment():
     rets_is, sharpe_is, mdd_is, trades_is = run_simulation(df_is, sig_st_is["target_weights"])
     rob_st = evaluate_strategy_robustness(rets_is, sharpe_is, mdd_is, trades_is, trials_count=1)
 
-    print(f"In-Sample (Historical Backtest):")
+    print("In-Sample (Historical Backtest):")
     print(f"  * Sharpe: {sharpe_is:.2f} | DSR: {rob_st.deflated_sharpe_ratio:.1%} | Robustness Score: {rob_st.robustness_score:.2f}")
     print(f"  * Total Trades: {trades_is} | MDD: {mdd_is:.2%}")
     print(f"  * Robustness Verdict: {'ROBUST' if rob_st.is_robust else 'NOT ROBUST'}")
 
     # Out-of-Sample execution using PaperBroker & DriftTracker
-    print(f"\nOut-of-Sample (Paper Trading Simulation with Slippage & Fee):")
+    print("\nOut-of-Sample (Paper Trading Simulation with Slippage & Fee):")
     paper_broker = PaperBroker(initial_cash=10000.0, fee_rate=0.0004, slippage_bps=2.0)
     drift_tracker = DriftTracker(
         BacktestExpectation(

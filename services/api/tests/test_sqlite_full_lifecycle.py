@@ -2,9 +2,8 @@ import os
 import tempfile
 import threading
 import time
-import pytest
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import select, text
+from sqlalchemy import select
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
 from control_plane.models import (
@@ -19,23 +18,17 @@ from control_plane.models import (
     TradingConfig,
     TradingSession,
     StrategyMember,
-    StrategyExchangeAccount,
     StrategySignal,
     Order,
-    StrategyTemplate,
-    Repository,
 )
 from control_plane.enums import (
     ChatStatus,
-    JobType,
-    JobStatus,
     BacktestStatus,
     TradingSessionStatus,
     OrderSide,
     OrderType,
     OrderStatus,
     StrategyRole,
-    LogLevel,
 )
 
 

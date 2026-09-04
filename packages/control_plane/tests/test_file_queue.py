@@ -1,11 +1,10 @@
-import os
 import shutil
 import tempfile
 import time
 import unittest
 
 from control_plane.file_queue import FileJobQueue, INTERACTIVE_PRIORITY, BATCH_PRIORITY
-from control_plane.queue import enqueue_job, get_file_queue, request_cancel_job, is_job_cancelled
+from control_plane.queue import get_file_queue, request_cancel_job, is_job_cancelled
 
 
 class TestFileJobQueue(unittest.TestCase):

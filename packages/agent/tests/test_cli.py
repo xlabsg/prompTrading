@@ -1,6 +1,5 @@
 """Tests for pt-quant CLI tool (agent.cli)."""
 
-import json
 import os
 import tempfile
 import pytest
