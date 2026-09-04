@@ -7,7 +7,7 @@ import { TemplateFilters } from "@/components/template/TemplateFilters";
 import { ForkTemplateDialog } from "@/components/template/ForkTemplateDialog";
 import { TemplatePerformanceDialog } from "@/components/template/TemplatePerformanceDialog";
 import { MainLayout } from "@/components/layout/MainLayout";
-import { authApi, templatesApi } from "@/lib/api";
+import { templatesApi } from "@/lib/api";
 import type { TemplateDetail } from "@/lib/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTranslation } from "react-i18next";
@@ -23,17 +23,6 @@ export function TemplatesPage() {
     const [forkDialogOpen, setForkDialogOpen] = useState(false);
     const [performanceDialogOpen, setPerformanceDialogOpen] = useState(false);
 
-    const authQuery = useQuery({
-        queryKey: ["auth-me"],
-        queryFn: async () => {
-            try {
-                return await authApi.me();
-            } catch {
-                return null;
-            }
-        },
-        retry: false,
-    });
     const { data, isLoading, error } = useQuery({
         queryKey: ["templates", templateType, featured, sort, search],
         queryFn: () =>

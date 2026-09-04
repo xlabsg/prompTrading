@@ -106,7 +106,7 @@ export function aggregateSummaries(summaries: PortfolioSummary[]): PortfolioSumm
   return {
     has_trading_config,
     has_active_session,
-    balance,
+    balance: balance ?? undefined,
     positions,
     total_pnl,
     total_trades,

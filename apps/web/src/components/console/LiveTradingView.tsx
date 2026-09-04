@@ -91,13 +91,14 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
         queryFn: () => strategy?.id ? tradingApi.getStatus(strategy.id) : Promise.reject("No strategy"),
         enabled: Boolean(strategy?.id),
         refetchInterval: (query) => {
-            const status = query.state.data?.status;
+            const status = query.state.data?.active_session?.status;
             return status === "running" || status === "starting" ? 3000 : 10000;
         },
     });
 
-    const isRunning = tradingStatus?.status === "running" || tradingStatus?.status === "starting";
-    const activeSessionId = tradingStatus?.session?.id;
+    const activeSession = tradingStatus?.active_session;
+    const isRunning = activeSession?.status === "running" || activeSession?.status === "starting";
+    const activeSessionId = activeSession?.id;
 
     // Fetch active session positions & orders when running
     const { data: activePositions = [], refetch: refetchPositions } = useQuery<Position[]>({
@@ -119,9 +120,10 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
         queryKey: ["trading-logs", strategy?.id],
         queryFn: async () => {
             if (!strategy?.id) return [];
-            const res = await tradingLogsApi.list(strategy.id, { limit: 50 });
-            setLiveLogs(res.logs || []);
-            return res.logs || [];
+            const params = new URLSearchParams({ limit: "50" });
+            const logs = await tradingLogsApi.list(strategy.id, params);
+            setLiveLogs(logs);
+            return logs;
         },
         enabled: Boolean(strategy?.id),
     });
@@ -154,7 +156,6 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                 exchange: selectedMode === "paper" ? "paper" : (accounts.find((a) => a.id === accountId)?.exchange || "okx"),
                 symbol,
                 symbols: [symbol],
-                interval,
                 intervals: [interval],
                 max_position_pct: parseFloat(maxPositionPct) || 10,
                 stop_loss_pct: parseFloat(stopLossPct) || 2,
@@ -464,16 +465,16 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                                 <div className="text-[11px] text-muted-foreground">{t("liveTradingView.totalPnlLabel")}</div>
                                 <div className={cn(
                                     "text-lg font-bold font-mono mt-0.5",
-                                    (tradingStatus?.total_pnl || 0) >= 0 ? "text-emerald-500" : "text-red-500"
+                                    (activeSession?.total_pnl || 0) >= 0 ? "text-emerald-500" : "text-red-500"
                                 )}>
-                                    {(tradingStatus?.total_pnl || 0) >= 0 ? "+" : ""}
-                                    {(tradingStatus?.total_pnl || 0).toFixed(2)}
+                                    {(activeSession?.total_pnl || 0) >= 0 ? "+" : ""}
+                                    {(activeSession?.total_pnl || 0).toFixed(2)}
                                 </div>
                             </div>
                             <div className="p-3 rounded-lg bg-muted/30 border border-border/50">
                                 <div className="text-[11px] text-muted-foreground">{t("liveTradingView.filledTradesLabel")}</div>
                                 <div className="text-lg font-bold font-mono mt-0.5 text-foreground">
-                                    {tradingStatus?.trade_count || activeOrders.length || 0}
+                                    {activeSession?.total_trades || activeOrders.length || 0}
                                 </div>
                             </div>
                         </div>
@@ -485,7 +486,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">{t("liveTradingView.sessionStatusLabel")}</span>
-                                <span className="font-medium text-foreground capitalize">{tradingStatus?.status || "stopped"}</span>
+                                <span className="font-medium text-foreground capitalize">{activeSession?.status || "stopped"}</span>
                             </div>
                         </div>
                     </CardContent>

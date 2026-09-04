@@ -4,36 +4,9 @@ import { Button } from "../ui/button";
 import { ExternalLink, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-export interface BacktestSummary {
-  total_return: number;
-  max_drawdown: number;
-  sharpe_ratio: number;
-  win_rate: number;
-  profit_factor?: number;
-  run_id: string;
-}
+import type { BacktestSummary, TrendingStrategy } from "@/lib/types";
 
-export interface TrendingStrategy {
-  id: string;
-  source_type: "idea" | "script";
-  tradingview_id: string;
-  title: string;
-  description: string | null;
-  author: string | null;
-  likes: number;
-  views: number;
-  comments: number;
-  detected_symbols: string[];
-  detected_markets: string[];
-  scraped_at: string;
-  trending_rank?: number;
-  trending_category?: string;
-  backtest_status: "pending" | "running" | "completed" | "failed";
-  backtest_results?: Record<string, BacktestSummary>;
-  backtest_error?: string | null;
-  url: string;
-  image_url?: string | null;
-}
+export type { BacktestSummary, TrendingStrategy };
 
 interface TrendingStrategyCardProps {
   strategy: TrendingStrategy;

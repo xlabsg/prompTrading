@@ -23,7 +23,6 @@ import {
     Download,
     Library,
     Tag,
-    Zap,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -31,10 +30,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Strategy, ChatMessage, GitHubInstallation, GitHubRepo } from "@/lib/types";
+import type { Strategy, ChatMessage, GitHubRepo } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { authApi, strategiesApi, githubApi, reposApi, jobsApi } from "@/lib/api";
+import { strategiesApi, githubApi, reposApi, jobsApi } from "@/lib/api";
 import { buildGenerationPrompt } from "@/lib/strategyPrompt";
 import React from "react";
 import ReactMarkdown from "react-markdown";
@@ -107,7 +105,7 @@ const DashboardHome = ({
     const [selectedGitHubRepo, setSelectedGitHubRepo] = useState<GitHubRepo | null>(null);
     const [importProgress, setImportProgress] = useState(0);
     const [importStepIndex, setImportStepIndex] = useState(0);
-    const [importJobId, setImportJobId] = useState<string | null>(null);
+    const [, setImportJobId] = useState<string | null>(null);
     const [importedStrategyId, setImportedStrategyId] = useState<string | null>(null);  // Store the strategy created during import
     const [showImportStrategyModal, setShowImportStrategyModal] = useState(false);  // TradingView/YouTube import modal
     const [isDesktop, setIsDesktop] = useState(() =>
@@ -150,13 +148,6 @@ const DashboardHome = ({
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const handler = () => setIsAuthOpen(true);
-        window.addEventListener("auth-required", handler);
-        return () => window.removeEventListener("auth-required", handler);
-    }, []);
-
-    useEffect(() => {
-        if (typeof window === "undefined") return;
         const handleResize = () => {
             setIsDesktop(window.innerWidth >= 640);
             setViewportHeight(window.innerHeight);
@@ -184,20 +175,6 @@ const DashboardHome = ({
         textarea.style.height = `${nextHeight}px`;
         textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
     };
-
-    const authQuery = useQuery({
-        queryKey: ["auth-me"],
-        queryFn: async () => {
-            try {
-                return await authApi.me();
-            } catch {
-                return null;
-            }
-        },
-        retry: false,
-    });
-
-    const user = authQuery.data?.user ?? null;
 
     // Fetch GitHub App install URL
     const installUrlQuery = useQuery({
@@ -372,12 +349,6 @@ const DashboardHome = ({
     };
 
     const chatHistory: ChatMessage[] = createdStrategy?.chat_history || [];
-    const isReadyLikeStatus = createdStrategy
-        ? createdStrategy.chat_status === "ready" ||
-        createdStrategy.chat_status === "generating" ||
-        createdStrategy.chat_status === "done"
-        : false;
-
     const formatConfigLabel = (key: string): string =>
         key
             .split("_")
@@ -602,15 +573,6 @@ const DashboardHome = ({
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
         return date.toLocaleDateString(locale, { month: "short", day: "numeric" });
-    };
-
-    const formatRelativeDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = Math.max(0, now.getTime() - date.getTime());
-        const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
-        const rtf = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
-        return rtf.format(-diffDays, "day");
     };
 
     const getStatusColor = (status: string) => {
@@ -1211,7 +1173,7 @@ const DashboardHome = ({
                         transition={{ delay: 0.35 }}
                         className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8"
                     >
-                        <button
+                        <motion.button
                             onClick={() => navigate("/templates")}
                             whileHover={{ y: -2 }}
                             className="bg-card rounded-xl p-5 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
@@ -1236,9 +1198,9 @@ const DashboardHome = ({
                                 <Tag size={12} />
                                 <span>{t.actions.browseTemplatesHint}</span>
                             </div>
-                        </button>
+                        </motion.button>
 
-                        <button
+                        <motion.button
                             onClick={() => navigate("/subscriptions")}
                             whileHover={{ y: -2 }}
                             className="bg-card rounded-xl p-5 border border-border text-left hover:shadow-lg hover:border-primary/20 transition-all group"
@@ -1263,7 +1225,7 @@ const DashboardHome = ({
                                 <RefreshCcw size={12} />
                                 <span>{t.actions.subscriptionsHint}</span>
                             </div>
-                        </button>
+                        </motion.button>
                     </motion.div>
 
                     {/* Recent Strategies */}
@@ -1397,7 +1359,7 @@ const DashboardHome = ({
                                     </div>
                                 </div>
                                 <div className="mx-auto grid w-full max-w-md gap-3 text-sm text-muted-foreground">
-                                    {t.import.connectBenefits.map((benefit) => (
+                                    {t.import.connectBenefits.map((benefit: string) => (
                                         <div key={benefit} className="flex items-center gap-3 rounded-xl bg-orange-50/60 px-4 py-3">
                                             <ShieldCheck className="h-4 w-4 text-orange-500" />
                                             <span>{benefit}</span>
@@ -1607,7 +1569,7 @@ const DashboardHome = ({
                                     </div>
                                 </div>
                                 <div className="grid gap-3">
-                                    {t.import.steps.map((step, index) => {
+                                    {t.import.steps.map((step: { label: string; detail: string }, index: number) => {
                                         const isCompleted = index < importStepIndex;
                                         const isActive = index === importStepIndex;
                                         return (

@@ -228,6 +228,9 @@ export interface BacktestMetrics {
     win_rate?: number;
     total_trades?: number;
     profit_factor?: number;
+    deflated_sharpe_ratio?: number;
+    p_value?: number;
+    robustness_score?: number;
     [key: string]: unknown;
 }
 
@@ -593,6 +596,9 @@ export interface TemplateListItem {
     tags: string[] | null;
     subscriber_count: number;
     is_featured: boolean;
+    risk_level: string | null;
+    trading_frequency: string | null;
+    complexity_score: number | null;
     created_at: string;
 }
 
@@ -608,6 +614,10 @@ export interface TemplateDetail {
     version: number;
     is_featured: boolean;
     subscriber_count: number;
+    risk_level: string | null;
+    trading_frequency: string | null;
+    complexity_score: number | null;
+    min_capital_usdt: number | null;
     created_at: string;
     updated_at: string;
 }
