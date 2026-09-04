@@ -20,9 +20,7 @@ from agent.prompt.code_slice import (
     prepare_code_summary,
 )
 from agent.prompt.context import (
-    build_language_directive,
     build_platform_info,
-    detect_language,
     prepare_code_context,
 )
 from agent.prompt.registry import get_registry
@@ -73,13 +71,9 @@ class PromptBuilder:
 
         Returns:
             A tuple of (system_message, user_message, metadata).
-            Metadata includes template name, version, language, etc.
+            Metadata includes template name, version, etc.
         """
-        # 1. Detect language
-        language = detect_language(prompt)
-        language_directive = build_language_directive(prompt)
-
-        # 2. Prepare code context
+        # 1. Prepare code context
         code_context = prepare_code_context(
             current_code,
             max_length=self.max_code_length,
@@ -87,25 +81,23 @@ class PromptBuilder:
             include_function_signatures=True,
         )
 
-        # 3. Prepare platform info (smart indicator selection based on user request)
+        # 2. Prepare platform info (smart indicator selection based on user request)
         platform_info = build_platform_info(platform_capabilities, user_prompt=prompt)
 
-        # 4. Select template
+        # 3. Select template
         is_new_strategy = not current_code.strip()
         template = STRATEGY_GENERATION_NEW if is_new_strategy else STRATEGY_GENERATION_REFINE
 
-        # 5. Build
+        # 4. Build
         system, user = template.build(
             prompt=prompt,
             current_code=code_context,
             platform_info=platform_info,
-            language_directive=language_directive,
         )
 
         metadata = {
             "template": template.metadata.name,
             "version": template.metadata.version.value,
-            "language": language,
             "is_new_strategy": is_new_strategy,
             "code_length": len(current_code),
             "code_context_length": len(code_context),
@@ -128,9 +120,6 @@ class PromptBuilder:
         Returns:
             A tuple of (system_message, user_message, metadata).
         """
-        language = detect_language(prompt)
-        language_directive = build_language_directive(prompt)
-
         code_context = prepare_code_context(
             current_code,
             max_length=2000,  # Spec needs less context
@@ -144,13 +133,11 @@ class PromptBuilder:
         system, user = template.build(
             prompt=prompt,
             current_code=code_context,
-            language_directive=language_directive,
         )
 
         metadata = {
             "template": template.metadata.name,
             "version": template.metadata.version.value,
-            "language": language,
         }
 
         return system, user, metadata
@@ -180,9 +167,6 @@ class PromptBuilder:
         Returns:
             A tuple of (system_message, user_message, metadata).
         """
-        language = detect_language(prompt)
-        language_directive = build_language_directive(prompt)
-
         # Extract function signatures using AST
         function_signatures = extract_function_signatures(current_code)
 
@@ -213,13 +197,11 @@ class PromptBuilder:
             protocol=json.dumps(protocol, ensure_ascii=False),
             platform_info=platform_info,
             params_schema=json.dumps(params_schema or {}, ensure_ascii=False),
-            language_directive=language_directive,
         )
 
         metadata = {
             "template": template.metadata.name,
             "version": template.metadata.version.value,
-            "language": language,
             "function_count": len(function_signatures),
         }
 
@@ -242,9 +224,6 @@ class PromptBuilder:
         Returns:
             A tuple of (system_message, user_message, metadata).
         """
-        language = detect_language(prompt)
-        language_directive = build_language_directive(prompt)
-
         import json
 
         validation_str = json.dumps(
@@ -261,13 +240,11 @@ class PromptBuilder:
             prompt=prompt,
             code=code,
             validation=validation_str,
-            language_directive=language_directive,
         )
 
         metadata = {
             "template": template.metadata.name,
             "version": template.metadata.version.value,
-            "language": language,
         }
 
         return system, user, metadata

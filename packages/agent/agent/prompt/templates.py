@@ -61,8 +61,7 @@ Requirements:
 - weight_reason: short stable strings like 'regime_long', 'reduce_risk', 'flip_short'
 - Output ONLY Python code, no markdown
 - See {platform_info} for available indicators and function signatures
-
-{language_directive}
+- Language: All code identifiers and syntax must be in English. For comments and docstrings, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}
@@ -113,8 +112,7 @@ Hard requirements:
 - No network access, no file I/O, deterministic
 - Output ONLY Python code, no markdown
 - Follow the exact function signatures and return types documented in {platform_info}; do not assume undocumented return structures
-
-{language_directive}
+- Language: All code identifiers and syntax must be in English. For comments and docstrings, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}
@@ -143,8 +141,7 @@ SPEC_GENERATION = Prompt(
         tokens_estimate=600,
     ),
     system_template="""You are a trading strategy spec compiler. Output STRICT JSON only, no markdown, no explanations.
-
-{language_directive}
+- Language: All JSON keys must be in English. For descriptions and text, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}
@@ -191,8 +188,7 @@ PLAN_GENERATION = Prompt(
     ),
     system_template="""You are a planner for quantitative strategy delivery.
 Output STRICT JSON only. Keep all keys in English and match the schema exactly.
-
-{language_directive}
+- Language: All JSON keys must be in English. For descriptions and text, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}
@@ -277,8 +273,7 @@ PLAN_GENERATION_V1 = Prompt(
     ),
     system_template="""You are a planner for quantitative strategy delivery.
 Output STRICT JSON only. Keep all keys in English and match the schema exactly.
-
-{language_directive}
+- Language: All JSON keys must be in English. For descriptions and text, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}
@@ -385,8 +380,7 @@ return {{
     "rsi": rsi.to_numpy(),            # DEBUG: optional
 }}
 ```
-
-{language_directive}
+- Language: All code identifiers and syntax must be in English. For comments and docstrings, match the language used in the user's request.
 """,
     user_template="""USER_REQUEST:
 {prompt}

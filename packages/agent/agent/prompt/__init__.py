@@ -8,7 +8,7 @@ Main components:
 - Prompt: Base class for prompt templates with versioning
 - PromptBuilder: Build prompts with context injection
 - PromptRegistry: Register and retrieve prompts by name/version
-- Context utilities: Intelligent code truncation, language detection
+- Context utilities: Intelligent code truncation
 - Code slice: AST-based code extraction and analysis
 - Indicator docs: Smart indicator documentation retrieval
 """
@@ -28,9 +28,7 @@ from agent.prompt.code_slice import (
     should_slice_function,
 )
 from agent.prompt.context import (
-    build_language_directive,
     build_platform_info,
-    detect_language,
     prepare_code_context,
 )
 from agent.prompt.indicator_docs import (
@@ -48,8 +46,6 @@ __all__ = [
     # Builder
     "PromptBuilder",
     # Context
-    "detect_language",
-    "build_language_directive",
     "build_platform_info",
     "prepare_code_context",
     # Code slice
