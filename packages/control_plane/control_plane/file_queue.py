@@ -185,11 +185,6 @@ class FileJobQueue:
             except OSError:
                 pass
 
-    def get_job_log_path(self, job_id: str, run_dir: str | None = None) -> str:
-        if run_dir:
-            return os.path.join(run_dir, "live.log")
-        return os.path.join(self.logs_dir, f"{job_id}.log")
-
     def recover_stale_processing_jobs(self) -> int:
         """Move uncompleted jobs from processing back to their respective priority queues on worker restart."""
         recovered = 0

@@ -59,14 +59,6 @@ class OrderManager:
                 return self.orders.get(order_id)
             return None
 
-    def get_order_by_exchange_id(self, exchange_order_id: str) -> Optional[Order]:
-        """根据交易所订单 ID 获取订单"""
-        with self._lock:
-            order_id = self.exchange_order_map.get(exchange_order_id)
-            if order_id:
-                return self.orders.get(order_id)
-            return None
-
     def update_order(
         self,
         order_id: str,
@@ -142,20 +134,6 @@ class OrderManager:
                 if order.exchange_order_id:
                     self.exchange_order_map.pop(order.exchange_order_id, None)
                 logger.info(f"Order removed: {order_id}")
-
-    def get_orders_by_symbol(self, symbol: str) -> List[Order]:
-        """获取指定交易对的所有订单"""
-        with self._lock:
-            return [order for order in self.orders.values() if order.symbol == symbol]
-
-    def get_order_count(self) -> int:
-        """获取订单总数"""
-        with self._lock:
-            return len(self.orders)
-
-    def get_open_order_count(self) -> int:
-        """获取未完成订单数"""
-        return len(self.get_open_orders())
 
     def cleanup_finished_orders(self, keep_hours: int = 24):
         """清理已完成的订单（保留最近 N 小时）"""

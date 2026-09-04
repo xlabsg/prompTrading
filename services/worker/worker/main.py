@@ -147,7 +147,6 @@ def _wait_for_redis(redis_url: str | None, timeout_s: float = 10.0) -> Optional[
 
 LOG_TAIL_KEY_PREFIX = "jobs:logtail:v1:"
 LAST_LOG_KEY_PREFIX = "jobs:lastlog:v1:"
-CANCEL_KEY_PREFIX = "jobs:cancel:v1:"
 _PROXY_ENV_KEYS = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -207,10 +206,6 @@ def _mark_job_log_done(job_id: str) -> None:
             f.write(str(time.time()))
     except Exception:
         pass
-
-
-def _cancel_key(job_id: str) -> str:
-    return f"{CANCEL_KEY_PREFIX}{job_id}"
 
 
 def _is_cancel_requested(job_id: Any, rds: Optional[Any] = None) -> bool:

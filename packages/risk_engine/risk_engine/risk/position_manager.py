@@ -213,10 +213,6 @@ class PositionManager:
         self._manual_sl = None
         logger.info("Dynamic TP/SL enabled")
 
-    def is_manual_mode(self) -> bool:
-        """是否为手动模式"""
-        return self._manual_mode
-
     def extract_support_resistance(
         self,
         bars: list[Bar],

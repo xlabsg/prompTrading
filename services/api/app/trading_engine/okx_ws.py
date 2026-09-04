@@ -192,13 +192,6 @@ class BaseSharedConnection:
             self._thread.join(timeout=5)
         self._connected.clear()
 
-    def wait_ready(self, timeout: float = 15) -> bool:
-        return self._connected.wait(timeout=timeout)
-
-    @property
-    def is_ready(self) -> bool:
-        return self._connected.is_set()
-
     def subscribe(self, channel: str, inst_id: str, callback: Callable[[List[Any]], None]) -> SubscriptionKey:
         key = SubscriptionKey(channel, inst_id)
         with self._sub_lock:

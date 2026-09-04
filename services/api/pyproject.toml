@@ -25,7 +25,6 @@ dependencies = [
     "pandas>=2.2.3",
     "pyarrow>=19.0.0",
     "websockets>=15.0",
-    "openai>=1.65.0",
     # Coding agent runtime for the chat refine and overview flows. Pinned to the
     # same version as the agent image: the RPC surface is the contract.
     "tau-ai==0.4.1",

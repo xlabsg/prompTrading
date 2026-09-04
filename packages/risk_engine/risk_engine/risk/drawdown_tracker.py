@@ -118,17 +118,6 @@ class DrawdownTracker:
         self.current_date = None
         logger.info("Daily stats reset")
 
-    def reset_drawdown_stats(self):
-        """重置回撤统计（谨慎使用）"""
-        self.peak_equity = None
-        self.peak_equity_date = None
-        self.current_drawdown = Decimal("0")
-        self.current_drawdown_pct = 0.0
-        self.max_drawdown = Decimal("0")
-        self.max_drawdown_pct = 0.0
-        self.max_drawdown_date = None
-        logger.warning("Drawdown stats reset")
-
     def get_stats(self) -> Dict[str, Any]:
         """获取统计信息"""
         return {
