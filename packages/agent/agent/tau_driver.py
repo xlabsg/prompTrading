@@ -32,7 +32,9 @@ _DEFAULT_EVENT_TIMEOUT_S = 300.0
 _DEFAULT_MAX_FOLLOW_UPS = 2
 _SHUTDOWN_GRACE_S = 10.0
 
-# Turn budget for a whole session, follow-ups included. Tau 0.4.1 accepts a
+# Turn budget for a whole session, follow-ups included. `abort` is asynchronous,
+# so a turn already in flight still lands and the cap is a floor, not an exact
+# stop. Tau 0.4.1 accepts a
 # `max_turns` on `AgentHarnessConfig` but `tau_coding.session` never sets one,
 # and neither its CLI nor its RPC frontend exposes a knob for it, so the cap has
 # to be enforced out here on the `turn_end` events the driver already counts.
@@ -267,8 +269,8 @@ def _drive(
         if result.turn_limit_hit:
             _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
             raise TauSessionError(
-                f"agent_turn_limit_reached: stopped after {result.turns} turns "
-                f"(AGENT_MAX_STEPS={max_turns}) with: " + "; ".join(problems)
+                f"agent_turn_limit_reached: aborted at AGENT_MAX_STEPS={max_turns} "
+                f"({result.turns} turns landed) with: " + "; ".join(problems)
             )
 
         result.follow_ups += 1
@@ -446,6 +448,18 @@ def _events(
             yield decoded
 
 
+def _wire(event: dict[str, Any], name: str, default: Any = None) -> Any:
+    """Read one event field by its wire name.
+
+    Tau serialises events through `tau_agent.messages.WireModel`, which sets
+    `serialize_by_alias` with a camelCase alias generator, so `tool_name` arrives
+    as `toolName`. The snake_case fallback keeps older event shapes readable.
+    """
+    camel = name.split("_")[0] + "".join(part.title() for part in name.split("_")[1:])
+    value = event.get(camel)
+    return event.get(name, default) if value is None else value
+
+
 def _record(
     event: dict[str, Any],
     kind: str | None,
@@ -460,17 +474,18 @@ def _record(
     elif kind == "auto_retry_start":
         result.auto_retries += 1
     elif kind == "tool_execution_start":
-        name = str(event.get("tool_name") or "")
+        name = str(_wire(event, "tool_name") or "")
         result.tool_calls[name] = result.tool_calls.get(name, 0) + 1
         _report(progress_callback, {"phase": "tool_start", "tool": name, "args": event.get("args")})
     elif kind == "tool_execution_end":
-        name = str(event.get("tool_name") or "")
-        if event.get("is_error"):
+        name = str(_wire(event, "tool_name") or "")
+        is_error = bool(_wire(event, "is_error"))
+        if is_error:
             result.tool_errors[name] = result.tool_errors.get(name, 0) + 1
         _absorb_tool_result(name, event.get("result"), result)
         _report(
             progress_callback,
-            {"phase": "tool_end", "tool": name, "is_error": bool(event.get("is_error"))},
+            {"phase": "tool_end", "tool": name, "is_error": is_error},
         )
     elif kind == "message_end":
         text = _message_text(event.get("message"))

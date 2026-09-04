@@ -3,6 +3,10 @@
 Every test drives a fake Tau -- a Python process that replays a recorded JSONL
 script -- so the whole file runs without a model, a network, or the real
 `tau` executable.
+
+Scripts use Tau's own wire names (`toolName`, `isError`): `tau_agent.messages.
+WireModel` serialises by camelCase alias, and a fixture in snake_case hid a
+driver that read fields Tau never sends.
 """
 
 from __future__ import annotations
@@ -20,8 +24,8 @@ SIMPLE_SCRIPT = [
     {"type": "response", "command": "prompt", "success": True, "id": 1},
     {"type": "agent_start"},
     {"type": "turn_start"},
-    {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "write", "args": {"path": "strategy.py"}},
-    {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "write", "result": {}, "is_error": False},
+    {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "write", "args": {"path": "strategy.py"}},
+    {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "write", "result": {}, "isError": False},
     {"type": "turn_end"},
     {"type": "message_end", "message": {"content": [{"type": "text", "text": "Wrote the strategy."}]}},
     {"type": "agent_end", "messages": []},
@@ -174,10 +178,10 @@ def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
         {"type": "turn_start"},
         {
             "type": "tool_execution_end",
-            "tool_call_id": "c1",
-            "tool_name": "backtest",
+            "toolCallId": "c1",
+            "toolName": "backtest",
             "result": {"details": {"metrics": {"sharpe_ratio": 1.4}}},
-            "is_error": False,
+            "isError": False,
         },
         {"type": "turn_end"},
         {"type": "agent_settled"},
@@ -188,6 +192,19 @@ def test_backtest_metrics_are_collected(tmp_path, clean_env, monkeypatch):
 
 
 def test_tool_errors_are_counted(tmp_path, clean_env, monkeypatch):
+    script = [
+        {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "edit", "args": {}},
+        {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "edit", "result": {}, "isError": True},
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.tool_calls == {"edit": 1}
+    assert result.tool_errors == {"edit": 1}
+
+
+def test_snake_case_tool_events_are_still_read(tmp_path, clean_env, monkeypatch):
+    """The fallback in `_wire`, so a change of wire casing is not silent again."""
     script = [
         {"type": "tool_execution_start", "tool_call_id": "c1", "tool_name": "edit", "args": {}},
         {"type": "tool_execution_end", "tool_call_id": "c1", "tool_name": "edit", "result": {}, "is_error": True},
