@@ -33,6 +33,7 @@ cookies.txt
 .shared/
 .playwright-mcp/
 .cursor/worktrees.json
+.claude/
 .worktrees/
 
 # Build & test artifacts

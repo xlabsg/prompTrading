@@ -40,7 +40,6 @@ def generate_template_performance_data(
         rds: Redis client for publishing logs
         job: Job instance with payload
     """
-    from control_plane.models import StrategyTemplate  # Avoid circular import
 
     schedule = db.query(TemplatePerformanceSchedule).first()
     if not schedule or not schedule.enabled:

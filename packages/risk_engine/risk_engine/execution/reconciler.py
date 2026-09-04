@@ -36,12 +36,14 @@ class Reconciler:
         exchange_adapter: ExchangeAdapter,
         reconcile_interval_seconds: int = 60,
         reconcile_on_startup: bool = True,
-        reconcile_on_error: bool = True
+        reconcile_on_error: bool = True,
+        order_manager: Optional[Any] = None,
     ):
         self.exchange_adapter = exchange_adapter
         self.reconcile_interval_seconds = reconcile_interval_seconds
         self.reconcile_on_startup = reconcile_on_startup
         self.reconcile_on_error = reconcile_on_error
+        self.order_manager = order_manager
 
         self.last_reconcile_time: Optional[datetime] = None
         self.reconcile_count: int = 0

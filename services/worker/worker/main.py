@@ -794,19 +794,25 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
     git_commit(strategy_dir, f"AI generate & backtest: {prompt[:80]}" if prompt else "AI generate & backtest")
 
 
-def _dir_size_bytes(path: str) -> int:
-    total = 0
+def _dir_stats(path: str) -> tuple[int, int]:
+    total_bytes = 0
+    total_files = 0
     for root, dirs, files in os.walk(path):
         # Skip .git object store inside repo root; worktrees are outside .git
         if os.path.basename(root) == ".git":
             dirs[:] = []
             continue
         for name in files:
+            total_files += 1
             try:
-                total += os.path.getsize(os.path.join(root, name))
+                total_bytes += os.path.getsize(os.path.join(root, name))
             except OSError:
                 pass
-    return total
+    return total_bytes, total_files
+
+
+def _dir_size_bytes(path: str) -> int:
+    return _dir_stats(path)[0]
 
 
 def _git_rev_parse(path: str) -> str | None:
@@ -848,6 +854,7 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
     db.flush()
 
     total_size = 0
+    total_indexed = 0
     for br in branches:
         _publish_log(job.id, f"Preparing worktree for branch {br}…", rds=rds)
         wt = ensure_worktree(info.repo_path, br, token=token)
@@ -863,7 +870,9 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
             rs.last_synced_at = _utcnow()
         db.flush()
 
-        total_size += _dir_size_bytes(wt)
+        sz, count = _dir_stats(wt)
+        total_size += sz
+        total_indexed += count
 
     repo.size_bytes = total_size
     repo.quota_state = "ok" if total_size <= 1_000_000_000 else "over_quota"
