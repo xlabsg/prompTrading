@@ -24,10 +24,6 @@ def test_get_template_strategy_code():
     assert "Divergence-style mean reversion" in code_div
     ast.parse(code_div)
 
-    code_flow = get_template_strategy_code("tmpl-flow-right")
-    assert "Flow Right Strategy" in code_flow
-    ast.parse(code_flow)
-
     code_fallback = get_template_strategy_code("unknown-template-xyz")
     assert "Moving Average Crossover Strategy" in code_fallback
     ast.parse(code_fallback)
@@ -73,6 +69,20 @@ def test_instantiate_strategy_from_template():
         with open(version_strategy_py) as f:
             v_content = f.read()
             assert "Divergence-style mean reversion" in v_content
+
+
+def test_every_builtin_template_compiles_and_defines_generate_signals():
+    """Every entry must be executable, since it is written straight to strategy.py."""
+    assert TEMPLATE_STRATEGIES, "no builtin templates registered"
+    for template_id, code in TEMPLATE_STRATEGIES.items():
+        tree = ast.parse(code, filename=template_id)
+        names = {
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        assert "generate_signals" in names, f"{template_id} defines no generate_signals"
+
 
 if __name__ == "__main__":
     test_get_template_strategy_code()
