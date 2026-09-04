@@ -19,6 +19,9 @@ dist/
 .DS_Store
 
 *.log
+*.bak
+*.bak*
+cookies.txt
 .e2e_artifacts/
 
 # Editor / IDE
@@ -38,3 +41,4 @@ coverage/
 
 # ...but the template must be tracked
 !infra/compose/.env.example
+uv.lock

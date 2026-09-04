@@ -269,18 +269,12 @@ def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
         fallback_to_stale_on_error=True,
     )
 
-    # Ensure cached historical entries also have derivative columns
-    if not df.empty and ("funding_rate" not in df.columns or "open_interest" not in df.columns):
-        try:
-            from data.derivatives import align_derivatives_onto_ohlcv, fetch_okx_funding_rates, fetch_okx_open_interest
-            fr_df = fetch_okx_funding_rates(req.inst_id, limit=100)
-            oi_df = fetch_okx_open_interest(req.inst_id, period="1H")
-            df = align_derivatives_onto_ohlcv(df, fr_df, oi_df)
-        except Exception:
-            if "funding_rate" not in df.columns:
-                df["funding_rate"] = 0.0
-            if "open_interest" not in df.columns:
-                df["open_interest"] = 0.0
+    # Ensure cached historical entries also have derivative columns without external network calls
+    if not df.empty:
+        if "funding_rate" not in df.columns:
+            df["funding_rate"] = 0.0
+        if "open_interest" not in df.columns:
+            df["open_interest"] = 0.0
 
     total_limit = int(req.limit)
     if total_limit > 0 and len(df) > total_limit:

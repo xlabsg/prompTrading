@@ -102,8 +102,6 @@ try:
 except ImportError:
     psutil = None
 from control_plane.queue import (
-    QUEUE_NAME,
-    job_log_channel,
     get_file_queue,
     enqueue_job,
     request_cancel_job,
@@ -164,7 +162,18 @@ _PROXY_ENV_KEYS = (
 )
 
 
-def _publish_log(job_id: str, message: str, rds: Optional[redis.Redis] = None) -> None:
+def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
+    # Handle swapped args: _publish_log(rds, job_id, message)
+    if isinstance(message, str) and not isinstance(job_id, str):
+        actual_job_id = message
+        actual_message = str(rds) if rds is not None else ""
+        actual_rds = job_id if hasattr(job_id, "publish") else None
+        job_id = actual_job_id
+        message = actual_message
+        rds = actual_rds
+
+    job_id = str(job_id)
+
     # Always append to local file queue log: /workspaces/.queue/logs/{job_id}.log
     try:
         log_dir = os.path.join(settings.app_workspaces_dir, ".queue", "logs")
@@ -176,7 +185,7 @@ def _publish_log(job_id: str, message: str, rds: Optional[redis.Redis] = None) -
         pass
 
     # Optional Redis fallback/mirroring
-    if rds is not None:
+    if rds is not None and hasattr(rds, "publish"):
         try:
             rds.publish(job_log_channel(job_id), message)
             pipe = rds.pipeline()
@@ -205,11 +214,16 @@ def _cancel_key(job_id: str) -> str:
     return f"{CANCEL_KEY_PREFIX}{job_id}"
 
 
-def _is_cancel_requested(job_id: str, rds: Optional[redis.Redis] = None) -> bool:
-    return is_job_cancelled(settings.app_workspaces_dir, job_id, redis_client=rds)
+def _is_cancel_requested(job_id: Any, rds: Optional[Any] = None) -> bool:
+    if isinstance(rds, str) and not isinstance(job_id, str):
+        actual_job_id = rds
+        actual_rds = job_id
+        job_id = actual_job_id
+        rds = actual_rds
+    return is_job_cancelled(settings.app_workspaces_dir, str(job_id), redis_client=rds)
 
 
-def _raise_if_cancelled(job_id: str, rds: Optional[redis.Redis] = None) -> None:
+def _raise_if_cancelled(job_id: Any, rds: Optional[Any] = None) -> None:
     if _is_cancel_requested(job_id, rds=rds):
         raise RuntimeError("job_cancelled")
 
@@ -769,13 +783,13 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
     strategy = db.get(Strategy, strategy_id)
     if strategy is not None:
         naming_prompt, source = _build_strategy_name_prompt(strategy, prompt)
-        _publish_log(rds, job.id, f"Generating strategy name from {source}...")
+        _publish_log(job.id, f"Generating strategy name from {source}...", rds=rds)
         new_name = _generate_strategy_name(naming_prompt, llm_meta=llm_meta)
         strategy.name = new_name
         strategy.chat_status = ChatStatus.DONE
         strategy.updated_at = _utcnow()
         db.flush()
-        _publish_log(rds, job.id, f"Strategy name: {new_name}")
+        _publish_log(job.id, f"Strategy name: {new_name}", rds=rds)
 
     _ensure_strategy_repo(strategy_dir)
     git_commit(strategy_dir, f"AI generate & backtest: {prompt[:80]}" if prompt else "AI generate & backtest")
@@ -823,7 +837,7 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
     if installation_id:
         token = get_installation_token(str(installation_id))
 
-    _publish_log(rds, job.id, f"Cloning {owner}/{name} (shallow, partial)…")
+    _publish_log(job.id, f"Cloning {owner}/{name} (shallow, partial)…", rds=rds)
     info = clone_or_update(repos_root, owner, name, token=token)
     default_branch = info.default_branch
     if not branches:
@@ -838,7 +852,7 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
     total_indexed = 0
     total_size = 0
     for br in branches:
-        _publish_log(rds, job.id, f"Preparing worktree for branch {br}…")
+        _publish_log(job.id, f"Preparing worktree for branch {br}…", rds=rds)
         wt = ensure_worktree(info.repo_path, br, token=token)
         sha = _git_rev_parse(wt)
         rs = (
@@ -853,7 +867,7 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
         db.flush()
 
         total_size += _dir_size_bytes(wt)
-        _publish_log(rds, job.id, f"Indexing {owner}/{name}@{br}…")
+        _publish_log(job.id, f"Indexing {owner}/{name}@{br}…", rds=rds)
         with open_db(index_path) as conn:
             count = index_full(conn, repo_id=repo.id, branch=br, worktree_path=wt)
         total_indexed += count
@@ -873,7 +887,7 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
     repo.last_error = None
     db.flush()
     action = "Import" if job.type == JobType.REPO_IMPORT else "Sync"
-    _publish_log(rds, job.id, f"{action} complete. Indexed {total_indexed} files; size={total_size} bytes.")
+    _publish_log(job.id, f"{action} complete. Indexed {total_indexed} files; size={total_size} bytes.", rds=rds)
 
 
 def _handle_repo_import(db: Session, rds: redis.Redis, job: Job) -> None:
@@ -1259,14 +1273,14 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
     strategy = db.get(Strategy, strategy_id)
     if strategy is not None:
         naming_prompt, source = _build_strategy_name_prompt(strategy, prompt)
-        _publish_log(rds, job.id, f"Generating strategy name from {source}...")
+        _publish_log(job.id, f"Generating strategy name from {source}...", rds=rds)
         new_name = _generate_strategy_name(naming_prompt, llm_meta=llm_meta)
         strategy.name = new_name
         strategy.chat_status = ChatStatus.DONE
 
         strategy.updated_at = _utcnow()
         db.flush()
-        _publish_log(rds, job.id, f"Strategy name: {new_name}")
+        _publish_log(job.id, f"Strategy name: {new_name}", rds=rds)
 
     _ensure_strategy_repo(strategy_dir)
     git_commit(strategy_dir, f"AI generate: {prompt[:80]}" if prompt else "AI generate")
@@ -1426,8 +1440,8 @@ def _handle_scrape_tradingview_trending(
     auto_backtest = params.get("auto_backtest", True)
     auto_backtest_top_n = params.get("auto_backtest_top_n", 15)
 
-    _publish_log(rds, job.id, f"Starting TradingView scrape: sources={source_types}, max={max_count}")
-    _raise_if_cancelled(rds, job.id)
+    _publish_log(job.id, f"Starting TradingView scrape: sources={source_types}, max={max_count}", rds=rds)
+    _raise_if_cancelled(job.id, rds=rds)
 
     try:
         # Import scraper (may need to install package first)
@@ -1450,22 +1464,22 @@ def _handle_scrape_tradingview_trending(
         scraper_source_types = [source_type_map.get(st, st) for st in source_types]
 
         # Use parallel scraping
-        _publish_log(rds, job.id, f"Parallel scraping {len(scraper_source_types)} source types...")
-        _raise_if_cancelled(rds, job.id)
+        _publish_log(job.id, f"Parallel scraping {len(scraper_source_types)} source types...", rds=rds)
+        _raise_if_cancelled(job.id, rds=rds)
         all_strategies = scraper.scrape_trending_parallel(
             source_types=scraper_source_types,
             max_count=max_count,
         )
 
         # Save to database with idempotency
-        _publish_log(rds, job.id, f"Saving {len(all_strategies)} strategies to database...")
-        _raise_if_cancelled(rds, job.id)
+        _publish_log(job.id, f"Saving {len(all_strategies)} strategies to database...", rds=rds)
+        _raise_if_cancelled(job.id, rds=rds)
         saved_count = 0
         skipped_count = 0
         updated_count = 0
 
         for strategy_data in all_strategies:
-            _raise_if_cancelled(rds, job.id)
+            _raise_if_cancelled(job.id, rds=rds)
             tradingview_id = strategy_data.get("tradingview_id")
             url = strategy_data.get("url")
 
@@ -1485,7 +1499,7 @@ def _handle_scrape_tradingview_trending(
                 # Strategy exists - skip or update dynamic fields
                 # For now, skip to avoid duplicate entries
                 skipped_count += 1
-                _publish_log(rds, job.id, f"Skipped existing strategy: {existing.title[:50]}")
+                _publish_log(job.id, f"Skipped existing strategy: {existing.title[:50]}", rds=rds)
                 continue
 
             # Generate UUID for new strategies
@@ -1512,16 +1526,17 @@ def _handle_scrape_tradingview_trending(
             saved_count += 1
 
         db.commit()
-        _publish_log(rds, job.id, f"Saved: {saved_count} new, Skipped: {skipped_count} existing, Updated: {updated_count}")
+        _publish_log(job.id, f"Saved: {saved_count} new, Skipped: {skipped_count} existing, Updated: {updated_count}", rds=rds)
 
         # If auto_backtest, create backtest job for top N strategies
         if auto_backtest and all_strategies:
-            _raise_if_cancelled(rds, job.id)
+            _raise_if_cancelled(job.id, rds=rds)
             top_strategies = all_strategies[:auto_backtest_top_n]
 
             _publish_log(
-                rds, job.id,
-                f"Creating backtest job for top {len(top_strategies)} strategies..."
+                job.id,
+                f"Creating backtest job for top {len(top_strategies)} strategies...",
+                rds=rds,
             )
 
             _create_backtest_trending_top_n_job(
@@ -1531,7 +1546,7 @@ def _handle_scrape_tradingview_trending(
             )
 
     except Exception as e:
-        _publish_log(rds, job.id, f"Error during scraping: {e}")
+        _publish_log(job.id, f"Error during scraping: {e}", rds=rds)
         raise
 
 
@@ -1560,13 +1575,13 @@ def _handle_backtest_trending_top_n(
     default_interval = "1h"
     default_duration_days = 90
 
-    _publish_log(rds, job.id, f"Starting parallel backtest pipeline for {len(strategy_ids)} trending strategies (max_workers=3)")
-    _raise_if_cancelled(rds, job.id)
+    _publish_log(job.id, f"Starting parallel backtest pipeline for {len(strategy_ids)} trending strategies (max_workers=3)", rds=rds)
+    _raise_if_cancelled(job.id, rds=rds)
 
     def process_single_strategy(tradingview_id: str) -> bool:
         """Process a single strategy - returns True if successful."""
         try:
-            _raise_if_cancelled(rds, job.id)
+            _raise_if_cancelled(job.id, rds=rds)
             from control_plane.db import create_db_engine, create_session_factory, session_scope
             from control_plane.models import TradingViewTrendingStrategy
 
@@ -1579,38 +1594,38 @@ def _handle_backtest_trending_top_n(
                 ).first()
 
                 if not tv_strategy:
-                    _publish_log(rds, job.id, f"Warning: strategy {tradingview_id} not found, skipping")
+                    _publish_log(job.id, f"Warning: strategy {tradingview_id} not found, skipping", rds=rds)
                     return False
 
                 tv_strategy.backtest_status = "running"
                 local_db.flush()
-                _publish_log(rds, job.id, f"Processing {tv_strategy.title}...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, f"Processing {tv_strategy.title}...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
 
                 symbols = tv_strategy.detected_symbols or default_symbols
 
-                _publish_log(rds, job.id, f"  Step 1: Creating temporary strategy...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, "  Step 1: Creating temporary strategy...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 strategy, version, pinescript_source = create_temporary_strategy_from_tradingview(
                     local_db, rds, tv_strategy
                 )
 
-                _publish_log(rds, job.id, f"  Step 2: Triggering PineScript to Python conversion...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, "  Step 2: Triggering PineScript to Python conversion...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 conversion_job = trigger_llm_conversion(
                     local_db, rds, strategy, version, pinescript_source, tv_strategy
                 )
 
                 if conversion_job:
-                    _publish_log(rds, job.id, f"  Step 3: Waiting for LLM conversion...")
+                    _publish_log(job.id, "  Step 3: Waiting for LLM conversion...", rds=rds)
                     conversion_timeout = 1800
                     conversion_start = time.time()
 
                     while time.time() - conversion_start < conversion_timeout:
-                        _raise_if_cancelled(rds, job.id)
+                        _raise_if_cancelled(job.id, rds=rds)
                         local_db.refresh(conversion_job)
                         if conversion_job.status == "succeeded":
-                            _publish_log(rds, job.id, f"  Conversion completed successfully")
+                            _publish_log(job.id, "  Conversion completed successfully", rds=rds)
                             break
                         elif conversion_job.status == "failed":
                             error_msg = conversion_job.error_message or "Unknown error"
@@ -1619,32 +1634,32 @@ def _handle_backtest_trending_top_n(
                     else:
                         raise RuntimeError("LLM conversion timeout")
                 else:
-                    _publish_log(rds, job.id, f"  Step 3: Skipped (reusing existing strategy code)")
+                    _publish_log(job.id, "  Step 3: Skipped (reusing existing strategy code)", rds=rds)
 
-                _publish_log(rds, job.id, f"  Step 4: Creating backtest datasets for {symbols[:3]}...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, f"  Step 4: Creating backtest datasets for {symbols[:3]}...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 datasets = create_backtest_datasets(
                     local_db, strategy, version, symbols, default_interval, default_duration_days
                 )
 
-                _publish_log(rds, job.id, f"  Step 5: Triggering backtest jobs...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, "  Step 5: Triggering backtest jobs...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 backtest_jobs = create_backtest_jobs(local_db, rds, datasets)
 
-                _publish_log(rds, job.id, f"  Step 6: Waiting for backtests to complete...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, "  Step 6: Waiting for backtests to complete...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 run_ids = [run.id for _, run in datasets]
                 backtest_results = wait_for_backtest_completion(local_db, run_ids, timeout_seconds=600)
 
-                _publish_log(rds, job.id, f"  Step 7: Updating results and quality score...")
-                _raise_if_cancelled(rds, job.id)
+                _publish_log(job.id, "  Step 7: Updating results and quality score...", rds=rds)
+                _raise_if_cancelled(job.id, rds=rds)
                 update_trending_strategy_results(local_db, tv_strategy, backtest_results)
 
-                _publish_log(rds, job.id, "  ✓ Completed")
+                _publish_log(job.id, "  ✓ Completed", rds=rds)
                 return True
 
         except Exception as e:
-            _publish_log(rds, job.id, f"  ✗ Error backtesting {tradingview_id}: {e}")
+            _publish_log(job.id, f"  ✗ Error backtesting {tradingview_id}: {e}", rds=rds)
             print(f"[ERROR] Error backtesting trending strategy {tradingview_id}: {e}")
 
             try:
@@ -1672,7 +1687,7 @@ def _handle_backtest_trending_top_n(
         results = [f.result() for f in futures]
 
     success_count = sum(results)
-    _publish_log(rds, job.id, f"Trending strategy backtests completed: {success_count}/{len(strategy_ids)} successful")
+    _publish_log(job.id, f"Trending strategy backtests completed: {success_count}/{len(strategy_ids)} successful", rds=rds)
 
 
 def _create_backtest_trending_top_n_job(
@@ -1707,7 +1722,6 @@ def _dispatch_repo(db: Session, rds: redis.Redis, docker_client: docker.DockerCl
 
 
 def _dispatch_template_performance(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    from worker.template_performance_job import generate_template_performance_data
 
     generate_template_performance_data(db, rds, job)
 

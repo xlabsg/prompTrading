@@ -415,21 +415,18 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   const [overviewGenerateStatus, setOverviewGenerateStatus] = useState<"idle" | "generating" | "failed">("idle");
   const [overviewGenerateError, setOverviewGenerateError] = useState<string | null>(null);
   const autoGenerateTriggeredRef = useRef<Record<string, boolean>>({});
-
-  if (!strategy) {
-    return <div>Loading...</div>;
-  }
+  const strategyId = strategy?.id;
 
   const filesQuery = useQuery({
-    queryKey: ["strategy-files", strategy.id],
-    queryFn: () => strategiesApi.getFiles(strategy.id),
-    enabled: Boolean(strategy.id),
+    queryKey: ["strategy-files", strategyId],
+    queryFn: () => strategiesApi.getFiles(strategyId as string),
+    enabled: Boolean(strategyId),
   });
 
   const backtestsQuery = useQuery({
-    queryKey: ["backtests", strategy.id],
-    queryFn: () => backtestsApi.list(strategy.id),
-    enabled: Boolean(strategy.id),
+    queryKey: ["backtests", strategyId],
+    queryFn: () => backtestsApi.list(strategyId as string),
+    enabled: Boolean(strategyId),
     refetchInterval: 5000,
   });
 
@@ -712,9 +709,9 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   const markdownG6Graphs = useMemo(() => parseG6Graphs(overviewContent), [overviewContent]);
 
   const workflowFromChatConfig = useMemo(() => {
-    const config = strategy.chat_config as Record<string, unknown> | undefined;
+    const config = strategy?.chat_config as Record<string, unknown> | undefined;
     return parseWorkflowGraphData(config?.workflow_graph);
-  }, [strategy.chat_config]);
+  }, [strategy?.chat_config]);
 
   const stateFlowGraph = useMemo(
     () => markdownG6Graphs[0] || workflowFromChatConfig || buildStateFlowGraph(signalEvents),
@@ -765,6 +762,10 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
       </code>
     );
   };
+
+  if (!strategy) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="h-full p-6 overflow-hidden">
