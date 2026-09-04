@@ -47,7 +47,6 @@ const Console = () => {
     const [currentView, setCurrentView] = useState<ViewType>(initialTab);
     const [activeBacktestRunId, setActiveBacktestRunId] = useState<string | undefined>();
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-    const [createdStrategyId, setCreatedStrategyId] = useState<string | undefined>();
     const [isAuthOpen, setIsAuthOpen] = useState(false);
     const [authStep, setAuthStep] = useState<"login" | "register">("register");
     const [sidebarDialogOpen, setSidebarDialogOpen] = useState(false);
@@ -149,11 +148,16 @@ const Console = () => {
 
     // Create strategy mutation
     const createStrategyMutation = useMutation({
-        mutationFn: (name?: string) => strategiesApi.create(name),
-        onSuccess: (newStrategy) => {
+        mutationFn: (prompt?: string) => strategiesApi.create(prompt ? prompt.slice(0, 50) : undefined),
+        onSuccess: (newStrategy, prompt) => {
             queryClient.invalidateQueries({ queryKey: ["strategies"] });
-            // Don't navigate immediately, store the ID for later
-            setCreatedStrategyId(newStrategy.id);
+            if (prompt) {
+                sessionStorage.setItem("pending_chat_message", prompt);
+            }
+            if (typeof window !== "undefined" && window.innerWidth < 768) {
+                setSidebarDialogOpen(true);
+            }
+            navigate(`/strategy/${newStrategy.id}/overview`);
         },
     });
 
@@ -187,10 +191,6 @@ const Console = () => {
             return true; // authentication required
         }
         return false; // already authenticated
-    };
-
-    const handleGoToStrategy = (strategyId: string) => {
-        navigate(`/strategy/${strategyId}/backtest`);
     };
 
     const handleSelectStrategy = (strategy: Strategy) => {
@@ -329,8 +329,6 @@ const Console = () => {
                     onSelectStrategy={handleSelectStrategy}
                     isCreating={createStrategyMutation.isPending}
                     isAuthed={isAuthed}
-                    createdStrategyId={createdStrategyId}
-                    onGoToStrategy={handleGoToStrategy}
                     onRequireAuth={handleRequireAuth}
                 />
                 <AuthDialog open={isAuthOpen} onOpenChange={setIsAuthOpen} initialStep={authStep} />
