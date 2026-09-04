@@ -32,7 +32,6 @@ COPY packages/backtest/ta.py /app/ta.py
 COPY packages/data/data /app/data
 COPY packages/agent/agent /app/agent
 COPY packages/live_trading_sdk/live_trading_sdk /app/live_trading_sdk
-COPY packages/strategy_templates/strategy_templates /app/strategy_templates
 COPY services/worker/worker /app/worker
 
 ENV PYTHONPATH=/app
