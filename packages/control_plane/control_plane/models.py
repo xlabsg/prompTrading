@@ -503,15 +503,6 @@ class RepoSync(Base):
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class SearchStats(Base):
-    __tablename__ = "search_stats"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    repo_id: Mapped[str] = mapped_column(ForeignKey("repositories.id", ondelete="CASCADE"), index=True)
-    branch: Mapped[str] = mapped_column(String(200), index=True)
-    doc_count: Mapped[int] = mapped_column(Integer, default=0)
-    last_indexed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
-
 
 class TradingViewTrendingStrategy(Base):
     """TradingView trending strategies scraped from scripts and ideas."""

@@ -16,7 +16,6 @@ services:
       APP_DB_URL: ${APP_DB_URL:-sqlite:////workspaces/app.db}
       APP_WORKSPACES_DIR: /workspaces
       APP_REPOS_DIR: /workspaces/repos
-      APP_SEARCH_INDEX_PATH: /workspaces/search/search.sqlite
       APP_PUBLIC_BASE_URL: ${APP_PUBLIC_BASE_URL:-https://ai.example.com}
       APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
       APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}

@@ -1714,6 +1714,18 @@ def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: do
     handle_template_backtest(db, rds, docker_client, job)
 
 
+JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
+    # MVP core
+    JobType.BACKTEST.value: _handle_backtest,
+    JobType.GENERATE_STRATEGY.value: _handle_generate_strategy,
+    JobType.GENERATE_AND_BACKTEST.value: _handle_generate_and_backtest,
+    JobType.REFINE_STRATEGY.value: _handle_refine_strategy,
+    # Repositories
+    JobType.REPO_IMPORT.value: _dispatch_repo,
+    JobType.REPO_SYNC.value: _dispatch_repo,
+    # Trending (gated by settings.trending_scheduler_enabled)
+    JobType.TRENDING_SCRAPE.value: _handle_scrape_tradingview_trending,
+    JobType.TRENDING_BACKTEST.value: _handle_backtest_trending_top_n,
     # Templates
     JobType.TEMPLATE_PERFORMANCE_UPDATE.value: _dispatch_template_performance,
     JobType.TEMPLATE_BACKTEST.value: _dispatch_template_backtest,
