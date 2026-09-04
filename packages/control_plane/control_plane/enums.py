@@ -12,6 +12,8 @@ class JobType(str, Enum):
     TRENDING_BACKTEST = "trending_backtest"
     TEMPLATE_PERFORMANCE_UPDATE = "template_performance_update"
     TEMPLATE_BACKTEST = "template_backtest"
+    LIVE_TRADING_START = "live_trading_start"
+    LIVE_TRADING_STOP = "live_trading_stop"
 
 
 class JobStatus(str, Enum):

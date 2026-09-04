@@ -16,7 +16,6 @@ from control_plane.enums import LogLevel, OrderStatus, TradingSessionStatus
 from control_plane.models import Order, StrategyExchangeAccount, TradingConfig, TradingSession
 from app.trading_engine.executor import OrderExecutor
 from app.trading_engine.monitor import PositionMonitor
-from app.trading_engine.strategy_runner import StrategyRunner
 from app.trading_engine.logging_utils import log_trading_event
 from app.trading_engine.sdk_config import build_trading_config
 
@@ -83,9 +82,6 @@ class TradingSessionManager:
             exchange_adapter=self.executor.exchange_adapter,
             order_manager=self.order_manager
         )
-
-        # Strategy runner
-        self._strategy_runner: StrategyRunner | None = None
 
         # Monitoring threads
         self._monitor_thread: Optional[threading.Thread] = None
@@ -246,12 +242,6 @@ class TradingSessionManager:
         self.log_event(LogLevel.INFO, "Position monitoring started")
         logger.info(f"Position monitoring started for session {self.session_id}")
 
-        # Start live strategy runner
-        if not self._strategy_runner:
-            self._strategy_runner = StrategyRunner(self.session_id, self.config, self.account)
-            self._strategy_runner.start()
-            self.log_event(LogLevel.INFO, "Live strategy runner started")
-
     def _stop_monitoring(self) -> None:
         """停止监控线程"""
         self._stop_event.set()
@@ -260,11 +250,6 @@ class TradingSessionManager:
             self._monitor_thread.join(timeout=5.0)
 
         logger.info(f"Position monitoring stopped for session {self.session_id}")
-
-        if self._strategy_runner:
-            self._strategy_runner.stop()
-            self.log_event(LogLevel.INFO, "Live strategy runner stopped")
-            self._strategy_runner = None
 
     def _monitor_loop(self) -> None:
         """

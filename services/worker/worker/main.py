@@ -24,8 +24,8 @@ from sqlalchemy import text, or_, update
 from sqlalchemy.orm import Session
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingSourceType
-from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyVersion, Repository, RepoSync, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
+from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingSourceType, TradingSessionStatus
+from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyVersion, Repository, RepoSync, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule, TradingSession
 from control_plane.queue import QUEUE_NAME, job_log_channel
 from control_plane.workspaces import git_commit, init_git_repo
 from worker.settings import settings
@@ -1759,12 +1759,59 @@ def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: do
     handle_template_backtest(db, rds, docker_client, job)
 
 
+def _handle_live_trading_start(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    session_id = job.payload["session_id"]
+    strategy_id = job.payload["strategy_id"]
+    session = db.get(TradingSession, session_id)
+    if session is None:
+        raise RuntimeError(f"trading_session_not_found: {session_id}")
+
+    config = session.config
+    exchange = config.exchange if config else "okx"
+    symbol = config.symbol if config else "BTC-USDT"
+    interval = (config.intervals[0] if (config and config.intervals) else "1m")
+
+    from worker.live_trading_runner import start_live_trading_container
+
+    cid = start_live_trading_container(
+        docker_client,
+        session_id=session_id,
+        strategy_id=strategy_id,
+        exchange=exchange,
+        symbol=symbol,
+        interval=interval,
+    )
+
+    session.container_id = cid
+    session.status = TradingSessionStatus.RUNNING
+    session.started_at = _utcnow()
+    db.flush()
+
+
+def _handle_live_trading_stop(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
+    session_id = job.payload["session_id"]
+    from worker.live_trading_runner import stop_live_trading_container
+
+    stop_live_trading_container(docker_client, session_id=session_id)
+
+    session = db.get(TradingSession, session_id)
+    if session:
+        session.status = TradingSessionStatus.STOPPED
+        session.stopped_at = _utcnow()
+        if session.config:
+            session.config.is_active = False
+        db.flush()
+
+
 JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
     # MVP core
     JobType.BACKTEST.value: _handle_backtest,
     JobType.GENERATE_STRATEGY.value: _handle_generate_strategy,
     JobType.GENERATE_AND_BACKTEST.value: _handle_generate_and_backtest,
     JobType.REFINE_STRATEGY.value: _handle_refine_strategy,
+    # Live trading containers
+    JobType.LIVE_TRADING_START.value: _handle_live_trading_start,
+    JobType.LIVE_TRADING_STOP.value: _handle_live_trading_stop,
     # Repositories
     JobType.REPO_IMPORT.value: _dispatch_repo,
     JobType.REPO_SYNC.value: _dispatch_repo,

@@ -10,10 +10,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from control_plane.enums import LogLevel, TradingSessionStatus, StrategyRole
-from control_plane.models import Order, Position, Strategy, StrategyExchangeAccount, TradingConfig, TradingLog, TradingSession
+import redis
+
+from control_plane.enums import JobStatus, JobType, LogLevel, TradingSessionStatus, StrategyRole
+from control_plane.models import Job, Order, Position, Strategy, StrategyExchangeAccount, TradingConfig, TradingLog, TradingSession
+from control_plane.queue import enqueue_job
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
-from app.deps import get_db
+from app.deps import get_db, get_redis
 from app.settings import settings
 
 router = APIRouter()
@@ -394,6 +397,7 @@ def start_trading(
     req: TradingStartRequest,
     request: Request,
     db: Session = Depends(get_db),
+    rds: Optional[redis.Redis] = Depends(get_redis),
 ) -> TradingSessionResponse:
     """Start a live trading session."""
     require_strategy_member(request, db, strategy_id, [StrategyRole.ADMIN, StrategyRole.EDITOR])
@@ -516,6 +520,24 @@ def start_trading(
         session.error_message = str(e)
         db.commit()
         raise HTTPException(status_code=500, detail=f"failed_to_start_session: {str(e)}")
+
+    # Enqueue isolated container runner job for Worker
+    try:
+        job = Job(
+            type=JobType.LIVE_TRADING_START.value,
+            status=JobStatus.QUEUED,
+            payload={
+                "session_id": session.id,
+                "strategy_id": strategy_id,
+            },
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
+    except Exception as e:
+        logger.error(f"Failed to enqueue live trading start job: {e}")
     
     return session
 
@@ -525,6 +547,7 @@ def stop_trading(
     strategy_id: str,
     request: Request,
     db: Session = Depends(get_db),
+    rds: Optional[redis.Redis] = Depends(get_redis),
 ) -> TradingSessionResponse:
     """Stop the active trading session."""
     require_strategy_member(request, db, strategy_id, [StrategyRole.ADMIN, StrategyRole.EDITOR])
@@ -568,6 +591,24 @@ def stop_trading(
             raise HTTPException(status_code=500, detail=f"failed_to_stop_session: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"failed_to_stop_session: {str(e)}")
+
+    # Enqueue container stop job for Worker
+    try:
+        job = Job(
+            type=JobType.LIVE_TRADING_STOP.value,
+            status=JobStatus.QUEUED,
+            payload={
+                "session_id": active_session.id,
+                "strategy_id": strategy_id,
+            },
+        )
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+
+        enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
+    except Exception as e:
+        logger.error(f"Failed to enqueue live trading stop job: {e}")
     
     return active_session
 

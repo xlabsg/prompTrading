@@ -14,7 +14,7 @@ from sqlalchemy import text
 
 from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import Base
-from app.routers import backtests, jobs, markets, portfolio, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops
+from app.routers import backtests, jobs, markets, portfolio, strategies, strategies_import, trading, trending, ws, templates, template_performance, template_backtests, templates_admin, admin_ops, internal_trading
 from app.routers import strategy_accounts, strategy_members, strategy_workspace
 from app.routers import auth as auth_router
 from app.routers import billing as billing_router
@@ -166,6 +166,7 @@ app.include_router(templates_admin.router, prefix="/api", tags=["templates-admin
 app.include_router(template_performance.router, prefix="/api", tags=["template-performance"])
 app.include_router(template_backtests.router, prefix="/api", tags=["template-backtests"])
 app.include_router(admin_ops.router, prefix="/api", tags=["admin-ops"])
+app.include_router(internal_trading.router, prefix="/api", tags=["internal-trading"])
 
 
 @app.get("/healthz")
