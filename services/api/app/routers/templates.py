@@ -61,8 +61,6 @@ class TemplateListItem(BaseModel):
     tags: list[str] | None
     subscriber_count: int
     is_featured: bool
-    stable5_qualifies: bool | None = None
-    stable5_score: float | None = None
     risk_level: str | None
     trading_frequency: str | None
     complexity_score: int | None
@@ -188,17 +186,6 @@ class UserConfigUpdateRequest(BaseModel):
 
 
 def template_to_list_item(template: StrategyTemplate) -> dict[str, Any]:
-    stable5 = (template.backtest_summary or {}).get("stable5") if template.backtest_summary else None
-    stable5_qualifies = None
-    stable5_score = None
-    if isinstance(stable5, dict):
-        if "qualifies" in stable5:
-            stable5_qualifies = bool(stable5.get("qualifies"))
-        if "score" in stable5:
-            try:
-                stable5_score = float(stable5.get("score"))
-            except Exception:
-                stable5_score = None
     return {
         "id": template.id,
         "name": template.name,
@@ -208,8 +195,6 @@ def template_to_list_item(template: StrategyTemplate) -> dict[str, Any]:
         "tags": template.tags or [],
         "subscriber_count": template.subscriber_count,
         "is_featured": template.is_featured,
-        "stable5_qualifies": stable5_qualifies,
-        "stable5_score": stable5_score,
         "risk_level": template.risk_level,
         "trading_frequency": template.trading_frequency,
         "complexity_score": template.complexity_score,
@@ -291,7 +276,6 @@ async def list_templates(
     template_type: StrategyTemplateType | None = None,
     featured: bool | None = None,
     search: str | None = None,
-    stable5_only: bool | None = None,
     sort: str | None = None,
     limit: int = 20,
     offset: int = 0,
@@ -324,25 +308,10 @@ async def list_templates(
             (StrategyTemplate.tags.contains([search]))
         )
 
-    if stable5_only is True:
-        query = query.filter(StrategyTemplate.backtest_summary["stable5"]["qualifies"].as_string() == "true")
-
     total = query.count()
-    sort_key = (sort or "").strip().lower()
-    if sort_key == "stable5":
-        stable5_score = cast(StrategyTemplate.backtest_summary["stable5"]["score"].as_string(), Float)
-        stable5_qualifies = StrategyTemplate.backtest_summary["stable5"]["qualifies"].as_string() == "true"
-        qualifies_rank = case((stable5_qualifies, 1), else_=0)
-        templates = query.order_by(
-            qualifies_rank.desc(),
-            stable5_score.desc().nullslast(),
-            StrategyTemplate.subscriber_count.desc(),
-        ).offset(offset).limit(limit).all()
-    else:
-        # Default: popularity
-        templates = query.order_by(
-            StrategyTemplate.subscriber_count.desc(),
-        ).offset(offset).limit(limit).all()
+    templates = query.order_by(
+        StrategyTemplate.subscriber_count.desc(),
+    ).offset(offset).limit(limit).all()
 
     return TemplateListResponse(
         total=total,

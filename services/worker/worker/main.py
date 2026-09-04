@@ -25,12 +25,11 @@ from sqlalchemy.orm import Session
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
 from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingBacktestStatus, TrendingSourceType
-from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, SearchStats, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
+from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
 from control_plane.queue import QUEUE_NAME, job_log_channel
 from control_plane.workspaces import git_commit, init_git_repo
 from worker.settings import settings
 from worker.repo_sync import clone_or_update, ensure_worktree
-from worker.search_index import open_db, index_full
 from worker.github_app import get_installation_token
 from worker.template_performance_job import generate_template_performance_data
 
@@ -826,7 +825,6 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
     name = job.payload["name"]
     branches = job.payload.get("branches") or []
     repos_root = job.payload["repos_root"]
-    index_path = job.payload["search_index_path"]
     installation_id = job.payload.get("installation_id")
 
     repo = db.get(Repository, repo_id)
@@ -849,7 +847,6 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
         repo.tracked_branches = branches
     db.flush()
 
-    total_indexed = 0
     total_size = 0
     for br in branches:
         _publish_log(job.id, f"Preparing worktree for branch {br}…", rds=rds)
@@ -867,20 +864,6 @@ def _handle_repo_sync(db: Session, rds: redis.Redis, job: Job) -> None:
         db.flush()
 
         total_size += _dir_size_bytes(wt)
-        _publish_log(job.id, f"Indexing {owner}/{name}@{br}…", rds=rds)
-        with open_db(index_path) as conn:
-            count = index_full(conn, repo_id=repo.id, branch=br, worktree_path=wt)
-        total_indexed += count
-        st = (
-            db.query(SearchStats).filter(SearchStats.repo_id == repo.id, SearchStats.branch == br).one_or_none()
-        )
-        if st is None:
-            st = SearchStats(repo_id=repo.id, branch=br, doc_count=count, last_indexed_at=_utcnow())
-            db.add(st)
-        else:
-            st.doc_count = count
-            st.last_indexed_at = _utcnow()
-        db.flush()
 
     repo.size_bytes = total_size
     repo.quota_state = "ok" if total_size <= 1_000_000_000 else "over_quota"
@@ -935,7 +918,6 @@ def _enqueue_stale_repo_syncs(session_factory, rds: redis.Redis, *, min_age_s: i
                     "branches": branches,
                     "installation_id": repo.github_installation_id,
                     "repos_root": os.path.join(settings.app_workspaces_dir, "repos"),
-                    "search_index_path": os.path.join(settings.app_workspaces_dir, "search", "search.sqlite"),
                 },
             )
             db.add(job)
@@ -1732,28 +1714,9 @@ def _dispatch_template_backtest(db: Session, rds: redis.Redis, docker_client: do
     handle_template_backtest(db, rds, docker_client, job)
 
 
-def _dispatch_template_stable5(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
-    from worker.template_stable5_screening_job import run_template_stable5_screening
-
-    run_template_stable5_screening(db, rds, job)
-
-
-JOB_HANDLERS: dict[str, Callable[[Session, redis.Redis, docker.DockerClient, Job], None]] = {
-    # MVP core
-    JobType.BACKTEST.value: _handle_backtest,
-    JobType.GENERATE_STRATEGY.value: _handle_generate_strategy,
-    JobType.GENERATE_AND_BACKTEST.value: _handle_generate_and_backtest,
-    JobType.REFINE_STRATEGY.value: _handle_refine_strategy,
-    # Repositories
-    JobType.REPO_IMPORT.value: _dispatch_repo,
-    JobType.REPO_SYNC.value: _dispatch_repo,
-    # Trending (gated by settings.trending_scheduler_enabled)
-    JobType.TRENDING_SCRAPE.value: _handle_scrape_tradingview_trending,
-    JobType.TRENDING_BACKTEST.value: _handle_backtest_trending_top_n,
     # Templates
     JobType.TEMPLATE_PERFORMANCE_UPDATE.value: _dispatch_template_performance,
     JobType.TEMPLATE_BACKTEST.value: _dispatch_template_backtest,
-    JobType.TEMPLATE_STABLE5_SCREENING.value: _dispatch_template_stable5,
 }
 
 _TRENDING_JOB_TYPES = frozenset(
@@ -2066,55 +2029,6 @@ def _setup_template_performance_scheduler(session_factory, rds: redis.Redis) -> 
     return scheduler
 
 
-def _run_scheduled_stable5_screening(rds: redis.Redis) -> None:
-    logger = logging.getLogger(__name__)
-    try:
-        engine = create_db_engine(settings.app_db_url)
-        session_factory = create_session_factory(engine)
-
-        job_id = str(uuid.uuid4())
-        with session_scope(session_factory) as db:
-            job = Job(
-                id=job_id,
-                type=JobType.TEMPLATE_STABLE5_SCREENING.value,
-                payload={"limit": int(getattr(settings, "stable5_default_limit", 50) or 50)},
-                status="queued",
-            )
-            db.add(job)
-            db.commit()
-
-        enqueue_job(settings.app_workspaces_dir, job_id, job.type, job.payload, priority="batch", redis_client=rds)
-        logger.info(f"Created scheduled Stable5 screening job: {job_id}")
-    except Exception as e:
-        logger.error(f"Error running scheduled Stable5 screening: {e}")
-
-
-def _setup_stable5_scheduler(session_factory, rds: redis.Redis) -> BackgroundScheduler | None:
-    logger = logging.getLogger(__name__)
-    enabled = bool(getattr(settings, "stable5_scheduler_enabled", False))
-    if not enabled:
-        logger.info("Stable5 scheduler is disabled via settings")
-        return None
-
-    scheduler = BackgroundScheduler(timezone="UTC")
-    try:
-        cron_expr = str(getattr(settings, "stable5_default_cron", "0 3 * * *") or "0 3 * * *")
-        trigger = CronTrigger.from_crontab(cron_expr, timezone="UTC")
-        scheduler.add_job(
-            _run_scheduled_stable5_screening,
-            trigger=trigger,
-            id="template_stable5_screening",
-            name="Template Stable5 Screening",
-            replace_existing=True,
-            args=[rds],
-        )
-        scheduler.start()
-        logger.info(f"Stable5 scheduler started with cron: {cron_expr}")
-    except Exception as e:
-        logger.error(f"Error setting up Stable5 scheduler: {e}")
-        scheduler.shutdown(wait=False)
-        return None
-    return scheduler
 
 
 def main() -> None:
@@ -2158,11 +2072,9 @@ def main() -> None:
     # Set up schedulers (optional)
     trending_scheduler = None
     template_perf_scheduler = None
-    stable5_scheduler = None
     if run_scheduler:
         trending_scheduler = _setup_trending_scheduler(session_factory, rds)
         template_perf_scheduler = _setup_template_performance_scheduler(session_factory, rds)
-        stable5_scheduler = _setup_stable5_scheduler(session_factory, rds)
 
     docker_client = None
     if run_consumer:
@@ -2183,8 +2095,6 @@ def main() -> None:
                 trending_scheduler.shutdown(wait=False)
             if template_perf_scheduler:
                 template_perf_scheduler.shutdown(wait=False)
-            if stable5_scheduler:
-                stable5_scheduler.shutdown(wait=False)
         return
 
     consumers = max(1, int(getattr(settings, "worker_consumers", 1) or 1))

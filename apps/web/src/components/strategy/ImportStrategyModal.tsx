@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { CheckCircle2, Download, Loader2, Youtube, X } from "lucide-react";
+import { CheckCircle2, Download, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -78,7 +78,7 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
     }, [open]);
 
     // Get progress message based on job status
-    const getJobProgressMessage = useCallback((job: Job): string => {
+    const getJobProgressMessage = useCallback((job: { status: string }): string => {
         switch (job.status) {
             case "queued":
                 return t("importStrategy.progress.queued");
@@ -96,7 +96,7 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
     }, [importSource, t]);
 
     // Handle import success
-    const handleImportSuccess = useCallback((job: Job, strategyId: string) => {
+    const handleImportSuccess = useCallback((_job: Job, strategyId: string) => {
         setImportStep("success");
         setProgressMessage(t("importStrategy.progress.complete"));
 
@@ -152,7 +152,7 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
                     if (job.status === "succeeded") {
                         handleImportSuccess(job, strategyId);
                     } else if (job.status === "failed") {
-                        handleImportError(new Error(job.error || t("importStrategy.toast.errorTitle")));
+                        handleImportError(new Error(job.error_message || t("importStrategy.toast.errorTitle")));
                     }
                 } catch (error) {
                     if (aborted) return;
@@ -190,7 +190,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
         },
         onSuccess: (data) => {
             const scriptName = data.source_metadata?.script_name || "";
-            const author = data.source_metadata?.script_author || "";
 
             // Store import info and start polling
             setImportSource("tradingview");
@@ -272,22 +271,22 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
         });
     };
 
-    const handleYouTubeImport = () => {
-        if (!youtubeUrl.trim()) {
-            toast({
-                title: t("importStrategy.validation.urlRequiredTitle"),
-                description: t("importStrategy.validation.youtubeUrl"),
-                variant: "destructive",
-            });
-            return;
-        }
-
-        setImportStep("submitting");
-        youtubeMutation.mutate({
-            url: youtubeUrl.trim(),
-            strategy_name: youtubeName.trim() || undefined,
-        });
-    };
+    // Parked for when YouTube import is re-enabled:
+    // const handleYouTubeImport = () => {
+    //     if (!youtubeUrl.trim()) {
+    //         toast({
+    //             title: t("importStrategy.validation.urlRequiredTitle"),
+    //             description: t("importStrategy.validation.youtubeUrl"),
+    //             variant: "destructive",
+    //         });
+    //         return;
+    //     }
+    //     setImportStep("submitting");
+    //     youtubeMutation.mutate({
+    //         url: youtubeUrl.trim(),
+    //         strategy_name: youtubeName.trim() || undefined,
+    //     });
+    // };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>

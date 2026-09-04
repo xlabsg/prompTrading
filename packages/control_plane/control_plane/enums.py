@@ -12,7 +12,6 @@ class JobType(str, Enum):
     TRENDING_BACKTEST = "trending_backtest"
     TEMPLATE_PERFORMANCE_UPDATE = "template_performance_update"
     TEMPLATE_BACKTEST = "template_backtest"
-    TEMPLATE_STABLE5_SCREENING = "template_stable5_screening"
 
 
 class JobStatus(str, Enum):

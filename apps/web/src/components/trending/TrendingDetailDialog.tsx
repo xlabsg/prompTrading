@@ -5,7 +5,6 @@ import {
   DialogTitle,
 } from "../ui/dialog";
 import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
 import { TrendingUp, Eye, Heart, MessageCircle, Calendar } from "lucide-react";
 import { BacktestSummary } from "@/lib/types";
 import { useTranslation } from "react-i18next";

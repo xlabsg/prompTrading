@@ -1194,48 +1194,19 @@ def _extract_search_terms(message: str, limit: int = 6) -> list[str]:
     return unique
 
 
-def _search_repo_snippets(repo_id: str, query_terms: list[str], limit: int = 3) -> list[tuple[str, str]]:
-    if not query_terms:
-        return []
-    index_path = settings.search_index_path or os.path.join(settings.workspaces_dir, "search", "search.sqlite")
-    if not os.path.exists(index_path):
-        return []
-
-    query = " OR ".join(query_terms)
-    sql = """
-        SELECT path, snippet(files_fts, 4, '[', ']', ' … ', 8) AS snippet
-        FROM files_fts
-        WHERE files_fts MATCH ? AND repo_id = ?
-        ORDER BY bm25(files_fts)
-        LIMIT ?
-    """
-
-    try:
-        with sqlite3.connect(index_path) as conn:
-            conn.row_factory = sqlite3.Row
-            rows = conn.execute(sql, [query, repo_id, limit]).fetchall()
-    except Exception:
-        return []
-
-    results = []
-    for row in rows:
-        results.append((row["path"], row["snippet"] or ""))
-    return results
-
-
 def _search_strategy_snippets(code: str, query_terms: list[str], limit: int = 3) -> list[tuple[str, str]]:
     if not code or not query_terms:
         return []
     lines = code.split("\n")
     hits: list[tuple[str, str]] = []
-    for idx, line in enumerate(lines):
-        lower = line.lower()
-        if not any(term in lower for term in query_terms):
-            continue
-        start = max(0, idx - 2)
-        end = min(len(lines), idx + 3)
-        snippet = "\n".join(lines[start:end])
-        hits.append((f"strategy.py:{idx + 1}", snippet))
+    lower_terms = [t.lower() for t in query_terms]
+    for i, line in enumerate(lines):
+        line_lower = line.lower()
+        if any(term in line_lower for term in lower_terms):
+            start = max(0, i - 2)
+            end = min(len(lines), i + 3)
+            snippet = "\n".join(lines[start:end])
+            hits.append((f"strategy.py#L{i + 1}", snippet))
         if len(hits) >= limit:
             break
     return hits
@@ -1245,9 +1216,7 @@ def _build_refine_context(strategy: Strategy, message: str, current_code: str | 
     terms = _extract_search_terms(message)
     snippets: list[tuple[str, str]] = []
 
-    if strategy.repo_id:
-        snippets = _search_repo_snippets(strategy.repo_id, terms)
-    elif current_code:
+    if current_code:
         snippets = _search_strategy_snippets(current_code, terms)
 
     if not snippets:

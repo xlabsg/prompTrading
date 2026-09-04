@@ -17,7 +17,6 @@ import type {
     RepoImportRequest,
     RepoTreeResponse,
     RepoFileResponse,
-    SearchResponse,
     GitHubInstallation,
     GitHubRepo,
     User,
@@ -35,9 +34,6 @@ import type {
     TrendingStrategy,
     TemplateListResponse,
     TemplateDetail,
-    Stable5RecommendationItem,
-    RunStable5ScreeningRequest,
-    RunStable5ScreeningResponse,
     BacktestSignalsPayload,
     BacktestCandle,
     BacktestSignalEvent,
@@ -362,19 +358,6 @@ export const reposApi = {
         fetchApi<RepoFileResponse>(`/api/repos/${repoId}/file${buildQuery(params)}`),
 };
 
-// ============== Search API ==============
-
-export const searchApi = {
-    search: (params: {
-        q: string;
-        repo_id?: string;
-        branch?: string;
-        path_prefix?: string;
-        ext?: string;
-        limit?: number;
-        offset?: number;
-    }) => fetchApi<SearchResponse>(`/api/search${buildQuery(params)}`),
-};
 
 // ============== GitHub API ==============
 
@@ -665,7 +648,6 @@ export const templatesApi = {
         template_type?: string;
         featured?: boolean;
         search?: string;
-        stable5_only?: boolean;
         sort?: string;
         limit?: number;
         offset?: number;
@@ -703,15 +685,6 @@ export const templatesApi = {
     triggerPerformanceUpdate: (templateId: string) =>
         fetchApi<{ message: string; template_id: string }>(`/api/templates/${templateId}/performance/trigger`, {
             method: "POST",
-        }),
-
-    getStable5Recommendations: (limit = 6) =>
-        fetchApi<Stable5RecommendationItem[]>(`/api/templates/recommendations/stable5${buildQuery({ limit })}`),
-
-    runStable5Screening: (req: RunStable5ScreeningRequest) =>
-        fetchApi<RunStable5ScreeningResponse>(`/api/templates/screening/stable5`, {
-            method: "POST",
-            body: JSON.stringify(req),
         }),
 
     getPerformanceRunDetail: (runId: string) =>

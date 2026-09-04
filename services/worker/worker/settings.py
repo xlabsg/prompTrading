@@ -54,10 +54,5 @@ class Settings(BaseSettings):
     # Template performance scheduler settings
     template_performance_scheduler_enabled: bool = True
 
-    # Stable5 screening scheduler settings
-    stable5_scheduler_enabled: bool = False
-    stable5_default_cron: str = "0 3 * * *"
-    stable5_default_limit: int = 50
-
 
 settings = Settings()

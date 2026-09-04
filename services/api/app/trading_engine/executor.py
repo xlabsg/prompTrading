@@ -21,6 +21,7 @@ from risk_engine import (
     generate_client_order_id,
     OrderSpec as SDKOrderSpec, OrderSide as SDKOrderSide,
     OrderType as SDKOrderType, PositionSide,
+    Balance, Position as SDKPosition, PositionStatus as SDKPositionStatus,
 )
 
 # App imports
@@ -48,7 +49,7 @@ class OrderExecutor:
         config: TradingConfig,
         session_id: str,
         db: Session,
-        account: StrategyExchangeAccount
+        account: Optional[StrategyExchangeAccount] = None
     ):
         """
         初始化增强订单执行器
@@ -57,7 +58,7 @@ class OrderExecutor:
             config: 交易配置（包含加密的 API 凭据）
             session_id: 交易会话 ID
             db: 数据库会话
-            account: 交易所账户
+            account: 交易所账户（可选，纸盘交易时可为 None）
         """
         self.config = config
         self.session_id = session_id
@@ -87,9 +88,10 @@ class OrderExecutor:
         """根据交易账户配置创建对应的交易所适配器"""
         exchange_name = (getattr(self.account, "exchange", "") or self.config.exchange or "").lower()
 
-        if exchange_name == "paper" or not self.account.api_secret_encrypted:
+        if exchange_name == "paper" or self.account is None or not getattr(self.account, "api_secret_encrypted", None):
             from app.trading_engine.paper_client import PaperExchangeClient
-            return PaperExchangeClient()
+            from risk_engine.adapters.okx import OKXAdapter
+            return OKXAdapter(PaperExchangeClient())
 
         api_key = (self.account.api_key_encrypted or "").strip()
         secret_key = decrypt_credential(self.account.api_secret_encrypted).strip()
@@ -178,6 +180,16 @@ class OrderExecutor:
                     f"Calculated TP/SL: TP={tp}, SL={sl} "
                     f"(entry={current_price}, side={sdk_pos_side})"
                 )
+            elif not reduce_only and self.sdk_config.risk.require_stop_loss and getattr(self.config, "stop_loss_pct", None):
+                sl_pct = Decimal(str(self.config.stop_loss_pct)) / Decimal("100")
+                if sdk_pos_side == PositionSide.LONG or (sdk_pos_side == PositionSide.NET and side == OrderSide.BUY):
+                    order_spec.stop_loss = current_price * (Decimal("1") - sl_pct)
+                else:
+                    order_spec.stop_loss = current_price * (Decimal("1") + sl_pct)
+                logger.info(
+                    f"Applied fixed stop-loss: SL={order_spec.stop_loss} "
+                    f"(entry={current_price}, pct={self.config.stop_loss_pct}%)"
+                )
 
             # 风险验证
             if not self._validate_risk(order_spec):
@@ -227,6 +239,7 @@ class OrderExecutor:
             if not reduce_only:
                 trade = TradingTrade(
                     session_id=self.session_id,
+                    symbol=target_symbol,
                     side=side.value,
                     entry_price=float(current_price),
                     quantity=size,
@@ -273,6 +286,37 @@ class OrderExecutor:
             )
             return None
 
+    def _convert_to_sdk_position(self, ex_pos: dict) -> Optional[SDKPosition]:
+        try:
+            size = Decimal(str(ex_pos.get("pos", "0")))
+            if size == 0:
+                return None
+
+            pos_side_str = str(ex_pos.get("posSide", "net")).lower()
+            if pos_side_str == "long":
+                side = PositionSide.LONG
+            elif pos_side_str == "short":
+                side = PositionSide.SHORT
+            else:
+                side = PositionSide.NET
+
+            return SDKPosition(
+                symbol=ex_pos.get("instId", ""),
+                side=side,
+                size=size,
+                entry_price=Decimal(str(ex_pos.get("avgPx", "0"))),
+                current_price=Decimal(str(ex_pos.get("markPx", ex_pos.get("last", "0")))),
+                unrealized_pnl=Decimal(str(ex_pos.get("upl", "0"))),
+                realized_pnl=Decimal(str(ex_pos.get("realizedPnl", "0"))),
+                leverage=int(ex_pos.get("lever", 1)),
+                margin=Decimal(str(ex_pos.get("margin", "0"))),
+                liquidation_price=Decimal(str(ex_pos.get("liqPx", "0"))) if ex_pos.get("liqPx") else None,
+                status=SDKPositionStatus.OPEN,
+            )
+        except Exception as e:
+            logger.error(f"Failed to convert position in executor: {e}", exc_info=True)
+            return None
+
     def _validate_risk(self, order_spec: SDKOrderSpec) -> bool:
         """
         验证订单风险
@@ -285,16 +329,43 @@ class OrderExecutor:
         """
         try:
             # 获取当前仓位和余额
-            current_positions = self.exchange_adapter.get_positions(self.config.symbol)
-            balance = self.exchange_adapter.get_balance()
+            current_positions_raw = self.exchange_adapter.get_positions(self.config.symbol)
+            balance_raw = self.exchange_adapter.get_balance()
 
-            # 转换为 SDK Position 对象
-            # TODO: 实现完整的转换逻辑
+            if isinstance(balance_raw, Balance):
+                balance = balance_raw
+            elif isinstance(balance_raw, dict):
+                total_eq = Decimal(str(balance_raw.get("totalEq", balance_raw.get("total_equity", "10000")) or "10000"))
+                avail_bal = Decimal(str(balance_raw.get("availBal", balance_raw.get("available_balance", total_eq)) or total_eq))
+                upl = Decimal(str(balance_raw.get("upl", balance_raw.get("unrealized_pnl", "0")) or "0"))
+                balance = Balance(
+                    total_equity=total_eq,
+                    available_balance=avail_bal,
+                    margin_used=max(Decimal("0"), total_eq - avail_bal),
+                    unrealized_pnl=upl,
+                )
+            else:
+                balance = Balance(
+                    total_equity=Decimal("10000"),
+                    available_balance=Decimal("10000"),
+                    margin_used=Decimal("0"),
+                    unrealized_pnl=Decimal("0"),
+                )
+
+            current_positions = []
+            if isinstance(current_positions_raw, list):
+                for p in current_positions_raw:
+                    if isinstance(p, SDKPosition):
+                        current_positions.append(p)
+                    elif isinstance(p, dict):
+                        pos_obj = self._convert_to_sdk_position(p)
+                        if pos_obj:
+                            current_positions.append(pos_obj)
 
             # 风险验证
             risk_result = self.risk_validator.validate_order(
                 order_spec=order_spec,
-                current_positions=[],  # TODO: 转换后的仓位列表
+                current_positions=current_positions,
                 balance=balance,
             )
 
@@ -381,6 +452,32 @@ class OrderExecutor:
                 client_order_id=client_order_id,
             )
 
+            # 如果不是减仓订单，计算 TP/SL
+            limit_price = Decimal(str(price))
+            if not reduce_only and self.sdk_config.risk.dynamic_tpsl.enabled:
+                tp, sl = self.position_manager.calculate_tpsl(
+                    entry_price=limit_price,
+                    side=sdk_pos_side,
+                    sr=None,
+                    atr=None,
+                )
+                order_spec.take_profit = tp
+                order_spec.stop_loss = sl
+                logger.info(
+                    f"Calculated TP/SL for limit order: TP={tp}, SL={sl} "
+                    f"(price={limit_price}, side={sdk_pos_side})"
+                )
+            elif not reduce_only and self.sdk_config.risk.require_stop_loss and getattr(self.config, "stop_loss_pct", None):
+                sl_pct = Decimal(str(self.config.stop_loss_pct)) / Decimal("100")
+                if sdk_pos_side == PositionSide.LONG or (sdk_pos_side == PositionSide.NET and side == OrderSide.BUY):
+                    order_spec.stop_loss = limit_price * (Decimal("1") - sl_pct)
+                else:
+                    order_spec.stop_loss = limit_price * (Decimal("1") + sl_pct)
+                logger.info(
+                    f"Applied fixed stop-loss for limit order: SL={order_spec.stop_loss} "
+                    f"(price={limit_price}, pct={self.config.stop_loss_pct}%)"
+                )
+
             # 风险验证
             if not self._validate_risk(order_spec):
                 return None
@@ -400,6 +497,8 @@ class OrderExecutor:
                 price=price,
                 size=size,
                 status=OrderStatus.OPEN,
+                take_profit=float(order_spec.take_profit) if order_spec.take_profit else None,
+                stop_loss=float(order_spec.stop_loss) if order_spec.stop_loss else None,
                 reduce_only=reduce_only,
             )
             self.db.add(order)

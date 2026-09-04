@@ -8,8 +8,7 @@ import {
     RefreshCw, 
     ShieldAlert, 
     StopCircle, 
-    Terminal, 
-    XCircle 
+    Terminal
 } from "lucide-react";
 import MainLayout from "@/components/layout/MainLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";

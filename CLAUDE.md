@@ -74,7 +74,7 @@ npm run lint     # Run ESLint
 ### API Testing
 ```bash
 docker compose -f infra/compose/docker-compose.dev.yml exec api bash
-python test_okx_setup.py        # Test OKX SDK setup
+pytest services/api/tests -q
 ```
 
 ### Package Tests

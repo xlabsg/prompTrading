@@ -134,6 +134,8 @@ def generate_template_performance_data(
 
 def _publish_log(rds, job_id: str, message: str) -> None:
     """Publish a log message to Redis."""
+    if rds is None:
+        return
     try:
         import redis
         import json
