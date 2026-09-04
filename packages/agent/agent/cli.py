@@ -317,11 +317,19 @@ def cmd_indicators(args: argparse.Namespace) -> int:
             return 1
 
         print(f"Indicator: {target}")
-        try:
-            sig = inspect.signature(fn)
-            print(f"Signature: {target}{sig}")
-        except Exception:
-            pass
+        catalog = bt_ind.get_catalog() if hasattr(bt_ind, "get_catalog") else {}
+        meta = catalog.get(target)
+        if meta:
+            print(f"Signature: {meta.signature}")
+            print(f"Role:      {meta.role.upper()} ({meta.role})")
+            print(f"Tags:      {', '.join(meta.tags)}")
+            print(f"Inputs:    {', '.join(meta.inputs)}")
+        else:
+            try:
+                sig = inspect.signature(fn)
+                print(f"Signature: {target}{sig}")
+            except Exception:
+                pass
         doc = inspect.getdoc(fn)
         if doc:
             print(f"\nDocumentation:\n{doc}")
@@ -330,45 +338,62 @@ def cmd_indicators(args: argparse.Namespace) -> int:
         print(f"  # e.g., result = {target}(data['close'], ...)")
         return 0
 
-    # Dynamically introspect indicators grouped by financial semantics
+    # Flat registry with multi-dimensional filtering
     catalog = bt_ind.get_catalog() if hasattr(bt_ind, "get_catalog") else {}
-    raw_cat = (getattr(args, "category", "all") or "all").lower().strip()
-    # Backward compatibility aliases
-    alias_map = {"core": "trend", "modern": "trend"}
-    selected_cat = alias_map.get(raw_cat, raw_cat)
+    selected_tag = getattr(args, "tag", None) or getattr(args, "category", None)
+    if selected_tag in ("all", None):
+        selected_tag = None
+    # Backward compatibility alias
+    if selected_tag in ("core", "modern"):
+        selected_tag = "trend"
+
+    selected_role = getattr(args, "role", None)
+    selected_input = getattr(args, "input", None)
+
+    # Filter catalog
+    filtered = {}
+    for name, meta in catalog.items():
+        if selected_tag and selected_tag.lower() not in [t.lower() for t in meta.tags]:
+            continue
+        if selected_role and meta.role.lower() != selected_role.lower():
+            continue
+        if selected_input and selected_input.lower() not in [i.lower() for i in meta.inputs]:
+            continue
+        filtered[name] = meta
 
     print("==================================================")
-    print("      PLATFORM QUANTITATIVE INDICATOR CATALOG     ")
+    print("      PLATFORM QUANTITATIVE INDICATOR REGISTRY    ")
     print("==================================================")
     print("Usage: from backtest.indicators import <name> (or import ta)")
     print("Run `pt-quant indicators <name>` for detailed signature.")
-    print("Run `pt-quant indicators --category [trend|momentum|volatility|volume|crypto|atomic|pattern]`")
+    print("Filter: --tag <tag>, --role [trigger|confirmation|filter|sizing|transform], --input <col>")
     print("Run `pt-quant indicators --source okx` for OKX Agent Trade Kit indicators.\n")
 
-    rendered_categories = 0
-    for cat_key, cat_info in catalog.items():
-        if selected_cat != "all" and selected_cat != cat_key:
-            continue
-        indicators_map = cat_info.get("indicators", {})
-        if not indicators_map:
-            continue
-        rendered_categories += 1
-        print(f"--- {cat_info['title']} ({len(indicators_map)} available) ---")
-        print(f"    {cat_info['description']}")
-        for name in sorted(indicators_map.keys()):
-            fn = indicators_map[name]
-            try:
-                sig = inspect.signature(fn)
-                doc_first = (inspect.getdoc(fn) or "").split("\n")[0]
-                print(f"  • {name}{sig}")
-                if doc_first:
-                    print(f"      {doc_first}")
-            except Exception:
-                print(f"  • {name}")
+    filter_desc = []
+    if selected_tag:
+        filter_desc.append(f"tag='{selected_tag}'")
+    if selected_role:
+        filter_desc.append(f"role='{selected_role}'")
+    if selected_input:
+        filter_desc.append(f"input='{selected_input}'")
+
+    if filter_desc:
+        print(f"Showing {len(filtered)} indicators matching ({', '.join(filter_desc)}):\n")
+    else:
+        print(f"Total {len(filtered)} indicators registered in flat catalog:\n")
+
+    for name in sorted(filtered.keys()):
+        meta = filtered[name]
+        tags_str = ", ".join(meta.tags)
+        inputs_str = ", ".join(meta.inputs)
+        print(f"  • {meta.signature or name}")
+        print(f"      [role: {meta.role} | tags: {tags_str} | inputs: {inputs_str}]")
+        if meta.doc:
+            print(f"      {meta.doc}")
         print()
 
-    if rendered_categories == 0:
-        print(f"  (No indicators found in category '{raw_cat}')")
+    if not filtered:
+        print("  (No matching indicators found)")
 
     print("==================================================")
     return 0
@@ -400,12 +425,10 @@ def main(argv: list[str] | None = None) -> int:
     p_ind = subparsers.add_parser("indicators", help="Introspect platform indicators")
     p_ind.add_argument("name", nargs="?", help="Specific indicator name to inspect")
     p_ind.add_argument("--source", choices=["platform", "okx"], default="platform", help="Indicator source (platform or okx)")
-    p_ind.add_argument(
-        "--category",
-        choices=["all", "trend", "momentum", "volatility", "volume", "crypto", "atomic", "pattern", "core", "modern"],
-        default="all",
-        help="Indicator financial semantic category",
-    )
+    p_ind.add_argument("--tag", help="Filter indicators by tag (e.g. trend, momentum, volume, crypto, atomic)")
+    p_ind.add_argument("--category", help="Alias for --tag (backward compatibility)")
+    p_ind.add_argument("--role", choices=["trigger", "confirmation", "filter", "sizing", "transform"], help="Filter by functional role")
+    p_ind.add_argument("--input", help="Filter by required input column (e.g. volume, funding_rate, high, low, close)")
 
     args = parser.parse_args(argv)
     if not args.command:

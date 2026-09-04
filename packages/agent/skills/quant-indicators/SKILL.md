@@ -15,17 +15,28 @@ import ta
 
 ---
 
-## 1. Introspecting Available Indicators via CLI
+## 1. Introspecting Indicators via Flat Registry & Multi-Dimensional Filters
 
-Run `pt-quant indicators` to list all built-in indicators and inspect specific functions:
+The platform organizes indicators in a flat registry where each indicator is enriched with orthogonal tags, required input columns, and functional roles (`trigger`, `confirmation`, `filter`, `sizing`, `transform`).
+
+Run `pt-quant indicators` to explore:
 ```bash
-# List all platform indicators categorized
+# List all registered indicators with roles, tags, and inputs
 pt-quant indicators
 
-# Check exact parameter signature and docstring
+# Filter by functional role
+pt-quant indicators --role trigger       # Directional decision triggers (SuperTrend, Donchian, EMA)
+pt-quant indicators --role confirmation  # Cross-validation signals (VWAP, CMF, RSI, StochRSI)
+pt-quant indicators --role filter        # Regime / squeeze filters (Funding Z-score, Bollinger Bands)
+pt-quant indicators --role sizing        # Dynamic position sizing & risk stops (ATR)
+
+# Filter by tags or required input column
+pt-quant indicators --tag crypto         # Derivative metrics (funding rate, open interest)
+pt-quant indicators --input volume       # Indicators utilizing volume flow
+
+# Inspect exact signature, inputs, role, and docstring
 pt-quant indicators supertrend
-pt-quant indicators ts_corr
-pt-quant indicators vwap
+pt-quant indicators funding_rate_zscore
 ```
 
 ---

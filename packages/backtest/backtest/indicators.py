@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import functools
 import sys
 from typing import Any, Callable, NamedTuple, Union
@@ -526,129 +527,289 @@ def __dir__() -> list[str]:
 
 
 # =====================================================================
-# Dynamic Financial Semantic Taxonomy & Introspection
+# Flat Tagged Registry & Orthogonal Metadata
 # =====================================================================
 
-CATEGORY_METADATA: dict[str, dict[str, str]] = {
-    "trend": {
-        "title": "Trend & Overlap Studies",
-        "description": "Directional filters, moving averages, and dynamic breakout channels",
+@dataclass(frozen=True)
+class IndicatorMeta:
+    """Metadata for an indicator in the flat quantitative registry."""
+    name: str
+    func: Callable
+    inputs: list[str]
+    tags: list[str]
+    role: str  # "trigger", "confirmation", "filter", "sizing", "transform"
+    doc: str = ""
+    signature: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "inputs": list(self.inputs),
+            "tags": list(self.tags),
+            "role": self.role,
+            "doc": self.doc,
+            "signature": self.signature,
+        }
+
+
+_PLATFORM_REGISTRY_METADATA: dict[str, dict[str, Any]] = {
+    # Trend & Breakout Triggers
+    "supertrend": {
+        "inputs": ["high", "low", "close"],
+        "tags": ["trend", "breakout"],
+        "role": "trigger",
     },
-    "momentum": {
-        "title": "Momentum & Oscillators",
-        "description": "Velocity, divergence, and overbought/oversold oscillators",
+    "donchian_channel": {
+        "inputs": ["high", "low"],
+        "tags": ["trend", "breakout", "channel"],
+        "role": "trigger",
     },
-    "volatility": {
-        "title": "Volatility & Bands",
-        "description": "Price dispersion, volatility squeeze, and envelope bands",
+    "sma": {
+        "inputs": ["close"],
+        "tags": ["trend", "moving_average"],
+        "role": "trigger",
     },
-    "volume": {
-        "title": "Volume & Liquidity Flow",
-        "description": "Institutional benchmark prices and money flow accumulation",
+    "ema": {
+        "inputs": ["close"],
+        "tags": ["trend", "moving_average"],
+        "role": "trigger",
     },
-    "crypto": {
-        "title": "Crypto Derivatives & Microstructure",
-        "description": "Funding rate sentiment and open interest momentum",
+    "cross_over": {
+        "inputs": ["close"],
+        "tags": ["trend", "crossover"],
+        "role": "trigger",
     },
-    "atomic": {
-        "title": "Atomic Math & Factor Primitives",
-        "description": "Alpha 101/Qlib mathematical time-series operators",
+    "cross_under": {
+        "inputs": ["close"],
+        "tags": ["trend", "crossover"],
+        "role": "trigger",
     },
-    "pattern": {
-        "title": "Candlestick Pattern Recognition",
-        "description": "Single and multi-bar price action formation classifiers",
+    # Channels & Volatility (Filters & Dynamic Sizing)
+    "keltner_channel": {
+        "inputs": ["high", "low", "close"],
+        "tags": ["trend", "volatility", "bands"],
+        "role": "filter",
+    },
+    "bollinger_bands": {
+        "inputs": ["close"],
+        "tags": ["volatility", "trend", "bands"],
+        "role": "filter",
+    },
+    "atr": {
+        "inputs": ["high", "low", "close"],
+        "tags": ["volatility", "risk"],
+        "role": "sizing",
+    },
+    # Volume & Liquidity Flow (Confirmation)
+    "vwap": {
+        "inputs": ["high", "low", "close", "volume"],
+        "tags": ["volume", "benchmark"],
+        "role": "confirmation",
+    },
+    "cmf": {
+        "inputs": ["high", "low", "close", "volume"],
+        "tags": ["volume", "money_flow"],
+        "role": "confirmation",
+    },
+    # Momentum & Oscillators (Confirmation)
+    "rsi": {
+        "inputs": ["close"],
+        "tags": ["momentum", "oscillator"],
+        "role": "confirmation",
+    },
+    "stoch_rsi": {
+        "inputs": ["close"],
+        "tags": ["momentum", "oscillator"],
+        "role": "confirmation",
+    },
+    "zscore": {
+        "inputs": ["close"],
+        "tags": ["momentum", "statistical"],
+        "role": "filter",
+    },
+    "ts_zscore": {
+        "inputs": ["close"],
+        "tags": ["momentum", "statistical"],
+        "role": "filter",
+    },
+    # Crypto Derivatives Microstructure (Crowding / Squeeze Filters)
+    "funding_rate_zscore": {
+        "inputs": ["funding_rate"],
+        "tags": ["crypto", "derivatives", "sentiment"],
+        "role": "filter",
+    },
+    "oi_momentum": {
+        "inputs": ["open_interest"],
+        "tags": ["crypto", "derivatives", "momentum"],
+        "role": "confirmation",
+    },
+    # Atomic Time-Series Operators (Transforms & Math Building Blocks)
+    "ts_rank": {
+        "inputs": ["close"],
+        "tags": ["atomic", "percentile", "math"],
+        "role": "transform",
+    },
+    "ts_corr": {
+        "inputs": ["close", "volume"],
+        "tags": ["atomic", "correlation", "math"],
+        "role": "transform",
+    },
+    "ts_cov": {
+        "inputs": ["close", "volume"],
+        "tags": ["atomic", "covariance", "math"],
+        "role": "transform",
+    },
+    "ts_decay_linear": {
+        "inputs": ["close"],
+        "tags": ["atomic", "moving_average", "math"],
+        "role": "transform",
+    },
+    "ts_diff": {
+        "inputs": ["close"],
+        "tags": ["atomic", "momentum", "math"],
+        "role": "transform",
+    },
+    "ts_returns": {
+        "inputs": ["close"],
+        "tags": ["atomic", "returns", "math"],
+        "role": "transform",
+    },
+    "ts_max": {
+        "inputs": ["close"],
+        "tags": ["atomic", "extrema", "math"],
+        "role": "transform",
+    },
+    "ts_min": {
+        "inputs": ["close"],
+        "tags": ["atomic", "extrema", "math"],
+        "role": "transform",
+    },
+    "safe_div": {
+        "inputs": ["close"],
+        "tags": ["atomic", "math"],
+        "role": "transform",
     },
 }
 
-_EXPLICIT_CLASSIFICATIONS: dict[str, str] = {
-    "supertrend": "trend",
-    "keltner_channel": "trend",
-    "donchian_channel": "trend",
-    "sma": "trend",
-    "ema": "trend",
-    "cross_over": "trend",
-    "cross_under": "trend",
-    "rsi": "momentum",
-    "stoch_rsi": "momentum",
-    "zscore": "momentum",
-    "ts_zscore": "momentum",
-    "atr": "volatility",
-    "bollinger_bands": "volatility",
-    "vwap": "volume",
-    "cmf": "volume",
-    "funding_rate_zscore": "crypto",
-    "oi_momentum": "crypto",
-    "safe_div": "atomic",
-}
 
-_TALIB_GROUP_MAP: dict[str, str] = {
-    "Overlap Studies": "trend",
-    "Cycle Indicators": "trend",
-    "Price Transform": "trend",
-    "Momentum Indicators": "momentum",
-    "Volatility Indicators": "volatility",
-    "Volume Indicators": "volume",
-    "Pattern Recognition": "pattern",
-    "Statistic Functions": "atomic",
-    "Math Transform": "atomic",
-    "Math Operators": "atomic",
-}
+def _infer_indicator_metadata(name: str, fn: Callable) -> IndicatorMeta:
+    """Infer metadata (inputs, tags, role) for any indicator via reflection and heuristics."""
+    import inspect
 
-
-def classify_indicator(name: str) -> str:
-    """Classify an indicator into its financial semantic category dynamically."""
     norm = name.lower().strip()
-    if norm in _EXPLICIT_CLASSIFICATIONS:
-        return _EXPLICIT_CLASSIFICATIONS[norm]
+    sig_str = ""
+    param_names: list[str] = []
+    try:
+        sig = inspect.signature(fn)
+        sig_str = f"{name}{sig}"
+        param_names = [p.lower() for p in sig.parameters.keys()]
+    except Exception:
+        sig_str = f"{name}(...)"
 
-    # Prefix/suffix structural heuristics
+    doc = (inspect.getdoc(fn) or "").strip()
+    first_doc = doc.split("\n")[0] if doc else ""
+
+    # 1. Check predefined explicit metadata
+    if norm in _PLATFORM_REGISTRY_METADATA:
+        meta = _PLATFORM_REGISTRY_METADATA[norm]
+        return IndicatorMeta(
+            name=name,
+            func=fn,
+            inputs=list(meta.get("inputs", ["close"])),
+            tags=list(meta.get("tags", ["technical"])),
+            role=meta.get("role", "confirmation"),
+            doc=first_doc,
+            signature=sig_str,
+        )
+
+    # 2. Dynamic Input Detection from signature parameter names
+    inputs = []
+    if any(p in param_names for p in ("high", "low", "close", "price", "real")):
+        if "high" in param_names:
+            inputs.append("high")
+        if "low" in param_names:
+            inputs.append("low")
+        if any(p in param_names for p in ("close", "price", "real")):
+            inputs.append("close")
+    elif "funding_rate" in param_names:
+        inputs.append("funding_rate")
+    elif "open_interest" in param_names:
+        inputs.append("open_interest")
+    else:
+        inputs.append("close")
+
+    if "volume" in param_names and "volume" not in inputs:
+        inputs.append("volume")
+
+    # 3. Dynamic Tag & Role Heuristics
+    tags = []
+    role = "confirmation"
+
     if norm.startswith("ts_") or norm.startswith("safe_"):
-        return "atomic"
-    if "funding" in norm or "open_interest" in norm or norm.startswith("oi_"):
-        return "crypto"
-    if norm.startswith("cdl"):
-        return "pattern"
-
-    # Introspect TA-Lib's native function groups if available
-    if _talib is not None and hasattr(_talib, "get_function_groups"):
+        tags.extend(["atomic", "math"])
+        role = "transform"
+    elif "funding" in norm or "open_interest" in norm or norm.startswith("oi_"):
+        tags.extend(["crypto", "derivatives"])
+        role = "filter"
+    elif norm.startswith("cdl"):
+        tags.extend(["pattern", "candlestick"])
+        role = "confirmation"
+    elif _talib is not None and hasattr(_talib, "get_function_groups"):
         try:
             groups = _talib.get_function_groups()
             for grp_name, fns in groups.items():
                 if norm in [f.lower() for f in fns]:
-                    return _TALIB_GROUP_MAP.get(grp_name, "momentum")
+                    if grp_name == "Overlap Studies":
+                        tags.extend(["trend", "moving_average"])
+                        role = "trigger"
+                    elif grp_name == "Momentum Indicators":
+                        tags.extend(["momentum", "oscillator"])
+                        role = "confirmation"
+                    elif grp_name == "Volatility Indicators":
+                        tags.extend(["volatility", "risk"])
+                        role = "sizing"
+                    elif grp_name == "Volume Indicators":
+                        tags.extend(["volume", "money_flow"])
+                        role = "confirmation"
+                    elif grp_name == "Pattern Recognition":
+                        tags.extend(["pattern", "candlestick"])
+                        role = "confirmation"
+                    elif grp_name == "Statistic Functions":
+                        tags.extend(["atomic", "statistical"])
+                        role = "transform"
+                    break
         except Exception:
             pass
 
-    # Keyword heuristics fallback
-    if any(k in norm for k in ("trend", "ma", "channel", "band", "break")):
-        return "trend"
-    if any(k in norm for k in ("rsi", "macd", "osc", "score", "mom", "roc")):
-        return "momentum"
-    if any(k in norm for k in ("atr", "vol", "std", "var")):
-        return "volatility"
-    if any(k in norm for k in ("vol", "flow", "vwap", "obv")):
-        return "volume"
+    if not tags:
+        tags.append("technical")
 
-    return "momentum"
+    return IndicatorMeta(
+        name=name,
+        func=fn,
+        inputs=inputs,
+        tags=tags,
+        role=role,
+        doc=first_doc,
+        signature=sig_str,
+    )
 
 
-def get_catalog() -> dict[str, dict[str, Any]]:
-    """Dynamically discover and categorize all available indicators into financial semantics."""
+def get_catalog() -> dict[str, IndicatorMeta]:
+    """Return a flat quantitative indicator registry keyed by indicator name.
+
+    Returns:
+        dict[str, IndicatorMeta]: O(1) access to indicator metadata (inputs, tags, role, doc, signature).
+    """
     import inspect
 
     mod = sys.modules[__name__]
-    catalog: dict[str, dict[str, Any]] = {
-        cat: {
-            "title": meta["title"],
-            "description": meta["description"],
-            "indicators": {},
-        }
-        for cat, meta in CATEGORY_METADATA.items()
-    }
+    catalog: dict[str, IndicatorMeta] = {}
 
     _skip_names = {
         "Callable", "NamedTuple", "Any", "Union", "SeriesLike", "Optional",
-        "get_catalog", "classify_indicator", "CATEGORY_METADATA",
+        "IndicatorMeta", "get_catalog", "filter_catalog", "get_categories",
+        "dataclass",
     }
 
     all_names = __dir__()
@@ -660,9 +821,28 @@ def get_catalog() -> dict[str, dict[str, Any]]:
         except Exception:
             continue
         if fn is not None and callable(fn) and not inspect.isclass(fn):
-            cat = classify_indicator(name)
-            if cat in catalog:
-                catalog[cat]["indicators"][name] = fn
+            catalog[name] = _infer_indicator_metadata(name, fn)
 
     return catalog
+
+
+def filter_catalog(
+    catalog: dict[str, IndicatorMeta] | None = None,
+    *,
+    tag: str | None = None,
+    input_col: str | None = None,
+    role: str | None = None,
+) -> dict[str, IndicatorMeta]:
+    """Filter flat indicator catalog by tag, input column, or functional role."""
+    cat = catalog if catalog is not None else get_catalog()
+    res: dict[str, IndicatorMeta] = {}
+    for name, meta in cat.items():
+        if tag is not None and tag.lower() not in [t.lower() for t in meta.tags]:
+            continue
+        if input_col is not None and input_col.lower() not in [i.lower() for i in meta.inputs]:
+            continue
+        if role is not None and role.lower() != meta.role.lower():
+            continue
+        res[name] = meta
+    return res
 
