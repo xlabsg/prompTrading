@@ -1146,6 +1146,31 @@ def _generate_strategy_name(prompt: str, *, llm_meta: dict | None = None) -> str
     return _fallback_strategy_name(prompt)
 
 
+def _merge_agent_meta_into_version(db: Session, strategy_id: str, version_id: str) -> None:
+    """Copy the agent's `llm_meta.json` onto the version row.
+
+    `runner_v2` records how the session actually ended there (`used_llm`,
+    `stop_reason`, `degraded`, the in-loop backtest history). Left on disk it was
+    read by nothing, so a degraded run was indistinguishable from a clean one in
+    the API and the console.
+    """
+    path = os.path.join(
+        settings.app_workspaces_dir, strategy_id, "versions", version_id, "llm_meta.json"
+    )
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            meta = json.load(f)
+    except (OSError, ValueError):
+        return
+    if not isinstance(meta, dict):
+        return
+    version = db.get(StrategyVersion, version_id)
+    if version is None:
+        return
+    version.llm_meta = {**(version.llm_meta or {}), **meta}
+    db.flush()
+
+
 def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: docker.DockerClient, job: Job) -> None:
     """Generate strategy code from prompt, and generate AI strategy name."""
     strategy_id = job.payload["strategy_id"]
@@ -1255,6 +1280,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
             "See artifact: agent.log"
         )
         raise RuntimeError(msg)
+
+    _merge_agent_meta_into_version(db, strategy_id, version_id)
 
     # Generate AI strategy name and update the strategy
     strategy = db.get(Strategy, strategy_id)
@@ -1397,6 +1424,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
             "See artifact: agent.log"
         )
         raise RuntimeError(msg)
+
+    _merge_agent_meta_into_version(db, strategy_id, version_id)
 
     # Update strategy status to DONE (refinement complete)
     strategy = db.get(Strategy, strategy_id)

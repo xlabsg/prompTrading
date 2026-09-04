@@ -29,8 +29,6 @@ def _detect_step_from_line(line: str) -> str | None:
     if not line:
         return None
     lower = line.lower()
-    if "dag intent routed to" in lower or "dag pre-flight" in lower:
-        return "analyzing_intent"
     if "seeded workspace with" in lower or "tau provider=" in lower:
         return "initializing_agent"
     if "backtest dataset=" in lower or "backtest subprocess" in lower:
@@ -55,8 +53,9 @@ async def stream_job_events(
         job = db.get(Job, job_id)
         if job is None:
             raise HTTPException(status_code=404, detail="job_not_found")
-        initial_status = job.status.value if job.status else "queued"
-        job_type = job.type.value if job.type else ""
+        # Both columns are plain Strings, so a loaded row yields a str.
+        initial_status = getattr(job.status, "value", job.status) or "queued"
+        job_type = getattr(job.type, "value", job.type) or ""
 
     log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
     done_marker = f"{log_path}.done"
@@ -111,7 +110,11 @@ async def stream_job_events(
         # Check final job status from database
         with session_factory() as db:
             final_job = db.get(Job, job_id)
-            final_status = final_job.status.value if (final_job and final_job.status) else "unknown"
+            final_status = (
+                getattr(final_job.status, "value", final_job.status)
+                if (final_job and final_job.status)
+                else "unknown"
+            )
             error_message = final_job.error_message if final_job else None
 
         yield f"event: finish\ndata: {json.dumps({'status': final_status, 'error_message': error_message})}\n\n"
