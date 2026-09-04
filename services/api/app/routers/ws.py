@@ -6,8 +6,6 @@ import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from app.settings import settings
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -25,56 +23,6 @@ def set_main_event_loop(loop: asyncio.AbstractEventLoop) -> None:
 def get_main_event_loop() -> asyncio.AbstractEventLoop | None:
     """Get the main event loop reference."""
     return _main_event_loop
-
-
-import os
-
-@router.websocket("/jobs/{job_id}")
-async def job_logs_ws(websocket: WebSocket, job_id: str) -> None:
-    await websocket.accept()
-    log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
-    done_marker = f"{log_path}.done"
-
-    # Wait up to 30s for the job log file to be created
-    wait_count = 0
-    try:
-        while not os.path.exists(log_path) and wait_count < 300:
-            if os.path.exists(done_marker):
-                break
-            await asyncio.sleep(0.1)
-            wait_count += 1
-
-        if not os.path.exists(log_path):
-            await websocket.send_text(f"[api] Job {job_id} is queued or has no logs yet...")
-            while not os.path.exists(log_path):
-                if os.path.exists(done_marker):
-                    break
-                await asyncio.sleep(0.5)
-
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                idle_ticks = 0
-                while True:
-                    line = f.readline()
-                    if line:
-                        idle_ticks = 0
-                        await websocket.send_text(line.rstrip("\r\n"))
-                    else:
-                        if os.path.exists(done_marker):
-                            # Drain any remaining lines written before done marker
-                            tail_line = f.readline()
-                            while tail_line:
-                                await websocket.send_text(tail_line.rstrip("\r\n"))
-                                tail_line = f.readline()
-                            break
-                        await asyncio.sleep(0.1)
-                        idle_ticks += 1
-                        if idle_ticks > 6000:  # 10 minutes timeout on idle
-                            break
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        logger.warning(f"WebSocket error for job {job_id}: {e}")
 
 
 class ConnectionManager:

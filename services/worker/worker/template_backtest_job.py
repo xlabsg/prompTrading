@@ -25,6 +25,7 @@ from control_plane.models import (
 from control_plane.enums import BacktestStatus
 from control_plane.templates import TEMPLATE_STRATEGIES
 from worker.settings import settings
+from worker.backtest_runner import execute_backtest_container, load_backtest_metrics
 
 TEMPLATE_BACKTEST_MAX_RUNS = 10
 TEMPLATE_BACKTEST_MAX_VERSIONS = 10
@@ -234,7 +235,7 @@ def _run_backtest(
     end_ms: int,
 ) -> BacktestRun:
     """Run backtest using existing worker infrastructure."""
-    from worker.main import _run_container_and_stream_logs, _safe_mkdir, _utcnow
+    from worker.main import _safe_mkdir, _utcnow, _tail_excerpt
 
     # Create dataset
     dataset = Dataset(
@@ -280,30 +281,21 @@ def _run_backtest(
     db.flush()
 
     # Run backtest container
-    exit_code, tail = _run_container_and_stream_logs(
-        docker_client,
+    exit_code, tail = execute_backtest_container(
+        docker_client=docker_client,
         job_id=job.id,
         rds=rds,
-        image=settings.worker_backtest_image,
-        name=f"template-bt-{job.id}",
-        command=None,
-        environment={
-            "STRATEGY_ID": strategy.id,
-            "VERSION_ID": strategy_version_id,
-            "RUN_ID": backtest_run.id,
-            "WORKSPACES_DIR": "/workspaces",
-            "RUN_PARAMS_JSON": "{}",
-            "EXCHANGE": exchange,
-            "SYMBOL": symbol,
-            "INTERVAL": interval,
-            "START_MS": str(start_ms),
-            "END_MS": str(end_ms),
-        },
-        volumes={
-            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
-        },
-        network=settings.worker_docker_network,
+        strategy_id=strategy.id,
+        version_id=strategy_version_id,
+        run_id=backtest_run.id,
+        exchange=exchange,
+        symbol=symbol,
+        interval=interval,
+        start_ms=start_ms,
+        end_ms=end_ms,
+        run_params={},
         log_file_path=backtest_log_path,
+        container_name=f"template-bt-{job.id}",
     )
 
     if exit_code != 0:
@@ -317,12 +309,13 @@ def _run_backtest(
     # Read metrics and trades
     import json
     try:
-        metrics_path = os.path.join(settings.app_workspaces_dir, strategy.id, "runs", backtest_run.id, "metrics.json")
-        if os.path.isfile(metrics_path):
-            with open(metrics_path, "r") as f:
-                backtest_run.metrics = json.load(f)
-    except Exception:
-        backtest_run.metrics = {}
+        backtest_run.metrics = load_backtest_metrics(run_dir)
+    except Exception as e:
+        backtest_run.status = BacktestStatus.FAILED
+        backtest_run.finished_at = _utcnow()
+        backtest_run.error_message = str(e)
+        db.flush()
+        raise RuntimeError(f"backtest_failed: {e}") from e
 
     # Read trades from trades.json and add to metrics
     try:

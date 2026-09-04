@@ -646,3 +646,74 @@ def write_run_artifacts(
 
     if signals is not None:
         write_json(os.path.join(run_dir, "signals.json"), serialize_signals(signals, len(equity)))
+
+
+def normalize_equity_curve_payload(base_dir: str, payload: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Normalize equity curve timestamps to milliseconds for frontend charting.
+
+    Handles:
+    - second-based timestamps (convert to ms)
+    - legacy bad artifacts that used row index as timestamp (rebuild from equity.parquet if possible)
+    """
+    if not isinstance(payload, dict):
+        return payload
+    data = payload.get("data")
+    if not isinstance(data, list) or not data:
+        return payload
+
+    timestamps: list[int] = []
+    for point in data:
+        if isinstance(point, dict):
+            ts = point.get("timestamp")
+            if isinstance(ts, (int, float)):
+                timestamps.append(int(ts))
+
+    if not timestamps:
+        return payload
+
+    max_ts = max(timestamps)
+
+    # Legacy incorrect artifacts: timestamp was row index (very small values).
+    if max_ts < 1_000_000_000:
+        equity_parquet = os.path.join(base_dir, "equity.parquet")
+        if os.path.isfile(equity_parquet):
+            try:
+                cols = ["timestamp", "equity", "drawdown"]
+                available = pd.read_parquet(equity_parquet).columns.tolist()
+                if "benchmark_equity" in available:
+                    cols.append("benchmark_equity")
+                df = pd.read_parquet(equity_parquet, columns=cols)
+                rebuilt: list[dict[str, Any]] = []
+                for _, row in df.iterrows():
+                    raw_ts = int(row["timestamp"])
+                    if raw_ts < 1_000_000_000_000:
+                        raw_ts *= 1000
+                    item: dict[str, Any] = {
+                        "timestamp": raw_ts,
+                        "equity": round(float(row["equity"]), 2),
+                        "drawdown": round(abs(float(row["drawdown"])) * 100, 2),
+                    }
+                    if "benchmark_equity" in df.columns and pd.notna(row.get("benchmark_equity")):
+                        item["benchmark_equity"] = round(float(row["benchmark_equity"]), 2)
+                    rebuilt.append(item)
+                return {"data": rebuilt}
+            except Exception:
+                return payload
+        return payload
+
+    # Seconds-based timestamps -> milliseconds.
+    if max_ts < 1_000_000_000_000:
+        normalized: list[dict[str, Any]] = []
+        for point in data:
+            if not isinstance(point, dict):
+                continue
+            ts = point.get("timestamp")
+            if isinstance(ts, (int, float)):
+                next_point = dict(point)
+                next_point["timestamp"] = int(ts * 1000)
+                normalized.append(next_point)
+            else:
+                normalized.append(point)
+        return {"data": normalized}
+
+    return payload
