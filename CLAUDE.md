@@ -300,7 +300,8 @@ docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 - Pydantic 2.x
 
 ### Infrastructure
-- Docker Compose (dev: no Traefik, prod: with Traefik)
+- Docker Compose (dev & prod)
+- Host Nginx (production reverse proxy, optional)
 - Python 3.13, Node 20
 
 ## Environment Variables

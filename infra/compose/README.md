@@ -1,32 +1,46 @@
 # Docker Compose 文件说明
 
-## docker-compose.dev.yml (开发环境 - 推荐使用)
+## docker-compose.yml (本地构建与运行 - 推荐开发使用)
 
-**特点：**
-- ✅ 简化配置，直接暴露端口
-- ✅ 无需 Traefik 反向代理
-- ✅ 直接访问服务：
-  - Frontend: http://localhost:3000
-  - API: http://localhost:8000
-  - Postgres: localhost:5432
-  - Redis: localhost:6379
+由 `./update.sh` 脚本默认调用的 Compose 文件。本地从源码直接构建并运行服务。
 
-**适用场景：** 本地开发、测试
+**暴露服务：**
+- Frontend: http://localhost:3000
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
 
-
-## docker-compose.yml (生产环境)
-
-**特点：**
-- 包含 Traefik 反向代理
-- 通过代理访问服务（端口 8080）
-- 更接近生产环境配置
-- 网络隔离更好
-
-**适用场景：** 生产部署、模拟生产环境
-
-
-## 推荐：使用 docker-compose.dev.yml
-
+**启动命令：**
 ```bash
-docker compose -f infra/compose/docker-compose.dev.yml up --build
+./update.sh
+# 或者
+docker compose -f infra/compose/docker-compose.yml up -d --build
 ```
+
+---
+
+## docker-compose.dev.yml (开发与测试环境)
+
+包含开发配置与测试环境支持的 Compose 文件。
+
+**启动命令：**
+```bash
+docker compose -f infra/compose/docker-compose.dev.yml up -d --build
+```
+
+---
+
+## docker-compose.prod.yml (生产环境部署)
+
+使用预构建的 GitHub Container Registry (GHCR) 镜像进行生产部署。配合宿主机 Nginx 提供 HTTPS 和反向代理。
+
+**适用场景：** 服务器生产部署
+
+**参考文档：**
+- 生产环境部署流程：[`PRODUCTION_DEPLOYMENT.md`](PRODUCTION_DEPLOYMENT.md)
+- Nginx 反向代理配置：[`../nginx/README.md`](../nginx/README.md)
+
+**部署命令：**
+```bash
+./deploy.sh
+```
+

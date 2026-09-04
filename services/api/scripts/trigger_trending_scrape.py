@@ -12,6 +12,7 @@ import uuid
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
+from control_plane.enums import JobType
 from control_plane.models import Job
 from app.settings import settings
 
@@ -40,7 +41,7 @@ def trigger_trending_scrape(
         with session_scope(create_session_factory(engine)) as db:
             job = Job(
                 id=job_id,
-                type="TRENDING_SCRAPE",
+                type=JobType.TRENDING_SCRAPE.value,
                 payload={
                     "source_types": ["script"],
                     "max_count": max_count,
@@ -53,7 +54,7 @@ def trigger_trending_scrape(
             db.commit()
 
         from control_plane.queue import enqueue_job
-        enqueue_job(settings.workspaces_dir, job_id, "TRENDING_SCRAPE", priority="batch")
+        enqueue_job(settings.workspaces_dir, job_id, JobType.TRENDING_SCRAPE.value, priority="batch")
 
         print(f"✅ Trending 抓取任务已创建: {job_id[:8]}...")
         print("\n任务配置:")

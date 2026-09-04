@@ -4,45 +4,37 @@
 set -e
 
 echo "=================================================="
-echo "Installing OKX SDK and dependencies..."
+echo "Verifying Dependencies and Imports..."
 echo "=================================================="
 
-# Install OKX SDK in development mode
-pip install -e /app/../../packages/okx_sdk
-
-# Verify cryptography is installed
-pip list | grep cryptography || pip install cryptography
-
-echo ""
-echo "=================================================="
-echo "Running OKX SDK and Encryption Tests"
-echo "=================================================="
-echo ""
-
-# Run the test script
-python test_okx_setup.py
-
-echo ""
-echo "=================================================="
-echo "Testing Database Models"
-echo "=================================================="
-echo ""
-
-# Quick Python check for database models
 python << 'EOF'
-import sys
-sys.path.insert(0, '/app/../../packages/control_plane')
-
+import cryptography
+import okx_sdk
+import risk_engine
 from control_plane.models import TradingConfig, TradingSession, Order, Position
 from control_plane.enums import TradingSessionStatus, OrderStatus, PositionStatus
 
-print("✓ TradingConfig model imported")
-print("✓ TradingSession model imported")
-print("✓ Order model imported")
-print("✓ Position model imported")
+print("✓ Cryptography installed")
+print("✓ OKX SDK imported")
+print("✓ Risk Engine imported")
+print("✓ TradingConfig, TradingSession, Order, Position imported")
 print("✓ All enums imported")
-print("\n✅ Database models verification PASSED")
+print("✅ Core imports verification PASSED")
 EOF
+
+echo ""
+echo "=================================================="
+echo "Running API Test Suite"
+echo "=================================================="
+echo ""
+
+# Run API unit/integration tests
+cd /app
+if [ -d "tests" ]; then
+    pytest tests -q
+elif [ -d "services/api/tests" ]; then
+    pytest services/api/tests -q
+fi
 
 echo ""
 echo "=================================================="

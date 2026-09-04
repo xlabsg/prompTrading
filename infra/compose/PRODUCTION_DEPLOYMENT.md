@@ -49,7 +49,7 @@ git push origin v1.0.0
 ### 2.1 设置镜像为公开（推荐用于开源项目）
 
 1. 访问 https://github.com/[your-org]?tab=packages
-2. 点击每个镜像（api, worker, web, agent, backtest, dev）
+2. 点击每个镜像（api, worker, web, agent, backtest）
 3. 进入 **Package settings**
 4. 点击 **Change visibility** → **Public**
 
@@ -92,7 +92,7 @@ cd prompTrading/infra/compose
 mkdir -p ~/prompt-trading-deploy
 cd ~/prompt-trading-deploy
 curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/docker-compose.prod.yml
-curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/.env.prod.example
+curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/.env.example
 curl -O https://raw.githubusercontent.com/your-org/prompTrading/main/infra/compose/deploy.sh
 chmod +x deploy.sh
 ```
@@ -101,7 +101,7 @@ chmod +x deploy.sh
 
 ```bash
 # 复制环境变量模板
-cp .env.prod.example .env
+cp .env.example .env
 
 # 编辑环境变量
 nano .env
@@ -112,9 +112,6 @@ nano .env
 # GitHub Container Registry
 GITHUB_ORG=your-github-org        # 你的 GitHub 组织或用户名（小写）
 IMAGE_TAG=latest                   # 或 v1.0.0, develop 等
-
-# 数据库密码
-POSTGRES_PASSWORD=your-secure-password
 
 # 应用 URL
 APP_PUBLIC_BASE_URL=https://ai.example.com
@@ -269,23 +266,24 @@ docker system df
 ### 备份数据
 
 ```bash
-# 备份 PostgreSQL
-docker compose -f docker-compose.prod.yml exec postgres \
-  pg_dump -U app app > backup_$(date +%Y%m%d).sql
-
-# 备份卷
+# 备份 Workspaces 数据卷（包含 SQLite 数据库 app.db 与策略文件）
 docker run --rm \
-  -v ai_strategy_pgdata:/data \
+  -v ai_strategy_workspaces:/data \
   -v $(pwd):/backup \
-  alpine tar czf /backup/pgdata_$(date +%Y%m%d).tar.gz /data
+  alpine tar czf /backup/workspaces_$(date +%Y%m%d).tar.gz /data
+
+# 若配置了外部 PostgreSQL (APP_DB_URL):
+# pg_dump "$APP_DB_URL" > backup_$(date +%Y%m%d).sql
 ```
 
 ### 恢复数据
 
 ```bash
-# 恢复 PostgreSQL
-cat backup_20260118.sql | docker compose -f docker-compose.prod.yml exec -T postgres \
-  psql -U app app
+# 恢复 Workspaces 数据卷
+docker run --rm \
+  -v ai_strategy_workspaces:/data \
+  -v $(pwd):/backup \
+  alpine sh -c "cd /data && tar xzf /backup/workspaces_YYYYMMDD.tar.gz --strip-components=1"
 ```
 
 ## 故障排查
@@ -318,15 +316,9 @@ cat .env | grep -E "GITHUB_ORG|IMAGE_TAG"
 ### 数据库连接失败
 
 ```bash
-# 检查 PostgreSQL 是否运行
-docker compose -f docker-compose.prod.yml ps postgres
-
-# 查看数据库日志
-docker compose -f docker-compose.prod.yml logs postgres
-
-# 测试连接
+# 测试数据库连接（默认 SQLite 或通过 APP_DB_URL 指定的数据库）
 docker compose -f docker-compose.prod.yml exec api \
-  python -c "from sqlalchemy import create_engine; import os; engine = create_engine(os.getenv('APP_DB_URL')); print(engine.connect())"
+  python -c "from sqlalchemy import create_engine; import os; engine = create_engine(os.getenv('APP_DB_URL', 'sqlite:////workspaces/app.db')); print(engine.connect())"
 ```
 
 ### 内存不足
@@ -346,7 +338,7 @@ services:
 
 ## 安全检查清单
 
-- [ ] 使用强密码（POSTGRES_PASSWORD）
+- [ ] 妥善保管数据库文件及连接凭据
 - [ ] 生成新的 TRADING_API_ENCRYPTION_KEY
 - [ ] 配置防火墙（只开放 80, 443, 22 端口）
 - [ ] 使用 HTTPS（配置 Nginx + Let's Encrypt）
