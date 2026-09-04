@@ -78,6 +78,7 @@ const ConsoleSidebar = ({
     const [liveDraftStatus, setLiveDraftStatus] = useState<"idle" | "generating" | "ready" | "confirming" | "error">("idle");
     const [liveDraftError, setLiveDraftError] = useState<string | null>(null);
     const [isGeneratingStrategyCode, setIsGeneratingStrategyCode] = useState(false);
+    const [generationProgressMessage, setGenerationProgressMessage] = useState<string | null>(null);
     const [generateStrategyError, setGenerateStrategyError] = useState<string | null>(null);
     const [isRollingBack, setIsRollingBack] = useState(false);
     const [rollbackError, setRollbackError] = useState<string | null>(null);
@@ -151,6 +152,47 @@ const ConsoleSidebar = ({
             queryClient.invalidateQueries({ queryKey: ["strategy-changes-compare-diff", "workspace", strategy.id] });
         }
     }, [queryClient, strategy?.id]);
+
+    const getProgressMessage = useCallback(
+        (data: {
+            type?: string;
+            step?: string;
+            tool?: string;
+            path?: string;
+            message?: string;
+            detail?: string;
+            stage?: string;
+        }): string | null => {
+            const stepLabels: Record<string, string> = {
+                initializing_agent: t("console.sidebar.agentSteps.initializing_agent"),
+                running_backtest: t("console.sidebar.agentSteps.running_backtest"),
+                auditing_code: t("console.sidebar.agentSteps.auditing_code"),
+                finalizing_strategy: t("console.sidebar.agentSteps.finalizing_strategy"),
+                evaluating_metrics: t("console.sidebar.agentSteps.evaluating_metrics"),
+            };
+
+            if (data.step && stepLabels[data.step]) {
+                return stepLabels[data.step];
+            }
+            if (data.path) {
+                const isRead = data.tool && ["read_file", "read"].includes(data.tool);
+                return isRead
+                    ? t("console.sidebar.readingFile", { path: data.path })
+                    : t("console.sidebar.editingFile", { path: data.path });
+            }
+            if (data.tool) {
+                return t("console.sidebar.executingTool", { tool: data.tool });
+            }
+            if (
+                data.stage === "thinking" ||
+                (data.message && (data.message.includes("思考") || data.message.toLowerCase().includes("thinking")))
+            ) {
+                return t("console.sidebar.aiThinking");
+            }
+            return data.message || data.detail || (data.step ? stepLabels[data.step] || data.step : null);
+        },
+        [t]
+    );
 
     // Get chat history from strategy
     const chatHistory: ChatMessage[] = strategy?.chat_history || [];
@@ -236,7 +278,7 @@ const ConsoleSidebar = ({
                                     if (data.type === "token") {
                                         setStreamingMessage(prev => prev + data.content);
                                     } else if (data.type === "progress") {
-                                        const msg = data.message || (data.path ? t("console.sidebar.editingFile", { path: data.path }) : null);
+                                        const msg = getProgressMessage(data);
                                         if (msg) setStreamingProgressMessage(msg);
                                         const path = typeof data.path === "string" ? data.path : "";
                                         if (path) {
@@ -271,7 +313,7 @@ const ConsoleSidebar = ({
         // Also check periodically in case we missed it
         const interval = setInterval(checkPendingMessage, 500);
         return () => clearInterval(interval);
-    }, [strategy?.id, isStreaming, t, refreshStrategyData]);
+    }, [strategy?.id, isStreaming, t, refreshStrategyData, getProgressMessage]);
 
     // Streaming chat function
     const sendStreamingMessage = async (userMessage: string) => {
@@ -315,7 +357,7 @@ const ConsoleSidebar = ({
                                 fullResponse += data.content;
                                 setStreamingMessage(prev => prev + data.content);
                             } else if (data.type === "progress") {
-                                const msg = data.message || (data.path ? t("console.sidebar.editingFile", { path: data.path }) : null);
+                                const msg = getProgressMessage(data);
                                 if (msg) setStreamingProgressMessage(msg);
                                 const path = typeof data.path === "string" ? data.path : "";
                                 if (path) {
@@ -428,12 +470,21 @@ const ConsoleSidebar = ({
         if (!strategy || strategy.chat_status !== "ready" || isStreaming || isGeneratingStrategyCode) return;
         setGenerateStrategyError(null);
         setIsGeneratingStrategyCode(true);
+        setGenerationProgressMessage(t("console.sidebar.confirmGenerating"));
         try {
             await strategiesApi.confirmChat(strategy.id);
             const prompt = buildGenerationPrompt(strategy);
             const result = await strategiesApi.generate(strategy.id, { prompt });
             refreshStrategyData();
-            const job = await jobsApi.waitForCompletion(result.job.id, undefined, 2000, 420000);
+            const job = await jobsApi.waitForCompletionWithStream(
+                result.job.id,
+                (evt) => {
+                    const msg = getProgressMessage(evt);
+                    if (msg) {
+                        setGenerationProgressMessage(msg);
+                    }
+                }
+            );
             if (job.status !== "succeeded") {
                 throw new Error(`job_failed:${job.error_message || job.id}`);
             }
@@ -443,6 +494,7 @@ const ConsoleSidebar = ({
             setGenerateStrategyError(getGenerateErrorMessage(error));
         } finally {
             setIsGeneratingStrategyCode(false);
+            setGenerationProgressMessage(null);
             refreshStrategyData();
         }
     }, [
@@ -452,6 +504,8 @@ const ConsoleSidebar = ({
         refreshStrategyData,
         onStrategyGenerated,
         getGenerateErrorMessage,
+        getProgressMessage,
+        t,
     ]);
 
     const handleRollbackToPreviousVersion = useCallback(async () => {
@@ -646,7 +700,7 @@ const ConsoleSidebar = ({
                                 {strategy.chat_status === "ready" && isGeneratingStrategyCode && (
                                     <div className="text-xs text-muted-foreground bg-muted/40 p-2 rounded flex items-center gap-2">
                                         <Loader2 size={12} className="animate-spin" />
-                                        {t("console.sidebar.confirmGenerating")}
+                                        {generationProgressMessage || t("console.sidebar.confirmGenerating")}
                                     </div>
                                 )}
                                 {generateStrategyError && (

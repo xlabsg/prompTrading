@@ -159,6 +159,24 @@ _PROXY_ENV_KEYS = (
 )
 
 
+def _publish_event(job_id: str, event: dict[str, Any]) -> None:
+    try:
+        log_dir = os.path.join(settings.app_workspaces_dir, ".queue", "logs")
+        _safe_mkdir(log_dir)
+        events_path = os.path.join(log_dir, f"{job_id}.events.jsonl")
+        if "ts" not in event:
+            event["ts"] = time.time()
+        with open(events_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
     # Handle swapped args: _publish_log(rds, job_id, message)
     if isinstance(message, str) and not isinstance(job_id, str):
@@ -178,8 +196,40 @@ def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
         log_path = os.path.join(log_dir, f"{job_id}.log")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(message + "\n")
+            f.flush()
     except Exception:
         pass
+
+    # If message is a structured event from the agent container, also append to .events.jsonl
+    if message.startswith("[agent:event] "):
+        try:
+            evt_json = json.loads(message[len("[agent:event] "):])
+            if isinstance(evt_json, dict):
+                _publish_event(job_id, evt_json)
+        except Exception:
+            pass
+    elif message.startswith("[agent] tool "):
+        # Fallback structured event extraction
+        match = re.match(r"^\[agent\] tool (\S+)(?: path=(\S+))? (\.\.\.|ok|error)$", message)
+        if match:
+            tool, path, phase_str = match.groups()
+            if phase_str == "...":
+                fname = os.path.basename(path) if path else ""
+                action = "修改" if tool in {"edit_file", "write_file", "edit", "write"} else "阅读"
+                msg = f"正在{action} {fname}..." if fname else f"正在执行 {tool}..."
+                _publish_event(job_id, {
+                    "type": "tool_start",
+                    "tool": tool,
+                    "path": fname,
+                    "phase": "tool_start",
+                    "message": msg,
+                })
+            else:
+                _publish_event(job_id, {
+                    "type": "tool_end",
+                    "tool": tool,
+                    "success": phase_str == "ok",
+                })
 
     # Optional Redis fallback/mirroring
     if rds is not None and hasattr(rds, "publish"):
@@ -196,11 +246,32 @@ def _publish_log(job_id: Any, message: str, rds: Optional[Any] = None) -> None:
             pass
 
 
-def _mark_job_log_done(job_id: str) -> None:
+def _mark_job_log_done(job_id: str, status: Optional[str] = None, error_message: Optional[str] = None) -> None:
     try:
         log_dir = os.path.join(settings.app_workspaces_dir, ".queue", "logs")
         _safe_mkdir(log_dir)
+        events_path = os.path.join(log_dir, f"{job_id}.events.jsonl")
         done_marker = os.path.join(log_dir, f"{job_id}.log.done")
+
+        # Check if events.jsonl already has a done event
+        has_done = False
+        if os.path.isfile(events_path):
+            try:
+                with open(events_path, "r", encoding="utf-8", errors="replace") as f:
+                    for line in f:
+                        if '"type": "done"' in line:
+                            has_done = True
+                            break
+            except Exception:
+                pass
+
+        if not has_done:
+            _publish_event(job_id, {
+                "type": "done",
+                "status": status or "succeeded",
+                "error_message": error_message or "",
+            })
+
         with open(done_marker, "w", encoding="utf-8") as f:
             f.write(str(time.time()))
     except Exception:
@@ -429,7 +500,7 @@ def _run_container_and_stream_logs(
 
         return exit_code, list(tail)
     finally:
-        _mark_job_log_done(job_id)
+        _mark_job_log_done(job_id, status="succeeded" if exit_code == 0 else "failed")
         stop_event.set()
         try:
             t.join(timeout=2.0)

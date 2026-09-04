@@ -324,6 +324,95 @@ export const jobsApi = {
             await new Promise((resolve) => setTimeout(resolve, interval));
         }
     },
+
+    // Stream job events with fallback to polling
+    waitForCompletionWithStream: async (
+        jobId: string,
+        onEvent?: (event: {
+            type: string;
+            step?: string;
+            detail?: string;
+            message?: string;
+            line?: string;
+            status?: string;
+            tool?: string;
+            path?: string;
+            stage?: string;
+        }) => void,
+        timeout = 420000
+    ): Promise<Job> => {
+        return new Promise<Job>((resolve, reject) => {
+            const timeoutTimer = setTimeout(() => {
+                cleanup();
+                jobsApi.get(jobId).then(resolve).catch(reject);
+            }, timeout);
+
+            let eventSource: EventSource | null = null;
+            let finished = false;
+
+            const cleanup = () => {
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                clearTimeout(timeoutTimer);
+            };
+
+            const complete = async () => {
+                if (finished) return;
+                finished = true;
+                cleanup();
+                try {
+                    const job = await jobsApi.waitForCompletion(jobId, undefined, 1000, 30000);
+                    resolve(job);
+                } catch (err) {
+                    jobsApi.get(jobId).then(resolve).catch(() => reject(err));
+                }
+            };
+
+            try {
+                eventSource = new EventSource(`/api/jobs/${jobId}/stream`);
+
+                eventSource.addEventListener("step", (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        onEvent?.({ type: "step", ...data });
+                    } catch {
+                        /* noop */
+                    }
+                });
+
+                eventSource.addEventListener("progress", (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        onEvent?.({ type: "progress", ...data });
+                    } catch {
+                        /* noop */
+                    }
+                });
+
+                eventSource.addEventListener("log", (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        onEvent?.({ type: "log", ...data });
+                    } catch {
+                        /* noop */
+                    }
+                });
+
+                eventSource.addEventListener("finish", () => {
+                    complete();
+                });
+
+                eventSource.onerror = () => {
+                    // If stream errors out (e.g. proxy or premature close), complete via DB check
+                    complete();
+                };
+            } catch {
+                jobsApi.waitForCompletion(jobId, undefined, 2000, timeout).then(resolve).catch(reject);
+            }
+        });
+    },
 };
 
 // ============== Markets API ==============

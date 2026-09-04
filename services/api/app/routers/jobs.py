@@ -57,6 +57,7 @@ async def stream_job_events(
         initial_status = getattr(job.status, "value", job.status) or "queued"
         job_type = getattr(job.type, "value", job.type) or ""
 
+    events_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.events.jsonl")
     log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
     done_marker = f"{log_path}.done"
 
@@ -64,48 +65,95 @@ async def stream_job_events(
         # Send initial status
         yield f"event: status\ndata: {json.dumps({'status': initial_status, 'job_id': job_id, 'job_type': job_type})}\n\n"
 
-        # Wait up to 30s for the job log file to appear
+        # Wait up to 30s for the job event/log file to appear
         wait_count = 0
-        while not os.path.exists(log_path) and wait_count < 300:
+        while not os.path.exists(events_path) and not os.path.exists(log_path) and wait_count < 600:
             if await request.is_disconnected():
                 return
             if os.path.exists(done_marker):
                 break
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.05)
             wait_count += 1
 
         idle_ticks = 0
-        file_pos = 0
+        file_handle = None
+        current_path = events_path if os.path.exists(events_path) else log_path
+        is_jsonl = os.path.exists(events_path)
 
-        if os.path.exists(log_path):
-            with open(log_path, "r", encoding="utf-8", errors="replace") as f:
-                while True:
-                    if await request.is_disconnected():
-                        return
+        try:
+            if os.path.exists(current_path):
+                file_handle = open(current_path, "r", encoding="utf-8", errors="replace")
 
-                    line = f.readline()
-                    if line:
-                        idle_ticks = 0
-                        clean_line = line.rstrip("\r\n")
+            while True:
+                if await request.is_disconnected():
+                    return
+
+                # If we started with .log but .events.jsonl appeared, switch to .events.jsonl
+                if not is_jsonl and os.path.exists(events_path):
+                    if file_handle is not None:
+                        file_handle.close()
+                    current_path = events_path
+                    is_jsonl = True
+                    file_handle = open(current_path, "r", encoding="utf-8", errors="replace")
+
+                if file_handle is None and os.path.exists(current_path):
+                    file_handle = open(current_path, "r", encoding="utf-8", errors="replace")
+
+                line = file_handle.readline() if file_handle is not None else None
+                if line:
+                    idle_ticks = 0
+                    clean_line = line.rstrip("\r\n")
+                    if not clean_line:
+                        continue
+
+                    if is_jsonl:
+                        try:
+                            evt = json.loads(clean_line)
+                            evt_type = evt.get("type", "log")
+                            if evt_type == "step":
+                                yield f"event: step\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                            elif evt_type in ("tool_start", "tool_end", "progress"):
+                                yield f"event: progress\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                            elif evt_type == "token":
+                                yield f"event: token\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                            elif evt_type == "done":
+                                yield f"event: finish\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                                break
+                            else:
+                                yield f"event: log\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                        except json.JSONDecodeError:
+                            yield f"event: log\ndata: {json.dumps({'line': clean_line})}\n\n"
+                    else:
                         yield f"event: log\ndata: {json.dumps({'line': clean_line})}\n\n"
-
                         step = _detect_step_from_line(clean_line)
                         if step:
                             yield f"event: step\ndata: {json.dumps({'step': step, 'detail': clean_line})}\n\n"
-                    else:
-                        if os.path.exists(done_marker):
-                            # Drain any remaining lines
-                            tail_line = f.readline()
+                else:
+                    if os.path.exists(done_marker):
+                        # Drain any remaining lines
+                        if file_handle is not None:
+                            tail_line = file_handle.readline()
                             while tail_line:
                                 clean_tail = tail_line.rstrip("\r\n")
-                                yield f"event: log\ndata: {json.dumps({'line': clean_tail})}\n\n"
-                                tail_line = f.readline()
-                            break
+                                if clean_tail:
+                                    if is_jsonl:
+                                        try:
+                                            evt = json.loads(clean_tail)
+                                            yield f"event: progress\ndata: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                                        except Exception:
+                                            yield f"event: log\ndata: {json.dumps({'line': clean_tail})}\n\n"
+                                    else:
+                                        yield f"event: log\ndata: {json.dumps({'line': clean_tail})}\n\n"
+                                tail_line = file_handle.readline()
+                        break
 
-                        await asyncio.sleep(0.15)
-                        idle_ticks += 1
-                        if idle_ticks > 4000:  # Timeout after 10 min idle
-                            break
+                    await asyncio.sleep(0.05)
+                    idle_ticks += 1
+                    if idle_ticks > 12000:  # Timeout after 10 min idle (12000 * 0.05s)
+                        break
+        finally:
+            if file_handle is not None:
+                file_handle.close()
 
         # Check final job status from database
         with session_factory() as db:
