@@ -330,62 +330,33 @@ def cmd_indicators(args: argparse.Namespace) -> int:
         print(f"  # e.g., result = {target}(data['close'], ...)")
         return 0
 
-    # List available indicators grouped or filtered by category
-    categories_def = {
-        "atomic": {
-            "title": "Layer 1: Atomic Time-Series Operators (Alpha 101/Qlib Primitives)",
-            "names": ["ts_rank", "ts_corr", "ts_cov", "ts_decay_linear", "ts_zscore", "ts_max", "ts_min", "ts_diff", "ts_returns", "safe_div"],
-        },
-        "modern": {
-            "title": "Layer 2: Modern Quant & Crypto Technical Indicators",
-            "names": ["supertrend", "vwap", "keltner_channel", "donchian_channel", "stoch_rsi", "cmf", "bollinger_bands"],
-        },
-        "crypto": {
-            "title": "Crypto-Native Derivative Factor Helpers",
-            "names": ["funding_rate_zscore", "oi_momentum"],
-        },
-        "core": {
-            "title": "Core Trend, Momentum & Crossings",
-            "names": ["sma", "ema", "rsi", "atr", "zscore", "cross_over", "cross_under"],
-        },
-    }
-
-    selected_cat = getattr(args, "category", "all") or "all"
+    # Dynamically introspect indicators grouped by financial semantics
+    catalog = bt_ind.get_catalog() if hasattr(bt_ind, "get_catalog") else {}
+    raw_cat = (getattr(args, "category", "all") or "all").lower().strip()
+    # Backward compatibility aliases
+    alias_map = {"core": "trend", "modern": "trend"}
+    selected_cat = alias_map.get(raw_cat, raw_cat)
 
     print("==================================================")
-    print("      PLATFORM BUILT-IN QUANTITATIVE OPERATORS    ")
+    print("      PLATFORM QUANTITATIVE INDICATOR CATALOG     ")
     print("==================================================")
     print("Usage: from backtest.indicators import <name> (or import ta)")
     print("Run `pt-quant indicators <name>` for detailed signature.")
-    print("Run `pt-quant indicators --category [atomic|modern|crypto|core|talib]`")
+    print("Run `pt-quant indicators --category [trend|momentum|volatility|volume|crypto|atomic|pattern]`")
     print("Run `pt-quant indicators --source okx` for OKX Agent Trade Kit indicators.\n")
 
-    if selected_cat == "talib":
-        print("--- TA-Lib C-Accelerated Indicators ---")
-        talib_funcs = []
-        for attr in dir(bt_ind):
-            if attr.startswith("_"):
-                continue
-            is_categorized = any(attr in c["names"] for c in categories_def.values())
-            if not is_categorized:
-                talib_funcs.append(attr)
-        talib_funcs.sort()
-        if not talib_funcs:
-            print("  (TA-Lib C-library not present in this local environment; available inside container)")
-        else:
-            for name in talib_funcs:
-                print(f"  • {name}")
-        print("==================================================")
-        return 0
-
-    for cat_key, cat_info in categories_def.items():
-        if selected_cat not in ("all", cat_key):
+    rendered_categories = 0
+    for cat_key, cat_info in catalog.items():
+        if selected_cat != "all" and selected_cat != cat_key:
             continue
-        print(f"--- {cat_info['title']} ---")
-        for name in cat_info["names"]:
-            fn = getattr(bt_ind, name, None)
-            if fn is None or not callable(fn):
-                continue
+        indicators_map = cat_info.get("indicators", {})
+        if not indicators_map:
+            continue
+        rendered_categories += 1
+        print(f"--- {cat_info['title']} ({len(indicators_map)} available) ---")
+        print(f"    {cat_info['description']}")
+        for name in sorted(indicators_map.keys()):
+            fn = indicators_map[name]
             try:
                 sig = inspect.signature(fn)
                 doc_first = (inspect.getdoc(fn) or "").split("\n")[0]
@@ -395,6 +366,9 @@ def cmd_indicators(args: argparse.Namespace) -> int:
             except Exception:
                 print(f"  • {name}")
         print()
+
+    if rendered_categories == 0:
+        print(f"  (No indicators found in category '{raw_cat}')")
 
     print("==================================================")
     return 0
@@ -426,7 +400,12 @@ def main(argv: list[str] | None = None) -> int:
     p_ind = subparsers.add_parser("indicators", help="Introspect platform indicators")
     p_ind.add_argument("name", nargs="?", help="Specific indicator name to inspect")
     p_ind.add_argument("--source", choices=["platform", "okx"], default="platform", help="Indicator source (platform or okx)")
-    p_ind.add_argument("--category", choices=["all", "atomic", "modern", "crypto", "core", "talib"], default="all", help="Indicator category")
+    p_ind.add_argument(
+        "--category",
+        choices=["all", "trend", "momentum", "volatility", "volume", "crypto", "atomic", "pattern", "core", "modern"],
+        default="all",
+        help="Indicator financial semantic category",
+    )
 
     args = parser.parse_args(argv)
     if not args.command:

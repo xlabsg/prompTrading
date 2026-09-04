@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import sys
 from typing import Any, Callable, NamedTuple, Union
 
 import numpy as np
@@ -522,4 +523,146 @@ def __dir__() -> list[str]:
             if callable(fn):
                 base.add(name.lower())
     return sorted(base)
+
+
+# =====================================================================
+# Dynamic Financial Semantic Taxonomy & Introspection
+# =====================================================================
+
+CATEGORY_METADATA: dict[str, dict[str, str]] = {
+    "trend": {
+        "title": "Trend & Overlap Studies",
+        "description": "Directional filters, moving averages, and dynamic breakout channels",
+    },
+    "momentum": {
+        "title": "Momentum & Oscillators",
+        "description": "Velocity, divergence, and overbought/oversold oscillators",
+    },
+    "volatility": {
+        "title": "Volatility & Bands",
+        "description": "Price dispersion, volatility squeeze, and envelope bands",
+    },
+    "volume": {
+        "title": "Volume & Liquidity Flow",
+        "description": "Institutional benchmark prices and money flow accumulation",
+    },
+    "crypto": {
+        "title": "Crypto Derivatives & Microstructure",
+        "description": "Funding rate sentiment and open interest momentum",
+    },
+    "atomic": {
+        "title": "Atomic Math & Factor Primitives",
+        "description": "Alpha 101/Qlib mathematical time-series operators",
+    },
+    "pattern": {
+        "title": "Candlestick Pattern Recognition",
+        "description": "Single and multi-bar price action formation classifiers",
+    },
+}
+
+_EXPLICIT_CLASSIFICATIONS: dict[str, str] = {
+    "supertrend": "trend",
+    "keltner_channel": "trend",
+    "donchian_channel": "trend",
+    "sma": "trend",
+    "ema": "trend",
+    "cross_over": "trend",
+    "cross_under": "trend",
+    "rsi": "momentum",
+    "stoch_rsi": "momentum",
+    "zscore": "momentum",
+    "ts_zscore": "momentum",
+    "atr": "volatility",
+    "bollinger_bands": "volatility",
+    "vwap": "volume",
+    "cmf": "volume",
+    "funding_rate_zscore": "crypto",
+    "oi_momentum": "crypto",
+    "safe_div": "atomic",
+}
+
+_TALIB_GROUP_MAP: dict[str, str] = {
+    "Overlap Studies": "trend",
+    "Cycle Indicators": "trend",
+    "Price Transform": "trend",
+    "Momentum Indicators": "momentum",
+    "Volatility Indicators": "volatility",
+    "Volume Indicators": "volume",
+    "Pattern Recognition": "pattern",
+    "Statistic Functions": "atomic",
+    "Math Transform": "atomic",
+    "Math Operators": "atomic",
+}
+
+
+def classify_indicator(name: str) -> str:
+    """Classify an indicator into its financial semantic category dynamically."""
+    norm = name.lower().strip()
+    if norm in _EXPLICIT_CLASSIFICATIONS:
+        return _EXPLICIT_CLASSIFICATIONS[norm]
+
+    # Prefix/suffix structural heuristics
+    if norm.startswith("ts_") or norm.startswith("safe_"):
+        return "atomic"
+    if "funding" in norm or "open_interest" in norm or norm.startswith("oi_"):
+        return "crypto"
+    if norm.startswith("cdl"):
+        return "pattern"
+
+    # Introspect TA-Lib's native function groups if available
+    if _talib is not None and hasattr(_talib, "get_function_groups"):
+        try:
+            groups = _talib.get_function_groups()
+            for grp_name, fns in groups.items():
+                if norm in [f.lower() for f in fns]:
+                    return _TALIB_GROUP_MAP.get(grp_name, "momentum")
+        except Exception:
+            pass
+
+    # Keyword heuristics fallback
+    if any(k in norm for k in ("trend", "ma", "channel", "band", "break")):
+        return "trend"
+    if any(k in norm for k in ("rsi", "macd", "osc", "score", "mom", "roc")):
+        return "momentum"
+    if any(k in norm for k in ("atr", "vol", "std", "var")):
+        return "volatility"
+    if any(k in norm for k in ("vol", "flow", "vwap", "obv")):
+        return "volume"
+
+    return "momentum"
+
+
+def get_catalog() -> dict[str, dict[str, Any]]:
+    """Dynamically discover and categorize all available indicators into financial semantics."""
+    import inspect
+
+    mod = sys.modules[__name__]
+    catalog: dict[str, dict[str, Any]] = {
+        cat: {
+            "title": meta["title"],
+            "description": meta["description"],
+            "indicators": {},
+        }
+        for cat, meta in CATEGORY_METADATA.items()
+    }
+
+    _skip_names = {
+        "Callable", "NamedTuple", "Any", "Union", "SeriesLike", "Optional",
+        "get_catalog", "classify_indicator", "CATEGORY_METADATA",
+    }
+
+    all_names = __dir__()
+    for name in all_names:
+        if name.startswith("_") or name in _skip_names or name.endswith("Result"):
+            continue
+        try:
+            fn = getattr(mod, name, None)
+        except Exception:
+            continue
+        if fn is not None and callable(fn) and not inspect.isclass(fn):
+            cat = classify_indicator(name)
+            if cat in catalog:
+                catalog[cat]["indicators"][name] = fn
+
+    return catalog
 
