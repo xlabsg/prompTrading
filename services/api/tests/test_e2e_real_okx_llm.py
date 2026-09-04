@@ -28,11 +28,10 @@ def test_e2e_generate_and_backtest_real_okx_llm(e2e_client: E2EClient, e2e_strat
 
     start_ms, end_ms = last_30d_range_ms()
 
-    prompt = os.getenv(
-        "E2E_LLM_PROMPT",
+    prompt = (os.getenv("E2E_LLM_PROMPT") or "").strip() or (
         "Build a simple 1h trend strategy for BTC-USDT-SWAP using moving averages. "
         "Use clear entry/exit rules and basic risk management. "
-        "Ensure generate_signals is implemented for backtesting.",
+        "Ensure generate_signals is implemented for backtesting."
     )
 
     payload = e2e_client.post_json(
@@ -47,7 +46,10 @@ def test_e2e_generate_and_backtest_real_okx_llm(e2e_client: E2EClient, e2e_strat
                 "end_ms": end_ms,
             },
             "params": {},
-            "llm_meta": {},
+            "llm_meta": {
+                "thinking_level": os.getenv("AGENT_TAU_THINKING_LEVEL", "low"),
+                "reasoning_effort": os.getenv("LLM_REASONING_EFFORT", "low"),
+            },
         },
     )
 

@@ -123,18 +123,28 @@ def resolve_provider() -> TauProvider:
 
 def write_catalog_entry(target: TauProvider) -> None:
     """Register `target` as an OpenAI-compatible provider in the user catalog."""
-    from tau_coding.cli import setup_command
+    from tau_coding import (
+        OpenAICompatibleProviderConfig,
+        load_provider_settings,
+        save_provider_settings,
+        upsert_openai_compatible_provider,
+    )
 
     if target.base_url is None:
         raise ValueError("write_catalog_entry requires a custom base_url")
 
-    setup_command(
-        provider_name=target.provider,
-        base_url=target.base_url,
+    settings = load_provider_settings()
+    provider = OpenAICompatibleProviderConfig(
+        name=target.provider,
+        base_url=target.base_url.rstrip("/"),
         api_key_env=target.api_key_env,
-        model=target.model,
-        set_default=True,
+        models=(target.model,),
+        default_model=target.model,
+        thinking_levels=("off", "minimal", "low", "medium", "high", "xhigh"),
+        thinking_parameter="reasoning_effort",
     )
+    updated = upsert_openai_compatible_provider(settings, provider, set_default=True)
+    save_provider_settings(updated)
 
 
 def ensure_catalog_entry(target: TauProvider | None = None) -> None:

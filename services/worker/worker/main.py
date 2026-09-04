@@ -661,6 +661,10 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
             agent_env["LLM_MODEL"] = str(llm_meta["model"])
         if llm_meta.get("temperature") is not None:
             agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+        if llm_meta.get("reasoning_effort"):
+            agent_env["LLM_REASONING_EFFORT"] = str(llm_meta["reasoning_effort"])
+        if llm_meta.get("thinking_level"):
+            agent_env["AGENT_TAU_THINKING_LEVEL"] = str(llm_meta["thinking_level"])
     # Pass-through optional LLM env vars into agent sandbox only.
     # Support DeepSeek (OpenAI-compatible) as well.
     for key in (
@@ -1211,6 +1215,10 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
             agent_env["LLM_MODEL"] = str(llm_meta["model"])
         if llm_meta.get("temperature") is not None:
             agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
+        if llm_meta.get("reasoning_effort"):
+            agent_env["LLM_REASONING_EFFORT"] = str(llm_meta["reasoning_effort"])
+        if llm_meta.get("thinking_level"):
+            agent_env["AGENT_TAU_THINKING_LEVEL"] = str(llm_meta["thinking_level"])
     # Pass-through optional LLM env vars into agent sandbox only.
     for key in (
         "LLM_PROVIDER",
@@ -1339,6 +1347,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
             agent_env["LLM_TEMPERATURE"] = str(llm_meta["temperature"])
         if llm_meta.get("thinking_level"):
             agent_env["AGENT_TAU_THINKING_LEVEL"] = str(llm_meta["thinking_level"])
+        if llm_meta.get("reasoning_effort"):
+            agent_env["LLM_REASONING_EFFORT"] = str(llm_meta["reasoning_effort"])
         if llm_meta.get("parent_tau_session_id"):
             agent_env["PARENT_TAU_SESSION_ID"] = str(llm_meta["parent_tau_session_id"])
 

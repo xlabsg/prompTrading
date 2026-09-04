@@ -32,6 +32,11 @@ services:
       LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
       APP_WORKER_RPC_BASE_URL: http://worker-rpc:8010
       APP_WORKER_RPC_TOKEN: ${WORKER_RPC_TOKEN:-local-worker-rpc-token}
+      HTTP_PROXY: ${HTTP_PROXY:-${CONTAINER_HTTP_PROXY:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${CONTAINER_HTTPS_PROXY:-${CONTAINER_HTTP_PROXY:-}}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
@@ -93,6 +98,8 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
       LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      AGENT_TAU_THINKING_LEVEL: ${AGENT_TAU_THINKING_LEVEL:-low}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       # LLM request timeouts (seconds) passed through into agent sandbox
       LLM_HTTP_TIMEOUT_S: ${AGENT_LLM_HTTP_TIMEOUT_S:-180}
       LLM_STREAM_TIMEOUT_S: ${AGENT_LLM_STREAM_TIMEOUT_S:-180}
@@ -179,9 +186,16 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-}
       DEEPSEEK_TEMPERATURE: ${DEEPSEEK_TEMPERATURE:-}
       LLM_FALLBACK_ON_ERROR: ${LLM_FALLBACK_ON_ERROR:-}
+      AGENT_TAU_THINKING_LEVEL: ${AGENT_TAU_THINKING_LEVEL:-low}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-low}
       # LLM request timeouts (seconds)
       LLM_HTTP_TIMEOUT_S: ${API_LLM_HTTP_TIMEOUT_S:-120}
       LLM_STREAM_TIMEOUT_S: ${API_LLM_STREAM_TIMEOUT_S:-300}
+      HTTP_PROXY: ${HTTP_PROXY:-${CONTAINER_HTTP_PROXY:-}}
+      HTTPS_PROXY: ${HTTPS_PROXY:-${CONTAINER_HTTPS_PROXY:-${CONTAINER_HTTP_PROXY:-}}}
+      NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,api,worker,worker-rpc,web}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - workspaces_e2e:/workspaces
     depends_on:
