@@ -490,15 +490,35 @@ def _print_progress(event: dict[str, Any]) -> None:
     log, so keep the shape parseable.
     """
     phase = event.get("phase")
-    if phase == "tool_start":
+    if phase == "thinking":
+        msg = str(event.get("message") or "大模型思考与策略逻辑推演中...")
+        print(f"[agent] {msg}", flush=True)
+        evt = {
+            "type": "progress",
+            "stage": "thinking",
+            "phase": "thinking",
+            "message": msg,
+            "ts": time.time(),
+        }
+        print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
+    elif phase == "tool_start":
         args = event.get("args")
         path = str(args.get("path") or "") if isinstance(args, dict) else ""
         suffix = f" path={os.path.basename(path)}" if path else ""
         tool_name = str(event.get("tool") or "")
         fname = os.path.basename(path) if path else ""
         print(f"[agent] tool {tool_name}{suffix} ...", flush=True)
-        action_text = "修改" if tool_name in {"edit_file", "write_file", "edit", "write"} else "阅读"
-        msg = f"正在{action_text} {fname}..." if fname else f"正在执行 {tool_name}..."
+        if tool_name == "backtest":
+            msg = "正在进行历史数据回测计算..."
+        elif tool_name == "bash":
+            msg = "正在执行沙箱语法与未来函数审计..."
+        elif tool_name == "task_done":
+            msg = "策略生成完毕，正在发布交付物..."
+        elif fname:
+            action_text = "修改" if tool_name in {"edit_file", "write_file", "edit", "write"} else "阅读"
+            msg = f"正在{action_text} {fname}..."
+        else:
+            msg = f"正在执行 {tool_name}..."
         evt = {
             "type": "tool_start",
             "tool": tool_name,
@@ -512,10 +532,14 @@ def _print_progress(event: dict[str, Any]) -> None:
         outcome = "error" if event.get("is_error") else "ok"
         tool_name = str(event.get("tool") or "")
         print(f"[agent] tool {tool_name} {outcome}", flush=True)
+        end_msg = None
+        if tool_name == "backtest":
+            end_msg = "回测计算完成，正在评估指标..." if outcome == "ok" else "回测执行失败"
         evt = {
             "type": "tool_end",
             "tool": tool_name,
             "success": not bool(event.get("is_error")),
+            "message": end_msg,
             "ts": time.time(),
         }
         print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)

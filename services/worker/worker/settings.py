@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     agent_pids_limit: int = 256
     agent_read_only: bool = False
     agent_tmpfs_size_mb: int = 256
+    agent_backtest_max_runs: int = 2
 
     # Number of queue consumer loops to run in parallel within a worker process.
     # Increasing this reduces head-of-line blocking for long-running jobs.

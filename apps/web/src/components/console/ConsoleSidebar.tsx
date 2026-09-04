@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight, Send, MessageSquare, Loader2, Settings, MoreHorizontal, ArrowLeft, X, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Send, MessageSquare, Loader2, Settings, MoreHorizontal, ArrowLeft, X, RotateCcw, BarChart2, Brain, Code2, ShieldCheck, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,11 +79,26 @@ const ConsoleSidebar = ({
     const [liveDraftError, setLiveDraftError] = useState<string | null>(null);
     const [isGeneratingStrategyCode, setIsGeneratingStrategyCode] = useState(false);
     const [generationProgressMessage, setGenerationProgressMessage] = useState<string | null>(null);
+    const [generationStage, setGenerationStage] = useState<"thinking" | "writing" | "auditing" | "backtesting" | "finalizing">("thinking");
+    const [generatingElapsedSeconds, setGeneratingElapsedSeconds] = useState(0);
     const [generateStrategyError, setGenerateStrategyError] = useState<string | null>(null);
     const [isRollingBack, setIsRollingBack] = useState(false);
     const [rollbackError, setRollbackError] = useState<string | null>(null);
     const [showDialogRollback, setShowDialogRollback] = useState(false);
     const readyAutoTriggerRef = useRef(false);
+
+    const isGenerating = isGeneratingStrategyCode || strategy?.chat_status === "generating";
+
+    useEffect(() => {
+        if (!isGenerating) {
+            setGeneratingElapsedSeconds(0);
+            return;
+        }
+        const timer = setInterval(() => {
+            setGeneratingElapsedSeconds((prev) => prev + 1);
+        }, 1000);
+        return () => clearInterval(timer);
+    }, [isGenerating]);
 
     const executeAction = useCallback(async (actionPayload: ActionPayload) => {
         const handler = actionRegistry.get(actionPayload.type);
@@ -153,6 +168,36 @@ const ConsoleSidebar = ({
         }
     }, [queryClient, strategy?.id]);
 
+    const getGenerationStage = useCallback(
+        (data: {
+            step?: string;
+            tool?: string;
+            stage?: string;
+            message?: string;
+        }): "thinking" | "writing" | "auditing" | "backtesting" | "finalizing" => {
+            if (data.tool === "backtest" || data.step === "running_backtest" || data.step === "evaluating_metrics") {
+                return "backtesting";
+            }
+            if (data.tool === "bash" || data.step === "auditing_code") {
+                return "auditing";
+            }
+            if (data.tool === "task_done" || data.step === "finalizing_strategy") {
+                return "finalizing";
+            }
+            if (data.tool && ["write", "edit", "write_file", "edit_file"].includes(data.tool)) {
+                return "writing";
+            }
+            if (
+                data.stage === "thinking" ||
+                (data.message && (data.message.includes("思考") || data.message.toLowerCase().includes("thinking")))
+            ) {
+                return "thinking";
+            }
+            return "thinking";
+        },
+        []
+    );
+
     const getProgressMessage = useCallback(
         (data: {
             type?: string;
@@ -174,21 +219,36 @@ const ConsoleSidebar = ({
             if (data.step && stepLabels[data.step]) {
                 return stepLabels[data.step];
             }
+
+            // Semantic tool recognition
+            if (data.tool === "backtest") {
+                return data.message || t("console.sidebar.agentSteps.running_backtest");
+            }
+            if (data.tool === "bash") {
+                return data.message || t("console.sidebar.agentSteps.auditing_code");
+            }
+            if (data.tool === "task_done") {
+                return data.message || t("console.sidebar.agentSteps.finalizing_strategy");
+            }
+
             if (data.path) {
                 const isRead = data.tool && ["read_file", "read"].includes(data.tool);
                 return isRead
                     ? t("console.sidebar.readingFile", { path: data.path })
                     : t("console.sidebar.editingFile", { path: data.path });
             }
-            if (data.tool) {
-                return t("console.sidebar.executingTool", { tool: data.tool });
-            }
+
             if (
                 data.stage === "thinking" ||
                 (data.message && (data.message.includes("思考") || data.message.toLowerCase().includes("thinking")))
             ) {
-                return t("console.sidebar.aiThinking");
+                return data.message || t("console.sidebar.aiThinking");
             }
+
+            if (data.tool) {
+                return t("console.sidebar.executingTool", { tool: data.tool });
+            }
+
             return data.message || data.detail || (data.step ? stepLabels[data.step] || data.step : null);
         },
         [t]
@@ -471,6 +531,7 @@ const ConsoleSidebar = ({
         setGenerateStrategyError(null);
         setIsGeneratingStrategyCode(true);
         setGenerationProgressMessage(t("console.sidebar.confirmGenerating"));
+        setGenerationStage("thinking");
         try {
             await strategiesApi.confirmChat(strategy.id);
             const prompt = buildGenerationPrompt(strategy);
@@ -479,6 +540,8 @@ const ConsoleSidebar = ({
             const job = await jobsApi.waitForCompletionWithStream(
                 result.job.id,
                 (evt) => {
+                    const stage = getGenerationStage(evt);
+                    setGenerationStage(stage);
                     const msg = getProgressMessage(evt);
                     if (msg) {
                         setGenerationProgressMessage(msg);
@@ -505,6 +568,7 @@ const ConsoleSidebar = ({
         onStrategyGenerated,
         getGenerateErrorMessage,
         getProgressMessage,
+        getGenerationStage,
         t,
     ]);
 
@@ -697,10 +761,19 @@ const ConsoleSidebar = ({
                                 <span>{strategy.chat_status}</span>
                             </div>
                             <div className="mt-3 space-y-2">
-                                {strategy.chat_status === "ready" && isGeneratingStrategyCode && (
-                                    <div className="text-xs text-muted-foreground bg-muted/40 p-2 rounded flex items-center gap-2">
-                                        <Loader2 size={12} className="animate-spin" />
-                                        {generationProgressMessage || t("console.sidebar.confirmGenerating")}
+                                {(isGeneratingStrategyCode || strategy.chat_status === "generating") && (
+                                    <div className="text-xs bg-muted/60 border border-primary/20 p-2.5 rounded-lg space-y-1.5 shadow-sm">
+                                        <div className="flex items-center justify-between font-medium text-foreground">
+                                            <div className="flex items-center gap-1.5 truncate">
+                                                <Loader2 size={13} className="animate-spin text-primary shrink-0" />
+                                                <span className="truncate">
+                                                    {generationProgressMessage || t("console.sidebar.confirmGenerating")}
+                                                </span>
+                                            </div>
+                                            <span className="tabular-nums font-mono text-[11px] bg-background/80 px-1.5 py-0.5 rounded text-muted-foreground shrink-0 ml-1">
+                                                ⏱️ {t("console.sidebar.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `${generatingElapsedSeconds}s` })}
+                                            </span>
+                                        </div>
                                     </div>
                                 )}
                                 {generateStrategyError && (
@@ -924,6 +997,66 @@ const ConsoleSidebar = ({
                                                 </span>
                                             </div>
                                         )}
+                                    </div>
+                                </motion.div>
+                            )}
+
+                            {/* Strategy Generation Active Card */}
+                            {(isGeneratingStrategyCode || strategy?.chat_status === "generating") && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="w-full min-w-0"
+                                >
+                                    <div className="rounded-2xl border border-primary/30 bg-card p-3.5 shadow-sm space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary">
+                                                    {generationStage === "backtesting" ? (
+                                                        <BarChart2 size={15} className="animate-pulse text-blue-500" />
+                                                    ) : generationStage === "writing" ? (
+                                                        <Code2 size={15} className="animate-pulse text-emerald-500" />
+                                                    ) : generationStage === "auditing" ? (
+                                                        <ShieldCheck size={15} className="animate-pulse text-purple-500" />
+                                                    ) : generationStage === "finalizing" ? (
+                                                        <CheckCircle2 size={15} className="text-green-500" />
+                                                    ) : (
+                                                        <Brain size={15} className="animate-pulse text-amber-500" />
+                                                    )}
+                                                </div>
+                                                <div>
+                                                    <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                                                        <span>{t(`console.sidebar.stageLabels.${generationStage}`, { defaultValue: t("console.sidebar.generatingCardTitle") })}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <span className="tabular-nums font-mono text-[11px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+                                                ⏱️ {t("console.sidebar.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `${generatingElapsedSeconds}s` })}
+                                            </span>
+                                        </div>
+
+                                        <div className="text-xs text-muted-foreground bg-muted/40 px-2.5 py-2 rounded-lg flex items-center gap-2">
+                                            <Loader2 size={13} className="animate-spin text-primary shrink-0" />
+                                            <span className="break-words leading-relaxed font-medium">
+                                                {generationProgressMessage || t("console.sidebar.confirmGenerating")}
+                                            </span>
+                                        </div>
+
+                                        {/* Stage progress pipeline */}
+                                        <div className="grid grid-cols-4 gap-1 text-[10px] text-center pt-1 border-t border-border/40">
+                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "thinking" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
+                                                1. {t("console.sidebar.stageLabels.thinking")}
+                                            </div>
+                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "writing" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
+                                                2. {t("console.sidebar.stageLabels.writing")}
+                                            </div>
+                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "auditing" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
+                                                3. {t("console.sidebar.stageLabels.auditing")}
+                                            </div>
+                                            <div className={cn("py-1 rounded font-medium transition-colors", (generationStage === "backtesting" || generationStage === "finalizing") ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
+                                                4. {t("console.sidebar.stageLabels.backtesting")}
+                                            </div>
+                                        </div>
                                     </div>
                                 </motion.div>
                             )}
