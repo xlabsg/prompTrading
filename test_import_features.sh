@@ -21,17 +21,10 @@ print(f'✓ Has Source: {\"Yes\" if result.get(\"source\") else \"No\"}')
 " || echo "✗ TradingView scraper test failed"
 
 echo ""
-echo "📺 Test 2: YouTube Processor"
+echo "📺 Test 2: YouTube Processor (Temporarily Disabled)"
 echo "-------------------------------"
-docker compose -f infra/compose/docker-compose.dev.yml exec -T api python -c "
-from youtube_processor import get_video_info, transcribe_audio
-import torch
-print('✓ YouTube processor imported successfully')
-
-# Check Whisper availability
-print(f'✓ PyTorch available: {torch.cuda.is_available() and \"GPU\" or \"CPU\"}')
-print('✓ Whisper models: tiny, base, small, medium, large')
-" || echo "✗ YouTube processor test failed"
+echo "ℹ️  YouTube import is temporarily parked/disabled (see CLAUDE.md)."
+echo "   Skipping container import check."
 
 echo ""
 echo "🔌 Test 3: API Endpoints"

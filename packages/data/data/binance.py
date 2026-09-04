@@ -131,21 +131,11 @@ def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
         fallback_to_stale_on_error=True,
     )
 
-    # Ensure cached historical entries also have derivative columns
-    if not df.empty and ("funding_rate" not in df.columns or "open_interest" not in df.columns):
-        try:
-            from data.derivatives import (
-                align_derivatives_onto_ohlcv,
-                fetch_binance_funding_rates,
-                fetch_binance_open_interest,
-            )
-            fr_df = fetch_binance_funding_rates(req.symbol, start_ms=req.start_ms, end_ms=req.end_ms, limit=1000)
-            oi_df = fetch_binance_open_interest(req.symbol, period="1h", start_ms=req.start_ms, end_ms=req.end_ms, limit=500)
-            df = align_derivatives_onto_ohlcv(df, fr_df, oi_df)
-        except Exception:
-            if "funding_rate" not in df.columns:
-                df["funding_rate"] = 0.0
-            if "open_interest" not in df.columns:
-                df["open_interest"] = 0.0
+    # Ensure cached historical entries also have derivative columns without external network calls
+    if not df.empty:
+        if "funding_rate" not in df.columns:
+            df["funding_rate"] = 0.0
+        if "open_interest" not in df.columns:
+            df["open_interest"] = 0.0
 
     return df

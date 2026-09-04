@@ -187,7 +187,7 @@ class PositionMonitor:
 
     def _close_position(self, position: SDKPosition):
         """
-        平仓
+        平仓（触发止损或移动止损时执行市价减仓平仓）
 
         Args:
             position: SDK 仓位对象
@@ -195,18 +195,28 @@ class PositionMonitor:
         try:
             # 确定平仓方向
             from control_plane.enums import OrderSide
+            from app.trading_engine.executor import OrderExecutor
 
             if position.side == SDKPositionSide.LONG:
                 side = OrderSide.SELL
+                pos_side = "long"
             else:
                 side = OrderSide.BUY
+                pos_side = "short"
 
-            # 通过 OrderExecutor 下平仓单
-            # 注意：这里需要访问 OrderExecutor，实际实现中应该通过回调或事件机制
-            logger.info(f"Placing close order for position: {position.symbol}_{position.side.value}")
+            logger.warning(
+                f"Executing stop-loss market close order for {position.symbol}_{position.side.value} "
+                f"side={side.value} size={position.size}"
+            )
 
-            # TODO: 实现实际的平仓逻辑
-            # executor.place_market_order(side=side, size=float(position.size), reduce_only=True)
+            executor = OrderExecutor(self.config, self.session_id, self.db, self.account)
+            executor.place_market_order(
+                side=side,
+                size=float(position.size),
+                symbol=position.symbol,
+                pos_side=pos_side,
+                reduce_only=True,
+            )
 
         except Exception as e:
             logger.error(f"Failed to close position: {e}", exc_info=True)

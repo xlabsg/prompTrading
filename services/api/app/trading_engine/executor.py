@@ -448,17 +448,30 @@ class OrderExecutor:
             )
             return None
 
-    def cancel_order(self, order: Order) -> bool:
+    def cancel_order(self, order: Order | str) -> bool:
         """
         取消订单
 
         Args:
-            order: 数据库订单对象
+            order: 数据库订单对象或订单 ID (exchange_order_id / client_order_id / id)
 
         Returns:
             bool - 是否成功
         """
         try:
+            if isinstance(order, str):
+                order_id_str = order
+                db_order = self.db.query(Order).filter(
+                    Order.session_id == self.session_id,
+                    (Order.exchange_order_id == order_id_str) | (Order.client_order_id == order_id_str) | (Order.id == order_id_str),
+                ).first()
+                if db_order is None:
+                    return self.exchange_adapter.cancel_order(
+                        symbol=self.config.symbol,
+                        order_id=order_id_str,
+                    )
+                order = db_order
+
             if not order or not order.exchange_order_id:
                 logger.error(f"Order not found or missing exchange_order_id: {order.id if order else 'None'}")
                 return False
@@ -529,8 +542,10 @@ class OrderExecutor:
         try:
             stale_orders = self.order_manager.get_stale_orders()
             for order in stale_orders:
-                logger.warning(f"Cancelling stale order: {order.order_id}")
-                self.cancel_order(order.order_id)
+                oid = getattr(order, "exchange_order_id", None) or getattr(order, "client_order_id", None) or getattr(order, "order_id", None)
+                if oid:
+                    logger.warning(f"Cancelling stale order: {oid}")
+                    self.cancel_order(oid)
 
         except Exception as e:
             logger.error(f"Failed to cleanup stale orders: {e}", exc_info=True)

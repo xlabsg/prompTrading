@@ -84,7 +84,7 @@ PYTHONPATH="packages/agent:packages/backtest:packages/data" \
   pytest packages/agent/tests packages/data/tests -q
 ```
 `packages/agent/tests/test_tau_ext.py` needs `tau-ai` installed and skips without it.
-Known pre-existing failures, unrelated to the agent: `packages/agent/agent/tests/test_code_slice.py` (3).
+Known pre-existing failures, unrelated to the agent: `packages/agent/tests/test_code_slice.py` (3).
 
 ### Selective Service Updates
 ```bash

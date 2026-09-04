@@ -359,7 +359,7 @@ class TradingSessionManager:
             ).scalars().all()
 
             # Convert to SDK Order objects for reconciliation
-            from trading_sdk import Order as SDKOrder, OrderStatus as SDKOrderStatus, OrderSide, OrderType
+            from risk_engine import Order as SDKOrder, OrderStatus as SDKOrderStatus, OrderSide, OrderType
             from decimal import Decimal
 
             sdk_orders = []
