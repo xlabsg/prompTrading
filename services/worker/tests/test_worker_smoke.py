@@ -43,3 +43,11 @@ def test_worker_main_imports_and_handlers_complete():
 
     for job_type, handler in JOB_HANDLERS.items():
         assert callable(handler), f"Handler for {job_type} is not callable: {handler}"
+
+
+def test_template_backtest_uses_the_shared_template_source():
+    """The worker must not reintroduce its own TEMPLATE_STRATEGIES copy."""
+    from control_plane.templates import TEMPLATE_STRATEGIES
+    from worker.template_backtest_job import TEMPLATE_STRATEGIES as worker_templates
+
+    assert worker_templates is TEMPLATE_STRATEGIES
