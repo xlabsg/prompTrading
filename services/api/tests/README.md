@@ -99,7 +99,7 @@ FastAPI TestClient (HTTP)
     ↓
 API Endpoints (backtests.py)
     ↓
-Database (PostgreSQL) + Redis Queue
+Database (SQLite / PostgreSQL) + File Queue
     ↓
 Worker Service (Docker)
     ↓
@@ -123,7 +123,6 @@ Each test runs in a clean database state:
 ### Key Fixtures
 
 - `test_db_session`: Database session with transaction rollback
-- `test_redis`: Redis connection
 - `test_app`: FastAPI TestClient with dependency overrides
 - `test_user`: Authenticated test user with session
 - `test_strategy`: Test strategy with user as ADMIN
@@ -134,21 +133,8 @@ Each test runs in a clean database state:
 ### Test Fails with "Database Not Ready"
 
 ```bash
-# Check PostgreSQL is running
-docker compose -f docker-compose.dev.yml logs postgres | tail -20
-
-# Restart PostgreSQL if needed
-docker compose -f docker-compose.dev.yml restart postgres
-```
-
-### Test Fails with "Redis Not Ready"
-
-```bash
-# Check Redis is running
-docker compose -f docker-compose.dev.yml logs redis | tail -20
-
-# Restart Redis if needed
-docker compose -f docker-compose.dev.yml restart redis
+# Check API logs
+docker compose -f docker-compose.dev.yml logs api | tail -20
 ```
 
 ### Test Fails with "Worker Timeout"

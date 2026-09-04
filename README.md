@@ -252,7 +252,7 @@ All runtime options are managed via `infra/compose/.env`.
 | `GITHUB_APP_*`, `GITHUB_OAUTH_*`, `GOOGLE_OAUTH_*` | Repository version synchronization and social authentication. |
 | `APP_PUBLIC_BASE_URL`, `APP_ADMIN_EMAILS`, `APP_ADMIN_API_KEY` | Production ingress URLs and administrative API authorization. |
 
-For production setup behind Traefik reverse proxy and automated TLS certificates, refer to [`infra/compose/PRODUCTION_DEPLOYMENT.md`](infra/compose/PRODUCTION_DEPLOYMENT.md).
+For production deployment and reverse proxy setup (Nginx + TLS certificates), refer to [`infra/compose/PRODUCTION_DEPLOYMENT.md`](infra/compose/PRODUCTION_DEPLOYMENT.md) and [`infra/nginx/README.md`](infra/nginx/README.md).
 
 ---
 

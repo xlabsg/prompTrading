@@ -14,9 +14,9 @@ import uuid
 sys.path.insert(0, '/app')
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
+from control_plane.enums import JobType
 from control_plane.models import Job
-import redis
-from control_plane.queue import QUEUE_NAME
+from control_plane.queue import enqueue_job
 from app.settings import settings
 
 # 创建任务
@@ -26,7 +26,7 @@ engine = create_db_engine(settings.db_url)
 with session_scope(create_session_factory(engine)) as db:
     job = Job(
         id=job_id,
-        type='TRENDING_SCRAPE',
+        type=JobType.TRENDING_SCRAPE.value,
         payload={
             'source_types': ['script'],
             'max_count': 50,
@@ -39,8 +39,7 @@ with session_scope(create_session_factory(engine)) as db:
     db.commit()
 
 # 添加到队列
-from control_plane.queue import enqueue_job
-enqueue_job(settings.workspaces_dir, job_id, 'TRENDING_SCRAPE', priority='batch')
+enqueue_job(settings.workspaces_dir, job_id, JobType.TRENDING_SCRAPE.value, priority='batch')
 
 print(f'✅ Trending 抓取任务已创建: {job_id[:8]}...')
 print()

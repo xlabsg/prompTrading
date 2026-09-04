@@ -118,7 +118,7 @@ FastAPI TestClient (HTTP requests)
     ↓
 API Endpoints (backtests.py, jobs.py)
     ↓
-Database (PostgreSQL) + Redis Queue
+Database (SQLite / PostgreSQL) + File Queue
     ↓
 Worker Service (Docker container)
     ↓
@@ -136,7 +136,6 @@ Test validates results
 | Fixture | Purpose |
 |---------|---------|
 | `test_db_session` | Database session with transaction rollback |
-| `test_redis` | Redis connection |
 | `test_app` | FastAPI TestClient with dependency overrides |
 | `test_user` | Authenticated user with session |
 | `test_strategy` | Test strategy with user as ADMIN |
