@@ -162,23 +162,6 @@ export interface ChangeSpec {
     version?: number;
 }
 
-export interface ChangeOperationResult {
-    operation_index: number;
-    success: boolean;
-    error_message?: string;
-    lines_changed?: [number, number];
-    diff_preview?: string;
-}
-
-export interface PatchReport {
-    success: boolean;
-    operations_applied: number;
-    operations_failed: number;
-    results: ChangeOperationResult[];
-    final_diff?: string;
-    error_summary?: string;
-}
-
 export interface RefineProposal {
     instructions: string;
     patch?: string;

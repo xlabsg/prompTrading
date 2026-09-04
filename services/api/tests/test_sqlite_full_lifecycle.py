@@ -23,7 +23,6 @@ from control_plane.models import (
     StrategySignal,
     Order,
     StrategyTemplate,
-    Installation,
     Repository,
 )
 from control_plane.enums import (
