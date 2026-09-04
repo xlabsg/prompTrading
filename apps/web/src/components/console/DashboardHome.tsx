@@ -7,9 +7,6 @@ import {
     Clock,
     Sparkles,
     Check,
-    FileCode,
-    FileText,
-    Settings,
     Search,
     Star,
     GitBranch,
@@ -30,12 +27,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import type { Strategy, ChatMessage, GitHubRepo } from "@/lib/types";
+import type { Strategy, GitHubRepo } from "@/lib/types";
 import { cn } from "@/lib/utils";
-import { strategiesApi, githubApi, reposApi, jobsApi } from "@/lib/api";
-import { buildGenerationPrompt } from "@/lib/strategyPrompt";
+import { githubApi, reposApi, jobsApi } from "@/lib/api";
 import React from "react";
-import ReactMarkdown from "react-markdown";
 import ImportStrategyModal from "@/components/strategy/ImportStrategyModal";
 import { TrendingSection } from "@/components/dashboard/TrendingSection";
 import { useTranslation } from "react-i18next";
@@ -47,8 +42,6 @@ interface DashboardHomeProps {
     onSelectStrategy: (strategy: Strategy) => void;
     isCreating?: boolean;
     isAuthed: boolean;
-    createdStrategyId?: string;
-    onGoToStrategy: (strategyId: string) => void;
     onRequireAuth: () => boolean;
 }
 
@@ -61,43 +54,19 @@ const Github = ({ className, size = 24 }: { className?: string; size?: number })
     </svg>
 );
 
-const cleanAssistantResponse = (content: string): string => {
-    const withoutCodeBlocks = content
-        .replace(/```json[\s\S]*?```/gi, "\n")
-        .replace(/```[\s\S]*?```/g, "\n");
-
-    const withoutJsonLead = withoutCodeBlocks
-        .replace(/\bhere(?:'s| is)\s+the\s+json[^:\n]*[:：]?/gi, "")
-        .replace(/\bjson\s*(response|payload|output)[^:\n]*[:：]?/gi, "")
-        .replace(/以下是(?:你要的|请求的)?\s*json[^:\n]*[:：]?/gi, "");
-
-    return withoutJsonLead
-        .replace(/[ \t]+/g, " ")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim();
-};
-
 const DashboardHome = ({
     onNewStrategy,
     strategies,
     onSelectStrategy,
     isCreating = false,
     isAuthed,
-    createdStrategyId,
-    onGoToStrategy,
     onRequireAuth,
 }: DashboardHomeProps) => {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const [prompt, setPrompt] = useState("");
     const [activeTab, setActiveTab] = useState("recent");
-    const [chatInput, setChatInput] = useState("");
-    const initialPromptSentRef = useRef(false);
-    const scrollRef = useRef<HTMLDivElement>(null);
     const promptTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const chatTextareaRef = useRef<HTMLTextAreaElement>(null);
-    const [currentGeneratingStep, setCurrentGeneratingStep] = useState(0);
-    const [generatingElapsedSeconds, setGeneratingElapsedSeconds] = useState(0);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [importStage, setImportStage] = useState<"connect" | "select" | "progress" | "done">("connect");
     const [repoSearch, setRepoSearch] = useState("");
@@ -120,9 +89,8 @@ const DashboardHome = ({
         const stored = window.localStorage.getItem(STRATEGY_DRAFT_STORAGE_KEY);
         if (!stored) return;
         try {
-            const parsed = JSON.parse(stored) as { prompt?: string; chatInput?: string };
+            const parsed = JSON.parse(stored) as { prompt?: string };
             if (parsed.prompt) setPrompt(parsed.prompt);
-            if (parsed.chatInput) setChatInput(parsed.chatInput);
         } catch {
             window.localStorage.removeItem(STRATEGY_DRAFT_STORAGE_KEY);
         }
@@ -130,21 +98,15 @@ const DashboardHome = ({
 
     useEffect(() => {
         if (typeof window === "undefined") return;
-        if (!prompt.trim() && !chatInput.trim()) {
+        if (!prompt.trim()) {
             window.localStorage.removeItem(STRATEGY_DRAFT_STORAGE_KEY);
             return;
         }
         window.localStorage.setItem(
             STRATEGY_DRAFT_STORAGE_KEY,
-            JSON.stringify({ prompt, chatInput, updatedAt: Date.now() })
+            JSON.stringify({ prompt, updatedAt: Date.now() })
         );
-    }, [prompt, chatInput]);
-
-    useEffect(() => {
-        if (!createdStrategyId || typeof window === "undefined") return;
-        window.localStorage.removeItem(STRATEGY_PENDING_STORAGE_KEY);
-        window.localStorage.removeItem(STRATEGY_DRAFT_STORAGE_KEY);
-    }, [createdStrategyId]);
+    }, [prompt]);
 
     useEffect(() => {
         if (typeof window === "undefined") return;
@@ -161,7 +123,6 @@ const DashboardHome = ({
     const t = translate("dashboard", { returnObjects: true }) as any;
     const locale = i18n.language.startsWith("zh") ? "zh-CN" : "en-US";
     const promptMinHeight = isDesktop ? 136 : 112;
-    const chatMinHeight = isDesktop ? 120 : 96;
     const textareaMaxHeight = Math.max(220, Math.floor(viewportHeight * 0.55));
 
     const autoResizeTextarea = (
@@ -209,23 +170,6 @@ const DashboardHome = ({
         enabled: !!selectedInstallationId && isImportOpen && importStage === "select",
         retry: 1,
     });
-
-    const generationSteps = useMemo(() => [
-        {
-            id: 1,
-            label: translate("dashboard.generationSteps.parse"),
-            file: "strategy_config.json",
-            icon: Settings,
-        },
-        { id: 2, label: translate("dashboard.generationSteps.code"), file: "strategy.py", icon: FileCode },
-        {
-            id: 3,
-            label: translate("dashboard.generationSteps.config"),
-            file: "",
-            icon: FileText,
-        },
-        { id: 4, label: translate("dashboard.generationSteps.validate"), file: "validation.log", icon: Check },
-    ], [translate]);
 
     // Strategy template examples
     const strategyTemplates = useMemo(() => [
@@ -325,257 +269,9 @@ const DashboardHome = ({
         },
     });
 
-    const createdStrategy = createdStrategyId
-        ? strategies.find(s => s.id === createdStrategyId)
-        : null;
-
-    useEffect(() => {
-        if (createdStrategy?.chat_status !== "generating") {
-            setGeneratingElapsedSeconds(0);
-            return;
-        }
-        const timer = setInterval(() => {
-            setGeneratingElapsedSeconds((prev) => prev + 1);
-        }, 1000);
-        return () => clearInterval(timer);
-    }, [createdStrategy?.chat_status]);
-
-    const getGeneratingHint = (seconds: number) => {
-        if (seconds < 15) return translate("dashboard.generatingHints.analyzing", { defaultValue: "正在解析策略需求与交易逻辑..." });
-        if (seconds < 40) return translate("dashboard.generatingHints.writing", { defaultValue: "正在由 Docker Agent 编写 strategy.py..." });
-        if (seconds < 75) return translate("dashboard.generatingHints.linting", { defaultValue: "正在执行沙箱语法审计与参数化校验..." });
-        if (seconds < 110) return translate("dashboard.generatingHints.verifying", { defaultValue: "正在验证回测协议与指标计算..." });
-        return translate("dashboard.generatingHints.rendering", { defaultValue: "正在生成可视化决策流架构图与概览文档，即将就绪..." });
-    };
-
-    const chatHistory: ChatMessage[] = createdStrategy?.chat_history || [];
-    const formatConfigLabel = (key: string): string =>
-        key
-            .split("_")
-            .filter(Boolean)
-            .join(" ");
-
-    const formatConfigValue = (value: unknown): string => {
-        if (value === null || value === undefined || value === "") return "-";
-        if (typeof value === "boolean") {
-            return value ? t.booleanTrue : t.booleanFalse;
-        }
-        if (Array.isArray(value)) {
-            const plainItems = value
-                .filter((item) => item !== null && item !== undefined)
-                .map((item) => (typeof item === "object" ? t.strategyConfigConfigured : String(item)));
-            return plainItems.length ? plainItems.join(", ") : "-";
-        }
-        if (typeof value === "object") return t.strategyConfigConfigured;
-        return String(value);
-    };
-
-    // Streaming chat state
-    const [streamingMessage, setStreamingMessage] = useState("");
-    const [streamingProgressMessage, setStreamingProgressMessage] = useState<string | null>(null);
-    const [isStreaming, setIsStreaming] = useState(false);
-    const [pendingUserMessage, setPendingUserMessage] = useState<string | null>(null);
-    const [generateError, setGenerateError] = useState<string | null>(null);
-
-    // Streaming chat function
-    const sendStreamingMessage = async (message: string) => {
-        if (!createdStrategy || isStreaming) return;
-
-        setIsStreaming(true);
-        setStreamingMessage("");
-        setStreamingProgressMessage(null);
-        setPendingUserMessage(message);
-        setGenerateError(null);
-        setChatInput("");
-
-        try {
-            const response = await strategiesApi.chatStream(createdStrategy.id, message);
-            if (!response.ok) {
-                throw new Error(`HTTP error: ${response.status}`);
-            }
-
-            const reader = response.body?.getReader();
-            if (!reader) throw new Error("No reader available");
-
-            const decoder = new TextDecoder();
-            let buffer = "";
-
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-
-                buffer += decoder.decode(value, { stream: true });
-
-                // Parse SSE events
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || ""; // Keep incomplete line in buffer
-
-                for (const line of lines) {
-                    if (line.startsWith("data: ")) {
-                        try {
-                            const data = JSON.parse(line.slice(6));
-                            if (data.type === "token") {
-                                setStreamingMessage(prev => prev + data.content);
-                            } else if (data.type === "progress") {
-                                const isRead = data.tool && ["read_file", "read"].includes(data.tool);
-                                const msg = data.path
-                                    ? (isRead
-                                        ? translate("console.sidebar.readingFile", { path: data.path })
-                                        : translate("console.sidebar.editingFile", { path: data.path }))
-                                    : data.stage === "thinking"
-                                    ? translate("console.sidebar.aiThinking")
-                                    : data.message;
-                                if (msg) setStreamingProgressMessage(msg);
-                            } else if (data.type === "done") {
-                                // Refresh strategies to get updated chat history
-                                queryClient.invalidateQueries({ queryKey: ["strategies"] });
-                            } else if (data.type === "error") {
-                                const content = String(data.content || translate("dashboard.generateErrorGeneric"));
-                                setGenerateError(content);
-                                console.error("SSE error:", data.content);
-                            }
-                        } catch (parseError) {
-                            // Skip malformed JSON
-                        }
-                    }
-                }
-            }
-        } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            setGenerateError(errorMsg);
-            console.error("Streaming chat error:", error);
-        } finally {
-            setIsStreaming(false);
-            setStreamingMessage("");
-            setStreamingProgressMessage(null);
-            setPendingUserMessage(null);
-        }
-    };
-
-    // Legacy chatMutation for compatibility (keeps isPending interface)
-    const chatMutation = {
-        isPending: isStreaming,
-        mutate: sendStreamingMessage,
-    };
-
-    const generateMutation = useMutation({
-        mutationFn: async () => {
-            if (!createdStrategy) throw new Error("No strategy created");
-
-            setCurrentGeneratingStep(0);
-            setGenerateError(null);
-
-            // Note: /confirm endpoint now only updates name, /generate handles status atomically
-            await strategiesApi.confirmChat(createdStrategy.id);
-
-            const prompt = buildGenerationPrompt(createdStrategy);
-
-            // Backend automatically infers target symbol & interval from prompt, or falls back to standard benchmark
-            const result = await strategiesApi.generateAndBacktest(createdStrategy.id, {
-                prompt,
-            });
-
-            // Poll job status to show real progress
-            const jobId = result.job.id;
-            if (jobId) {
-                    const job = await jobsApi.waitForCompletion(
-                        jobId,
-                        (job) => {
-                            // Update progress based on job status
-                            if (job.status === "queued" || job.status === "running") {
-                            // Map job status to generation steps
-                            // Step 0: Parse requirements (always show when running)
-                            setCurrentGeneratingStep(0);
-
-                            // If job has been running for a bit, move to step 1
-                            if (job.status === "running") {
-                                setCurrentGeneratingStep(1);
-                            }
-                        } else if (job.status === "succeeded") {
-                            // Move through remaining steps quickly when done
-                            setCurrentGeneratingStep(2);
-                            setTimeout(() => setCurrentGeneratingStep(3), 300);
-                        }
-                    },
-                    2000, // Poll every 2 seconds
-                    420000 // 7 minute timeout
-                );
-
-                if (job.status === "failed") {
-                    throw new Error(`job_failed:${job.error_message || job.id}`);
-                }
-            }
-
-            setCurrentGeneratingStep(generationSteps.length);
-            return result;
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["strategies"] });
-            setGenerateError(null);
-        },
-        onError: (error) => {
-            console.error("Strategy generation failed:", error);
-            setCurrentGeneratingStep(0);
-            const message = getGenerateErrorMessage(error);
-            setGenerateError(message);
-            // Re-fetch strategies to get correct status in case of partial failure
-            queryClient.invalidateQueries({ queryKey: ["strategies"] });
-        },
-    });
-
-    useEffect(() => {
-        if (
-            createdStrategy &&
-            prompt &&
-            chatHistory.length === 0 &&
-            !chatMutation.isPending &&
-            !initialPromptSentRef.current
-        ) {
-            initialPromptSentRef.current = true;
-            chatMutation.mutate(prompt);
-            setPrompt("");
-        }
-    }, [createdStrategy, prompt, chatHistory.length, chatMutation]);
-
-    const scrollToBottom = (behavior: ScrollBehavior = "auto") => {
-        const el = scrollRef.current;
-        if (!el) return;
-        requestAnimationFrame(() => {
-            el.scrollTo({ top: el.scrollHeight, behavior });
-        });
-    };
-
-    useEffect(() => {
-        scrollToBottom();
-    }, [chatHistory, streamingMessage, pendingUserMessage, isStreaming, currentGeneratingStep, createdStrategy?.chat_status]);
-
-    useEffect(() => {
-        if (!createdStrategyId) {
-            initialPromptSentRef.current = false;
-            // Reset chat state when returning to dashboard
-            setChatInput("");
-            setStreamingMessage("");
-            setStreamingProgressMessage(null);
-            setPendingUserMessage(null);
-            setIsStreaming(false);
-            setGenerateError(null);
-        }
-    }, [createdStrategyId]);
-
-    useEffect(() => {
-        if (!createdStrategy?.chat_status) return;
-        if (createdStrategy.chat_status === "generating" || createdStrategy.chat_status === "done") {
-            setGenerateError(null);
-        }
-    }, [createdStrategy?.chat_status]);
-
     useEffect(() => {
         autoResizeTextarea(promptTextareaRef.current, promptMinHeight, textareaMaxHeight);
-    }, [prompt, promptMinHeight, textareaMaxHeight, createdStrategyId]);
-
-    useEffect(() => {
-        autoResizeTextarea(chatTextareaRef.current, chatMinHeight, textareaMaxHeight);
-    }, [chatInput, chatMinHeight, textareaMaxHeight, createdStrategy?.chat_status]);
+    }, [prompt, promptMinHeight, textareaMaxHeight]);
 
     const formatDate = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -598,36 +294,16 @@ const DashboardHome = ({
         }
     };
 
-    const getGenerateErrorMessage = (error: unknown) => {
-        if (error instanceof Error) {
-            const message = error.message;
-            const runningMatch = message.match(/job_already_running:([a-f0-9-]+):([a-z_]+)/);
-            if (runningMatch) {
-                const [, jobId, jobType] = runningMatch;
-                return t.generateErrorRunning
-                    .replace("{jobType}", jobType)
-                    .replace("{jobId}", jobId);
-            }
-            const failedMatch = message.match(/job_failed:(.+)$/);
-            if (failedMatch) {
-                return t.generateErrorFailed.replace("{reason}", failedMatch[1]);
-            }
-            if (message.includes("strategy_not_ready_for_generation") || message.includes("strategy_not_ready_for_confirmation")) {
-                return t.generateErrorNotReady;
-            }
-        }
-        return t.generateErrorGeneric;
-    };
-
     const handleSubmit = (e?: React.FormEvent) => {
         e?.preventDefault();
         if (!prompt.trim() || isCreating) return;
-        if (!isAuthed && typeof window !== "undefined") {
+        if (!isAuthed && typeof window === "undefined") {
             window.localStorage.setItem(
                 STRATEGY_PENDING_STORAGE_KEY,
-                JSON.stringify({ prompt, chatInput, createdAt: Date.now() })
+                JSON.stringify({ prompt, createdAt: Date.now() })
             );
         }
+        window.localStorage.removeItem(STRATEGY_DRAFT_STORAGE_KEY);
         onNewStrategy(prompt);
     };
 
@@ -635,18 +311,6 @@ const DashboardHome = ({
         if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             handleSubmit();
-        }
-    };
-
-    const handleSendChatMessage = () => {
-        if (!chatInput.trim() || chatMutation.isPending) return;
-        chatMutation.mutate(chatInput);
-    };
-
-    const handleChatKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault();
-            handleSendChatMessage();
         }
     };
 
@@ -708,468 +372,89 @@ const DashboardHome = ({
                         transition={{ delay: 0.3 }}
                         className="bg-card rounded-2xl shadow-xl border border-border overflow-hidden mb-12"
                     >
-                        {/* Initial Loading State - when creating strategy and waiting for first AI response */}
-                        {/* Initial Loading State - only while strategy record is being created in database */}
-                        <AnimatePresence>
-                            {isCreating && !createdStrategy && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: "auto", opacity: 1 }}
-                                    exit={{ height: 0, opacity: 0 }}
-                                    className="border-b border-border"
-                                >
-                                    <div className="p-4 space-y-4 sm:p-6">
-                                        {/* User's initial prompt */}
-                                        {prompt && (
-                                            <div className="flex justify-end">
-                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
-                                                    <p className="whitespace-pre-wrap leading-relaxed">{prompt}</p>
-                                                </div>
-                                            </div>
-                                        )}
-                                        {/* AI initializing indicator */}
-                                        <div className="flex justify-start">
-                                            <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
-                                                <div className="flex items-center gap-2">
-                                                    <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                                    <span className="text-sm text-muted-foreground">
-                                                        {streamingProgressMessage || translate("console.sidebar.initializingWorkspace")}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-
-                        {/* Chat Messages (active for conversation, first message streaming, and results) */}
-                        <AnimatePresence>
-                            {createdStrategy && (chatHistory.length > 0 || isStreaming || pendingUserMessage) && (
-                                <motion.div
-                                    initial={{ height: 0, opacity: 0 }}
-                                    animate={{ height: "auto", opacity: 1 }}
-                                    className="border-b border-border"
-                                >
-                                    <div ref={scrollRef} className="p-4 space-y-4 max-h-[520px] overflow-y-auto sm:p-6">
-                                        {chatHistory.map((msg, i) => {
-                                            const displayText = msg.role === "assistant"
-                                                ? cleanAssistantResponse(msg.content)
-                                                : msg.content;
-                                            if (!displayText) return null;
-
-                                            return (
-                                                <div
-                                                    key={i}
-                                                    className={cn(
-                                                        "flex",
-                                                        msg.role === "user" ? "justify-end" : "justify-start"
-                                                    )}
-                                                >
-                                                    <div
-                                                        className={cn(
-                                                            "max-w-[88%] rounded-2xl px-4 py-3 text-sm",
-                                                            msg.role === "user"
-                                                                ? "bg-primary text-primary-foreground rounded-br-md"
-                                                                : "bg-muted text-foreground rounded-bl-md"
-                                                        )}
-                                                    >
-                                                        {msg.role === "assistant" ? (
-                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
-                                                                <ReactMarkdown>{displayText}</ReactMarkdown>
-                                                            </div>
-                                                        ) : (
-                                                            <p className="whitespace-pre-wrap break-words leading-relaxed">
-                                                                {displayText}
-                                                            </p>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-
-                                        {/* Pending user message while streaming */}
-                                        {pendingUserMessage && (
-                                            <div className="flex justify-end">
-                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-primary text-primary-foreground rounded-br-md">
-                                                    <p className="whitespace-pre-wrap break-words leading-relaxed">{pendingUserMessage}</p>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Streaming AI response with typing effect */}
-                                        {isStreaming && (
-                                            <div className="flex justify-start">
-                                                <div className="max-w-[88%] rounded-2xl px-4 py-3 text-sm bg-muted text-foreground rounded-bl-md">
-                                                    {streamingMessage ? (
-                                                        <div className="space-y-2">
-                                                            <div className="prose prose-sm dark:prose-invert max-w-none break-words leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2">
-                                                                <ReactMarkdown>{cleanAssistantResponse(streamingMessage)}</ReactMarkdown>
-                                                            </div>
-                                                            {streamingProgressMessage && (
-                                                                <div className="flex items-center gap-2 text-xs text-muted-foreground pt-1 border-t border-border/30">
-                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
-                                                                    <span>{streamingProgressMessage}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ) : (
-                                                        <div className="flex items-center gap-2">
-                                                            <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                                                            <span className="text-sm text-muted-foreground">
-                                                                {streamingProgressMessage || t.thinking}
-                                                            </span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Generating status with steps */}
-                                        {createdStrategy.chat_status === "generating" && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className="py-4 space-y-3"
-                                            >
-                                                <div className="flex items-center justify-between px-2 pb-2 text-xs border-b border-border/50">
-                                                    <div className="flex items-center gap-2 font-medium text-foreground">
-                                                        <Loader2 size={14} className="animate-spin text-primary" />
-                                                        <span>{getGeneratingHint(generatingElapsedSeconds)}</span>
-                                                    </div>
-                                                    <span className="tabular-nums font-mono text-[11px] bg-muted/80 px-2 py-0.5 rounded-full text-muted-foreground">
-                                                        ⏱️ {translate("dashboard.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `已耗时 ${generatingElapsedSeconds} 秒` })}
-                                                    </span>
-                                                </div>
-                                                {generationSteps.map((step, index) => {
-                                                    const isCompleted = index < currentGeneratingStep;
-                                                    const isActive = index === currentGeneratingStep;
-                                                    const isPending = index > currentGeneratingStep;
-                                                    const StepIcon = step.icon;
-
-                                                    return (
-                                                        <motion.div
-                                                            key={step.id}
-                                                            initial={{ opacity: 0, x: -20 }}
-                                                            animate={{ opacity: 1, x: 0 }}
-                                                            transition={{ delay: index * 0.1 }}
-                                                            className="flex items-center gap-3 px-2"
-                                                        >
-                                                            {/* Step indicator */}
-                                                            <div className={cn(
-                                                                "flex items-center justify-center w-6 h-6 rounded-full transition-all",
-                                                                isCompleted && "bg-green-500 text-white",
-                                                                isActive && "bg-primary text-primary-foreground",
-                                                                isPending && "bg-muted text-muted-foreground"
-                                                            )}>
-                                                                {isCompleted ? (
-                                                                    <Check size={14} />
-                                                                ) : isActive ? (
-                                                                    <Loader2 size={14} className="animate-spin" />
-                                                                ) : (
-                                                                    <StepIcon size={14} />
-                                                                )}
-                                                            </div>
-
-                                                            {/* Step content */}
-                                                            <div className="flex-1 min-w-0">
-                                                                <div className={cn(
-                                                                    "text-sm font-medium transition-colors",
-                                                                    isCompleted && "text-green-600",
-                                                                    isActive && "text-foreground",
-                                                                    isPending && "text-muted-foreground"
-                                                                )}>
-                                                                    {step.label}
-                                                                </div>
-                                                                {step.file ? (
-                                                                    <div className={cn(
-                                                                        "text-xs font-mono transition-colors",
-                                                                        isCompleted && "text-green-600/70",
-                                                                        isActive && "text-muted-foreground animate-pulse",
-                                                                        isPending && "text-muted-foreground/50"
-                                                                    )}>
-                                                                        {step.file}
-                                                                    </div>
-                                                                ) : null}
-                                                            </div>
-
-                                                            {/* Status indicator */}
-                                                            {isCompleted && (
-                                                                <motion.div
-                                                                    initial={{ scale: 0 }}
-                                                                    animate={{ scale: 1 }}
-                                                                    className="text-xs text-green-600 font-medium"
-                                                                >
-                                                                    Done
-                                                                </motion.div>
-                                                            )}
-                                                            {isActive && (
-                                                                <div className="text-xs text-primary font-medium">
-                                                                    In progress...
-                                                                </div>
-                                                            )}
-                                                        </motion.div>
-                                                    );
-                                                })}
-                                            </motion.div>
-                                        )}
-
-                                        {/* View Strategy Button when done */}
-                                        {createdStrategy.chat_status === "done" && (
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                className="flex justify-center pt-2"
-                                            >
-                                                <Button
-                                                    onClick={() => onGoToStrategy(createdStrategy.id)}
-                                                    className="gap-2 bg-green-600 hover:bg-green-700 text-white"
-                                                >
-                                                    <Check size={16} />
-                                                    {t.viewDetails}
-                                                </Button>
-                                            </motion.div>
-                                        )}
-                                    </div>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
-
-                        {/* Input Area */}
                         <div className="p-4 sm:p-6">
-                            {createdStrategy && createdStrategy.chat_status === "chatting" ? (
-                                /* Chat input for ongoing conversation */
-                                <div>
-                                    <Textarea
-                                        ref={chatTextareaRef}
-                                        value={chatInput}
-                                        onChange={(e) => setChatInput(e.target.value)}
-                                        onKeyDown={handleChatKeyDown}
-                                        placeholder={t.chatPlaceholder}
-                                        className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
-                                        style={{ minHeight: `${chatMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
-                                        disabled={chatMutation.isPending}
-                                    />
-                                    <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                                        <span className="text-sm text-muted-foreground">
-                                            {t.inputHint}
-                                        </span>
+                            <form onSubmit={handleSubmit}>
+                                <div className="mb-3 flex flex-wrap items-center gap-2">
+                                    <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mr-1">
+                                        <Sparkles size={12} className="text-primary" />
+                                        {t.quickInspirations || "快捷灵感"}:
+                                    </span>
+                                    {[
+                                        {
+                                            label: "BTC 均线交叉",
+                                            desc: "BTC-USDT 1小时级别，双均线金叉做多死叉做空，附带 2% 追踪止损",
+                                        },
+                                        {
+                                            label: "ETH 布林带突破",
+                                            desc: "ETH-USDT 15分钟级别，突破布林带上轨做多，跌破中轨平仓，止损 1.5%",
+                                        },
+                                        {
+                                            label: "SOL RSI 超卖反弹",
+                                            desc: "SOL-USDT 1小时级别，RSI 低于 30 超卖反弹买入，高于 70 止盈",
+                                        },
+                                    ].map((preset) => (
+                                        <button
+                                            key={preset.label}
+                                            type="button"
+                                            onClick={() => {
+                                                setPrompt(preset.desc);
+                                                if (promptTextareaRef.current) {
+                                                    promptTextareaRef.current.focus();
+                                                }
+                                            }}
+                                            className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
+                                        >
+                                            <span>{preset.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                <Textarea
+                                    ref={promptTextareaRef}
+                                    value={prompt}
+                                    onChange={(e) => setPrompt(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder={t.inputPlaceholder}
+                                    className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
+                                    style={{ minHeight: `${promptMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
+                                    disabled={isCreating}
+                                />
+                                <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-border sm:flex-row sm:items-center sm:justify-between">
+                                    <span className="text-sm text-muted-foreground">
+                                        {t.inputHint}
+                                    </span>
+                                    <div className="flex flex-wrap items-center gap-3">
                                         <Button
-                                            onClick={handleSendChatMessage}
-                                            disabled={!chatInput.trim() || chatMutation.isPending}
+                                            type="button"
+                                            variant="outline"
+                                            onClick={() => {
+                                                if (onRequireAuth()) return;
+                                                setShowImportStrategyModal(true);
+                                            }}
+                                            className="gap-2"
+                                        >
+                                            <Download size={16} />
+                                            {t.importStrategyCta}
+                                        </Button>
+                                        <Button
+                                            type="submit"
+                                            disabled={!prompt.trim() || isCreating}
                                             className="gap-2 bg-primary hover:bg-primary/90"
                                         >
-                                            {chatMutation.isPending ? (
+                                            {isCreating ? (
                                                 <>
                                                     <Loader2 size={16} className="animate-spin" />
-                                                    {t.sending}
+                                                    {t.createStatus}
                                                 </>
                                             ) : (
                                                 <>
                                                     <Send size={16} />
-                                                    {t.sendMessage}
+                                                    {t.createCta}
                                                 </>
                                             )}
                                         </Button>
                                     </div>
                                 </div>
-                            ) : createdStrategy && (createdStrategy.chat_status === "ready" || createdStrategy.chat_status === "generating" || createdStrategy.chat_status === "done") ? (
-                                /* Show status message when ready/generating/done */
-                                <div className="text-center py-4 text-muted-foreground text-sm space-y-2">
-                                    <div>
-                                        {createdStrategy.chat_status === "ready" && (createdStrategy.chat_config && Object.keys(createdStrategy.chat_config).length > 0 ? t.statusReady : t.chatPlaceholder)}
-                                        {createdStrategy.chat_status === "generating" && (
-                                            <div className="flex items-center justify-center gap-2">
-                                                <Loader2 size={15} className="animate-spin text-primary" />
-                                                <span>{t.statusGenerating}</span>
-                                                <span className="font-mono text-xs text-muted-foreground ml-1">
-                                                    ({translate("dashboard.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `已耗时 ${generatingElapsedSeconds} 秒` })})
-                                                </span>
-                                            </div>
-                                        )}
-                                        {createdStrategy.chat_status === "done" && t.statusDone}
-                                    </div>
-                                    {generateError && (
-                                        <div className="text-xs text-destructive bg-destructive/10 rounded-md px-3 py-2 inline-block">
-                                            {generateError}
-                                        </div>
-                                    )}
-                                    {createdStrategy.chat_status === "ready" && createdStrategy.chat_config && Object.keys(createdStrategy.chat_config).length > 0 ? (
-                                        <motion.div
-                                            initial={{ opacity: 0, y: 10 }}
-                                            animate={{ opacity: 1, y: 0 }}
-                                            className="mt-4 mb-2 text-left"
-                                        >
-                                            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:bg-amber-950/20 dark:border-amber-800">
-                                                <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-foreground">
-                                                    <FileText size={16} className="text-amber-700 dark:text-amber-400" />
-                                                    {t.strategyConfigTitle}
-                                                </div>
-                                                <div className="grid grid-cols-2 gap-3 text-sm">
-                                                    {Object.entries(createdStrategy.chat_config).map(([key, value]) => (
-                                                        <div key={key} className="rounded-lg bg-white dark:bg-card p-2 shadow-sm">
-                                                            <div className="text-xs text-muted-foreground capitalize">
-                                                                {formatConfigLabel(key)}
-                                                            </div>
-                                                            <div className="font-medium text-foreground">
-                                                                {formatConfigValue(value)}
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                                <Button
-                                                    onClick={() => generateMutation.mutate()}
-                                                    disabled={generateMutation.isPending}
-                                                    className="mt-4 w-full gap-2 bg-green-600 hover:bg-green-700 text-white shadow-sm"
-                                                >
-                                                    {generateMutation.isPending ? (
-                                                        <>
-                                                            <Loader2 size={16} className="animate-spin" />
-                                                            {t.generating}
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Sparkles size={16} />
-                                                            {t.confirmGenerate}
-                                                        </>
-                                                    )}
-                                                </Button>
-                                            </div>
-                                        </motion.div>
-                                    ) : createdStrategy.chat_status === "ready" ? (
-                                        /* Fallback when ready but no config: show textarea so user can continue chatting */
-                                        <div className="text-left mt-3">
-                                            <Textarea
-                                                ref={chatTextareaRef}
-                                                value={chatInput}
-                                                onChange={(e) => setChatInput(e.target.value)}
-                                                onKeyDown={handleChatKeyDown}
-                                                placeholder={t.chatPlaceholder}
-                                                className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
-                                                style={{ minHeight: `${chatMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
-                                                disabled={chatMutation.isPending}
-                                            />
-                                            <div className="flex items-center justify-between mt-4 pt-4 border-t border-border">
-                                                <span className="text-sm text-muted-foreground">
-                                                    {t.inputHint}
-                                                </span>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        onClick={() => generateMutation.mutate()}
-                                                        disabled={generateMutation.isPending}
-                                                        className="gap-2"
-                                                    >
-                                                        <Sparkles size={16} />
-                                                        {t.confirmGenerate}
-                                                    </Button>
-                                                    <Button
-                                                        onClick={handleSendChatMessage}
-                                                        disabled={!chatInput.trim() || chatMutation.isPending}
-                                                        className="gap-2 bg-primary hover:bg-primary/90"
-                                                    >
-                                                        {chatMutation.isPending ? (
-                                                            <>
-                                                                <Loader2 size={16} className="animate-spin" />
-                                                                {t.sending}
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Send size={16} />
-                                                                {t.sendMessage}
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                </div>
-                            ) : (
-                                /* Initial creation input */
-                                <form onSubmit={handleSubmit}>
-                                    <div className="mb-3 flex flex-wrap items-center gap-2">
-                                        <span className="text-xs font-medium text-muted-foreground flex items-center gap-1 mr-1">
-                                            <Sparkles size={12} className="text-primary" />
-                                            {t.quickInspirations || "快捷灵感"}:
-                                        </span>
-                                        {[
-                                            {
-                                                label: "BTC 均线交叉",
-                                                desc: "BTC-USDT 1小时级别，双均线金叉做多死叉做空，附带 2% 追踪止损",
-                                            },
-                                            {
-                                                label: "ETH 布林带突破",
-                                                desc: "ETH-USDT 15分钟级别，突破布林带上轨做多，跌破中轨平仓，止损 1.5%",
-                                            },
-                                            {
-                                                label: "SOL RSI 超卖反弹",
-                                                desc: "SOL-USDT 1小时级别，RSI 低于 30 超卖反弹买入，高于 70 止盈",
-                                            },
-                                        ].map((preset) => (
-                                            <button
-                                                key={preset.label}
-                                                type="button"
-                                                onClick={() => {
-                                                    setPrompt(preset.desc);
-                                                    if (promptTextareaRef.current) {
-                                                        promptTextareaRef.current.focus();
-                                                    }
-                                                }}
-                                                className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-background/80 px-2.5 py-1 text-xs text-muted-foreground transition-all hover:border-primary/50 hover:bg-primary/5 hover:text-foreground"
-                                            >
-                                                <span>{preset.label}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <Textarea
-                                        ref={promptTextareaRef}
-                                        value={prompt}
-                                        onChange={(e) => setPrompt(e.target.value)}
-                                        onKeyDown={handleKeyDown}
-                                        placeholder={t.inputPlaceholder}
-                                        className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
-                                        style={{ minHeight: `${promptMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
-                                        disabled={isCreating}
-                                    />
-                                    <div className="flex flex-col gap-3 mt-4 pt-4 border-t border-border sm:flex-row sm:items-center sm:justify-between">
-                                        <span className="text-sm text-muted-foreground">
-                                            {t.inputHint}
-                                        </span>
-                                        <div className="flex flex-wrap items-center gap-3">
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={() => {
-                                                    if (onRequireAuth()) return;
-                                                    setShowImportStrategyModal(true);
-                                                }}
-                                                className="gap-2"
-                                            >
-                                                <Download size={16} />
-                                                {t.importStrategyCta}
-                                            </Button>
-                                            <Button
-                                                type="submit"
-                                                disabled={!prompt.trim() || isCreating}
-                                                className="gap-2 bg-primary hover:bg-primary/90"
-                                            >
-                                                {isCreating ? (
-                                                    <>
-                                                        <Loader2 size={16} className="animate-spin" />
-                                                        {t.createStatus}
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Send size={16} />
-                                                        {t.createCta}
-                                                    </>
-                                                )}
-                                            </Button>
-                                        </div>
-                                    </div>
-                                </form>
-                            )}
+                            </form>
                         </div>
                     </motion.div>
 
@@ -1654,7 +939,7 @@ const DashboardHome = ({
                                         onClick={() => {
                                             setIsImportOpen(false);
                                             if (importedStrategyId) {
-                                                onGoToStrategy(importedStrategyId);
+                                                navigate(`/strategy/${importedStrategyId}/overview`);
                                             }
                                             resetImportState();
                                         }}
