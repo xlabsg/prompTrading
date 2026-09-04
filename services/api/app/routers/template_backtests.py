@@ -23,60 +23,7 @@ from app.settings import settings
 router = APIRouter()
 
 
-def _normalize_equity_curve_payload(base_dir: str, payload: dict) -> dict:
-    """Normalize equity curve timestamps to milliseconds for frontend charting."""
-    if not isinstance(payload, dict):
-        return payload
-    data = payload.get("data")
-    if not isinstance(data, list) or not data:
-        return payload
-
-    timestamps: list[int] = []
-    for point in data:
-        if isinstance(point, dict):
-            ts = point.get("timestamp")
-            if isinstance(ts, (int, float)):
-                timestamps.append(int(ts))
-    if not timestamps:
-        return payload
-
-    max_ts = max(timestamps)
-
-    if max_ts < 1_000_000_000:
-        equity_parquet = os.path.join(base_dir, "equity.parquet")
-        if os.path.isfile(equity_parquet):
-            try:
-                import pandas as pd
-
-                df = pd.read_parquet(equity_parquet, columns=["timestamp", "equity", "drawdown"])
-                rebuilt = [
-                    {
-                        "timestamp": int(row["timestamp"]),
-                        "equity": round(float(row["equity"]), 2),
-                        "drawdown": round(abs(float(row["drawdown"])) * 100, 2),
-                    }
-                    for _, row in df.iterrows()
-                ]
-                return {"data": rebuilt}
-            except Exception:
-                return payload
-        return payload
-
-    if max_ts < 1_000_000_000_000:
-        normalized = []
-        for point in data:
-            if not isinstance(point, dict):
-                continue
-            ts = point.get("timestamp")
-            if isinstance(ts, (int, float)):
-                next_point = dict(point)
-                next_point["timestamp"] = int(ts * 1000)
-                normalized.append(next_point)
-            else:
-                normalized.append(point)
-        return {"data": normalized}
-
-    return payload
+from backtest.artifacts import normalize_equity_curve_payload
 
 
 # ============== Request/Response Schemas ==============
@@ -232,7 +179,7 @@ async def get_template_equity_curve(
         raise HTTPException(status_code=404, detail="equity_curve_not_found")
     with open(equity_file, "r") as f:
         payload = json.load(f)
-    return _normalize_equity_curve_payload(base_dir, payload)
+    return normalize_equity_curve_payload(base_dir, payload)
 
 
 @router.get("/templates/{template_id}/backtests/{run_id}/trades")

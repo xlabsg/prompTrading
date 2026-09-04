@@ -41,74 +41,7 @@ CANDLES_CACHE_MAX_ENTRIES = 64
 _candles_payload_cache: OrderedDict[str, dict[str, object]] = OrderedDict()
 
 
-def _normalize_equity_curve_payload(base_dir: str, payload: dict) -> dict:
-    """Normalize equity curve timestamps to milliseconds for frontend charting.
-
-    Handles:
-    - second-based timestamps (convert to ms)
-    - legacy bad artifacts that used row index as timestamp (rebuild from equity.parquet if possible)
-    """
-    if not isinstance(payload, dict):
-        return payload
-    data = payload.get("data")
-    if not isinstance(data, list) or not data:
-        return payload
-
-    timestamps: list[int] = []
-    for point in data:
-        if isinstance(point, dict):
-            ts = point.get("timestamp")
-            if isinstance(ts, (int, float)):
-                timestamps.append(int(ts))
-
-    if not timestamps:
-        return payload
-
-    max_ts = max(timestamps)
-
-    # Legacy incorrect artifacts: timestamp was row index (very small values).
-    if max_ts < 1_000_000_000:
-        equity_parquet = os.path.join(base_dir, "equity.parquet")
-        if os.path.isfile(equity_parquet):
-            try:
-                import pandas as pd
-
-                cols = ["timestamp", "equity", "drawdown"]
-                available = pd.read_parquet(equity_parquet).columns.tolist()
-                if "benchmark_equity" in available:
-                    cols.append("benchmark_equity")
-                df = pd.read_parquet(equity_parquet, columns=cols)
-                rebuilt = []
-                for _, row in df.iterrows():
-                    item = {
-                        "timestamp": int(row["timestamp"]),
-                        "equity": round(float(row["equity"]), 2),
-                        "drawdown": round(abs(float(row["drawdown"])) * 100, 2),
-                    }
-                    if "benchmark_equity" in df.columns and pd.notna(row.get("benchmark_equity")):
-                        item["benchmark_equity"] = round(float(row["benchmark_equity"]), 2)
-                    rebuilt.append(item)
-                return {"data": rebuilt}
-            except Exception:
-                return payload
-        return payload
-
-    # Seconds-based timestamps -> milliseconds.
-    if max_ts < 1_000_000_000_000:
-        normalized = []
-        for point in data:
-            if not isinstance(point, dict):
-                continue
-            ts = point.get("timestamp")
-            if isinstance(ts, (int, float)):
-                next_point = dict(point)
-                next_point["timestamp"] = int(ts * 1000)
-                normalized.append(next_point)
-            else:
-                normalized.append(point)
-        return {"data": normalized}
-
-    return payload
+from backtest.artifacts import normalize_equity_curve_payload
 
 
 def _normalize_ts_to_ms(raw_ts: object) -> int | None:
@@ -470,7 +403,7 @@ def get_equity_curve(run_id: str, db: Session = Depends(get_db)):
 
     with open(equity_file, "r") as f:
         payload = json.load(f)
-    return _normalize_equity_curve_payload(base_dir, payload)
+    return normalize_equity_curve_payload(base_dir, payload)
 
 
 @router.get("/backtests/{run_id}/trades")

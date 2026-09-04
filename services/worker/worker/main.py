@@ -32,6 +32,7 @@ from worker.settings import settings
 from worker.repo_sync import clone_or_update, ensure_worktree
 from worker.github_app import get_installation_token
 from worker.template_performance_job import generate_template_performance_data
+from worker.backtest_runner import execute_backtest_container, load_backtest_metrics
 
 
 def _utcnow() -> datetime:
@@ -565,67 +566,21 @@ def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.Docker
     _safe_mkdir(run_dir)
 
     backtest_log_path = os.path.join(run_dir, "backtest.log")
-    exit_code, tail = _run_container_and_stream_logs(
-        docker_client,
+    exit_code, tail = execute_backtest_container(
+        docker_client=docker_client,
         job_id=job.id,
         rds=rds,
-        image=settings.worker_backtest_image,
-        name=f"backtest-{job.id}",
-        command=None,
-        environment={
-            "STRATEGY_ID": strategy_id,
-            "VERSION_ID": version_id,
-            "RUN_ID": run_id,
-            "WORKSPACES_DIR": "/workspaces",
-            # Per-run params passed from control plane (overrides spec.params).
-            "RUN_PARAMS_JSON": json.dumps(run.params or {}, ensure_ascii=False),
-            "EXCHANGE": ds.exchange,
-            "SYMBOL": ds.symbol,
-            "INTERVAL": ds.interval,
-            "START_MS": "" if ds.start_ms is None else str(ds.start_ms),
-            "END_MS": "" if ds.end_ms is None else str(ds.end_ms),
-            **{
-                key: val
-                for key in (
-                    "US_STOCK_PROVIDER",
-                    "US_STOCK_FALLBACK_PROVIDER",
-                    "US_STOCK_FALLBACK",
-                    "US_STOCK_CACHE_DIR",
-                    "US_STOCK_CACHE_TTL_DAYS",
-                    "US_STOCK_MAX_RETRIES",
-                    "US_STOCK_RATE_LIMIT_SLEEP_S",
-                )
-                if (val := os.getenv(key)) is not None
-            },
-            **{
-                key: val
-                for key in (
-                    "MARKET_DATA_CACHE_DIR",
-                    "MARKET_DATA_CACHE_ENABLED",
-                    "MARKET_DATA_CACHE_TTL_S",
-                )
-                if (val := os.getenv(key)) is not None
-            },
-            **{
-                key: val
-                for key in (
-                    "NETWORK_GUARD_ENABLED",
-                    "NETWORK_ALLOWLIST",
-                )
-                if (val := os.getenv(key)) is not None
-            },
-            **{
-                key: val
-                for key in _PROXY_ENV_KEYS
-                if (val := os.getenv(key)) is not None
-            },
-        },
-        volumes={
-            settings.worker_workspaces_volume: {"bind": "/workspaces", "mode": "rw"},
-        },
-        network=settings.worker_docker_network,
+        strategy_id=strategy_id,
+        version_id=version_id,
+        run_id=run_id,
+        exchange=ds.exchange,
+        symbol=ds.symbol,
+        interval=ds.interval,
+        start_ms=ds.start_ms,
+        end_ms=ds.end_ms,
+        run_params=run.params or {},
         log_file_path=backtest_log_path,
-        timeout_s=settings.worker_job_timeout_s,
+        container_name=f"backtest-{job.id}",
     )
     if exit_code != 0:
         run.status = BacktestStatus.FAILED
@@ -644,29 +599,13 @@ def _handle_backtest(db: Session, rds: redis.Redis, docker_client: docker.Docker
     # metrics.json is the run's actual output: if it is missing or unreadable the
     # run did not succeed, however the container exited. Reporting SUCCEEDED here
     # used to hand the UI an empty-metrics run with no error to explain it.
-    metrics_path = os.path.join(settings.app_workspaces_dir, strategy_id, "runs", run_id, "metrics.json")
     try:
-        with open(metrics_path, "r", encoding="utf-8") as f:
-            metrics_payload = json.load(f)
-    except FileNotFoundError:
+        metrics_payload = load_backtest_metrics(run_dir)
+    except Exception as e:
         run.status = BacktestStatus.FAILED
-        run.error_message = (
-            f"backtest_metrics_missing: {metrics_path} was not written by the runner. "
-            "See artifact: backtest.log"
-        )
+        run.error_message = str(e)
         db.flush()
-        raise RuntimeError(run.error_message)
-    except (OSError, json.JSONDecodeError) as e:
-        run.status = BacktestStatus.FAILED
-        run.error_message = f"backtest_metrics_unreadable: {type(e).__name__}: {e}"
-        db.flush()
-        raise RuntimeError(run.error_message)
-
-    if not isinstance(metrics_payload, dict) or not metrics_payload:
-        run.status = BacktestStatus.FAILED
-        run.error_message = "backtest_metrics_empty: metrics.json did not contain a metrics object"
-        db.flush()
-        raise RuntimeError(run.error_message)
+        raise RuntimeError(run.error_message) from e
 
     run.status = BacktestStatus.SUCCEEDED
     run.metrics = metrics_payload
