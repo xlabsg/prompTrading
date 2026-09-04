@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { createChart, createSeriesMarkers, ColorType, IChartApi, ISeriesApi, Time, AreaSeries, BaselineSeries, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { createChart, createSeriesMarkers, ColorType, IChartApi, Time, AreaSeries, BaselineSeries, CandlestickSeries, LineSeries } from 'lightweight-charts';
 
 interface ChartData {
   time: number;

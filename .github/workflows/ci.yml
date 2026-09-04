@@ -87,6 +87,10 @@ jobs:
         working-directory: apps/web
         run: npm run lint
 
+      - name: Typecheck
+        working-directory: apps/web
+        run: npm run typecheck
+
       - name: Production Build
         working-directory: apps/web
         run: npm run build

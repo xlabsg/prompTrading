@@ -48,7 +48,9 @@ import type {
     TelegramTestResponse,
     TelegramConfigUpdateRequest,
     JobStatus,
+    TemplatePerformanceResponse,
     TemplatePerformanceRunDetailResponse,
+    PerformanceChartResponse,
     StrategyGitCompareResponse,
     StrategyGitCompareDiffResponse,
 } from "./types";
@@ -94,7 +96,7 @@ export async function fetchApi<T>(
     return response.json();
 }
 
-function buildQuery(params: Record<string, string | number | undefined | null>): string {
+function buildQuery(params: Record<string, string | number | boolean | undefined | null>): string {
     const parts = Object.entries(params)
         .filter(([, value]) => value !== undefined && value !== null && value !== "")
         .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
@@ -220,7 +222,7 @@ export const backtestsApi = {
         `${apiBaseUrl()}/api/backtests/${runId}/artifacts/${artifactName}`,
 
     getEquityCurve: (runId: string) =>
-        fetchApi<{ data: Array<{ timestamp: number; equity: number; drawdown: number }> }>(`/api/backtests/${runId}/equity_curve`),
+        fetchApi<{ data: Array<{ timestamp: number; equity: number; drawdown: number; benchmark_equity?: number }> }>(`/api/backtests/${runId}/equity_curve`),
 
     getTrades: (runId: string) =>
         fetchApi<{ trades: BacktestTrade[] }>(`/api/backtests/${runId}/trades`),
@@ -264,7 +266,7 @@ export const templateBacktestsApi = {
         `${apiBaseUrl()}/api/templates/${templateId}/backtests/${runId}/artifacts/${artifactName}`,
 
     getEquityCurve: (templateId: string, runId: string) =>
-        fetchApi<{ data: Array<{ timestamp: number; equity: number; drawdown: number }> }>(
+        fetchApi<{ data: Array<{ timestamp: number; equity: number; drawdown: number; benchmark_equity?: number }> }>(
             `/api/templates/${templateId}/backtests/${runId}/equity_curve`,
         ),
 

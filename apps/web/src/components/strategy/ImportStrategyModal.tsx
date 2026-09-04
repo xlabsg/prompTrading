@@ -52,10 +52,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
     const [tradingViewUrl, setTradingViewUrl] = useState("");
     const [tradingViewName, setTradingViewName] = useState("");
 
-    // YouTube state
-    const [youtubeUrl, setYoutubeUrl] = useState("");
-    const [youtubeName, setYoutubeName] = useState("");
-
     // Import progress state
     const [importStep, setImportStep] = useState<ImportStep>("idle");
     const [currentJobId, setCurrentJobId] = useState<string | null>(null);
@@ -212,48 +208,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
         },
     });
 
-    // YouTube import mutation (placeholder)
-    const youtubeMutation = useMutation({
-        mutationFn: async (data: { url: string; strategy_name?: string }) => {
-            const baseUrl = apiBaseUrl();
-            const response = await fetch(`${baseUrl}/api/strategies/import/youtube`, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                credentials: "include",
-                body: JSON.stringify(data),
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.detail || t("importStrategy.errors.youtubeImport"));
-            }
-
-            return response.json() as Promise<ImportResponse>;
-        },
-        onSuccess: (data) => {
-            // Store import info and start polling
-            setImportSource("youtube");
-            setStrategyId(data.strategy.id);
-            setStrategyName(youtubeName || t("importStrategy.defaults.youtubeName"));
-            setCurrentJobId(data.job.id);
-            setImportStep("processing");
-            setProgressMessage(getJobProgressMessage(data.job));
-
-            // Clear form
-            setYoutubeUrl("");
-            setYoutubeName("");
-        },
-        onError: (error: Error) => {
-            toast({
-                title: t("importStrategy.toast.errorTitle"),
-                description: error.message,
-                variant: "destructive",
-            });
-        },
-    });
-
     const handleTradingViewImport = () => {
         if (!tradingViewUrl.trim()) {
             toast({
@@ -270,23 +224,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
             strategy_name: tradingViewName.trim() || undefined,
         });
     };
-
-    // Parked for when YouTube import is re-enabled:
-    // const handleYouTubeImport = () => {
-    //     if (!youtubeUrl.trim()) {
-    //         toast({
-    //             title: t("importStrategy.validation.urlRequiredTitle"),
-    //             description: t("importStrategy.validation.youtubeUrl"),
-    //             variant: "destructive",
-    //         });
-    //         return;
-    //     }
-    //     setImportStep("submitting");
-    //     youtubeMutation.mutate({
-    //         url: youtubeUrl.trim(),
-    //         strategy_name: youtubeName.trim() || undefined,
-    //     });
-    // };
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -388,11 +325,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
                                 </svg>
                                 {t("importStrategy.sources.tradingview")}
                             </TabsTrigger>
-                                {/* YouTube import temporarily disabled due to YouTube's restrictions */}
-                                {/* <TabsTrigger value="youtube">
-                                    <Youtube className="w-4 h-4 mr-2" />
-                                    YouTube
-                                </TabsTrigger> */}
                             </TabsList>
 
                             <TabsContent value="tradingview" className="space-y-4 mt-4">
@@ -452,60 +384,6 @@ const ImportStrategyModal = ({ open, onOpenChange }: ImportStrategyModalProps) =
                                 </Button>
                             </TabsContent>
 
-                            {/* YouTube import temporarily disabled */}
-                            {/* <TabsContent value="youtube" className="space-y-4 mt-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="yt-url">YouTube Video URL *</Label>
-                                    <Input
-                                        id="yt-url"
-                                        placeholder="https://www.youtube.com/watch?v=..."
-                                        value={youtubeUrl}
-                                        onChange={(e) => setYoutubeUrl(e.target.value)}
-                                        disabled={youtubeMutation.isPending}
-                                    />
-                                    <p className="text-xs text-muted-foreground">
-                                        Paste a YouTube video URL explaining a trading strategy (max 30 min)
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="yt-name">Custom Strategy Name (Optional)</Label>
-                                    <Input
-                                        id="yt-name"
-                                        placeholder="My Custom Strategy"
-                                        value={youtubeName}
-                                        onChange={(e) => setYoutubeName(e.target.value)}
-                                        disabled={youtubeMutation.isPending}
-                                    />
-                                </div>
-
-                                <div className="rounded-lg bg-muted p-4 text-sm">
-                                    <p className="font-medium mb-2">How it works:</p>
-                                    <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
-                                        <li>We download and transcribe the audio</li>
-                                        <li>AI extracts the trading strategy logic</li>
-                                        <li>Converts to Python backtesting code</li>
-                                    </ol>
-                                </div>
-
-                                <Button
-                                    onClick={handleYouTubeImport}
-                                    disabled={youtubeMutation.isPending}
-                                    className="w-full"
-                                >
-                                    {youtubeMutation.isPending ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Processing...
-                                        </>
-                                    ) : (
-                                        <>
-                                            <Youtube className="mr-2 h-4 w-4" />
-                                            Import from YouTube
-                                        </>
-                                    )}
-                                </Button>
-                            </TabsContent> */}
                         </Tabs>
                     </>
                 )}

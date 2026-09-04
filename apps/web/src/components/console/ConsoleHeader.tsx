@@ -8,7 +8,6 @@ import {
     Radio,
     Users,
     LogOut,
-    TrendingUp,
     MessageSquare,
     ArrowLeft,
     Network,
@@ -284,17 +283,11 @@ const ConsoleHeader = ({ currentView, onViewChange, strategy, onOpenSidebar }: C
                                     {additionalViews.map((view) => (
                                         <DropdownMenuItem
                                             key={view.id}
-                                            disabled={view.coming}
-                                            className="flex items-center justify-between"
-                                            onClick={() => !view.coming && onViewChange(view.id as ViewType)}
+                                            className="flex items-center gap-2"
+                                            onClick={() => onViewChange(view.id as ViewType)}
                                         >
-                                            <div className="flex items-center gap-2">
-                                                <view.icon size={14} />
-                                                <span>{view.label}</span>
-                                            </div>
-                                            {view.coming && (
-                                                <span className="text-xs text-muted-foreground">{t("common.comingSoon")}</span>
-                                            )}
+                                            <view.icon size={14} />
+                                            <span>{view.label}</span>
                                         </DropdownMenuItem>
                                     ))}
                                 </DropdownMenuContent>

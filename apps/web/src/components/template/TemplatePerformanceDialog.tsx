@@ -17,6 +17,7 @@ import {
     Activity,
     Signal,
     Target,
+    type LucideIcon,
 } from "lucide-react";
 import { templatesApi } from "@/lib/api";
 import type { TemplateDetail, TemplatePerformanceResponse } from "@/lib/types";
@@ -273,7 +274,7 @@ export function TemplatePerformanceDialog({
 interface MetricCardProps {
     label: string;
     value: string;
-    icon: React.ComponentType<{ className?: string; size?: number }>;
+    icon: LucideIcon;
     trend?: "up" | "down";
 }
 

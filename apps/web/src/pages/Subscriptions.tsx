@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { RefreshCw, Pause, Play, AlertCircle, CheckCircle2, MessageCircle, Settings, Star, Library } from "lucide-react";
 import { subscriptionsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { SubscriptionResponse } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
@@ -206,12 +205,12 @@ export function SubscriptionsPage() {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => syncMutation.mutate(sub.id)}
-                                                    disabled={syncMutation.isPending()}
+                                                    disabled={syncMutation.isPending}
                                                 >
                                                     <RefreshCw
                                                         className={cn(
                                                             "mr-2 h-4 w-4",
-                                                            syncMutation.isPending() && "animate-spin"
+                                                            syncMutation.isPending && "animate-spin"
                                                         )}
                                                     />
                                                     {t("subscriptions.update")}
@@ -223,7 +222,7 @@ export function SubscriptionsPage() {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => pauseMutation.mutate(sub.id)}
-                                                    disabled={pauseMutation.isPending()}
+                                                    disabled={pauseMutation.isPending}
                                                 >
                                                     <Pause className="mr-2 h-4 w-4" />
                                                     {t("subscriptions.pause")}
@@ -233,7 +232,7 @@ export function SubscriptionsPage() {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => resumeMutation.mutate(sub.id)}
-                                                    disabled={resumeMutation.isPending()}
+                                                    disabled={resumeMutation.isPending}
                                                 >
                                                     <Play className="mr-2 h-4 w-4" />
                                                     {t("subscriptions.resume")}

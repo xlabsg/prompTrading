@@ -65,7 +65,7 @@ export class BacktestActionHandler implements ActionHandler<BacktestParams, Back
         };
     }
 
-    async pollCompletion(context: ActionContext, jobId: string, params: BacktestParams): Promise<BacktestResult> {
+    async pollCompletion(context: ActionContext, jobId: string, _params: BacktestParams): Promise<BacktestResult> {
         const strategyId = context.strategy?.id;
         if (!strategyId) throw new Error("No active strategy");
 

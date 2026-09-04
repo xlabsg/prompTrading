@@ -18,7 +18,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrendingDown, Play, Loader2, History, Sparkles } from "lucide-react";
-import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Area, AreaChart, ReferenceLine } from "recharts";
 import { backtestsApi, jobsApi, strategiesApi, templateBacktestsApi } from "@/lib/api";
 import type { Strategy, BacktestRun, BacktestCreateRequest, BacktestOrder, BacktestPosition, BacktestTrade, BacktestSignalEvent, BacktestCandle } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -34,6 +33,7 @@ interface BacktestViewProps {
     readOnly?: boolean;
     hideActions?: boolean;
     hideSettings?: boolean;
+    initialRunId?: string;
 }
 
 type ParamSchemaItem = {
@@ -55,7 +55,7 @@ type StrategyMeta = {
     params_schema?: ParamsSchema;
 };
 
-const intervalOptions = [
+const ALL_INTERVAL_OPTIONS = [
     { value: "1m", label: "1m" },
     { value: "5m", label: "5m" },
     { value: "15m", label: "15m" },
@@ -67,7 +67,7 @@ const intervalOptions = [
 type BacktestApiAdapter = {
     list: (resourceId: string) => Promise<BacktestRun[]>;
     get: (resourceId: string, runId: string) => Promise<BacktestRun>;
-    getEquityCurve: (resourceId: string, runId: string) => Promise<{ data: Array<{ timestamp: number; equity: number; drawdown: number }> }>;
+    getEquityCurve: (resourceId: string, runId: string) => Promise<{ data: Array<{ timestamp: number; equity: number; drawdown: number; benchmark_equity?: number }> }>;
     getCandles?: (resourceId: string, runId: string) => Promise<{ data: BacktestCandle[] }>;
     getTrades: (resourceId: string, runId: string) => Promise<{ trades: BacktestTrade[] }>;
     getOrders: (resourceId: string, runId: string) => Promise<{ orders: BacktestOrder[] }>;
@@ -539,16 +539,6 @@ const BacktestView = ({
             hour: "2-digit",
             minute: "2-digit",
         });
-    const formatTimestampMs = (timestamp: number) => {
-        if (!Number.isFinite(timestamp)) return "";
-        const ms = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
-        return new Date(ms).toLocaleString(i18n.language.startsWith("zh") ? "zh-CN" : "en-US", {
-            month: "short",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        });
-    };
     const formatTimestampLong = (timestamp: number) => {
         if (!Number.isFinite(timestamp)) return "";
         const ms = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp;
@@ -573,7 +563,7 @@ const BacktestView = ({
     };
 
     const currentSymbols = exchangeSymbols[settings.exchange as keyof typeof exchangeSymbols] || [];
-    const intervalOptions = settings.exchange === "us_stock" ? [{ value: "1d", label: t("backtest.intervals.daily") }] : intervals;
+    const intervalOptions = settings.exchange === "us_stock" ? [{ value: "1d", label: t("backtest.intervals.daily") }] : ALL_INTERVAL_OPTIONS;
 
     if (mode === "strategy") {
         if (!strategy) {

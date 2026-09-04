@@ -104,9 +104,6 @@ const PortfolioMonitorView = ({ onNavigateToLive, strategy }: PortfolioMonitorVi
 
                 // Extract successful results
                 const summaries = handlePartialResults(allAccountsData.map((d) => d.summary));
-                const pendingOrders = handlePartialResults(allAccountsData.map((d) => d.orders));
-                const orderHistories = handlePartialResults(allAccountsData.map((d) => d.history));
-                const posHistories = handlePartialResults(allAccountsData.map((d) => d.posHistory));
 
                 // Store individual account summaries for balance display
                 const balancesMap = new Map<string, number>();

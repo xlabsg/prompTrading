@@ -8,11 +8,13 @@ import {
 } from "../ui/select";
 import { useTranslation } from "react-i18next";
 
+type SourceType = "all" | "scripts" | "ideas";
+
 interface TrendingFiltersProps {
-  sourceType: "all" | "scripts" | "ideas";
+  sourceType: SourceType;
   backtestStatus: "all" | "pending" | "completed";
   sortBy: "likes" | "scraped_at";
-  onSourceTypeChange: (value: "all" | "scripts" | "ideas") => void;
+  onSourceTypeChange: (value: SourceType) => void;
   onBacktestStatusChange: (value: "all" | "pending" | "completed") => void;
   onSortByChange: (value: "likes" | "scraped_at") => void;
 }
@@ -28,7 +30,7 @@ export const TrendingFilters = ({
   const { t } = useTranslation();
   return (
     <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-      <Tabs value={sourceType} onValueChange={onSourceTypeChange} className="w-full sm:w-auto">
+      <Tabs value={sourceType} onValueChange={(value) => onSourceTypeChange(value as SourceType)} className="w-full sm:w-auto">
         <TabsList className="w-full sm:w-auto">
           <TabsTrigger value="all" className="flex-1 sm:flex-none">
             {t("trending.filters.all")}
