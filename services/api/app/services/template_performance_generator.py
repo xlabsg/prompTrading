@@ -302,3 +302,31 @@ class TemplatePerformanceGenerator:
             signals.append(signal)
 
         return runs, signals
+
+
+def generate_template_performance_data(
+    db: Session,
+    template_id: str,
+    days_history: int = 90,
+    run_count: int = 10,
+) -> tuple[list[TemplatePerformanceRun], list[TemplateSignal]]:
+    """Helper to generate and persist synthetic performance data and signals for a template."""
+    template = db.get(StrategyTemplate, template_id)
+    if not template:
+        raise ValueError(f"Template with id {template_id} not found")
+
+    runs, signals = TemplatePerformanceGenerator.generate_performance_data(
+        db, template, days_history=days_history, run_count=run_count
+    )
+    for run in runs:
+        existing = db.query(TemplatePerformanceRun).filter_by(
+            template_id=template.id, run_date=run.run_date
+        ).first()
+        if not existing:
+            db.add(run)
+
+    for sig in signals:
+        db.add(sig)
+
+    db.flush()
+    return runs, signals
