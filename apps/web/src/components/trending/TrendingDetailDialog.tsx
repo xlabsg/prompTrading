@@ -6,31 +6,8 @@ import {
 } from "../ui/dialog";
 import { Badge } from "../ui/badge";
 import { TrendingUp, Eye, Heart, MessageCircle, Calendar } from "lucide-react";
-import { BacktestSummary } from "@/lib/types";
+import type { TrendingStrategy } from "@/lib/types";
 import { useTranslation } from "react-i18next";
-
-interface TrendingStrategy {
-  id: string;
-  source_type: "idea" | "script";
-  tradingview_id: string;
-  title: string;
-  description: string | null;
-  author: string | null;
-  author_url: string | null;
-  likes: number;
-  views: number;
-  comments: number;
-  detected_symbols: string[];
-  detected_markets: string[];
-  scraped_at: string;
-  trending_rank: number | null;
-  trending_category: string | null;
-  backtest_status: "pending" | "running" | "completed" | "failed";
-  backtest_results: Record<string, BacktestSummary> | null;
-  backtest_error: string | null;
-  url: string;
-  image_url: string | null;
-}
 
 interface TrendingDetailDialogProps {
   strategy: TrendingStrategy | null;
@@ -71,7 +48,7 @@ export const TrendingDetailDialog = ({
   };
 
   const hasBacktest = strategy.backtest_status === "completed" && strategy.backtest_results;
-  const backtestEntries = hasBacktest ? Object.entries(strategy.backtest_results) : [];
+  const backtestEntries = strategy.backtest_results ? Object.entries(strategy.backtest_results) : [];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

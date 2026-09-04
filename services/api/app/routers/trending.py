@@ -7,12 +7,11 @@ TradingView trending strategies.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Optional
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from control_plane.enums import (
@@ -22,7 +21,7 @@ from control_plane.enums import (
     TrendingSourceType,
 )
 from control_plane.models import Job, TradingViewTrendingStrategy, TrendingSchedule
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from app.deps import get_db, get_redis
 from app.auth import get_current_user
 from app.settings import settings

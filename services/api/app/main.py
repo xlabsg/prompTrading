@@ -4,15 +4,13 @@ import asyncio
 import logging
 import logging.config
 import os
-import secrets
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
 
 import redis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from control_plane.db import create_db_engine, create_session_factory
 from control_plane.models import Base

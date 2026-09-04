@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any
 
 from typing import Annotated
 
@@ -23,7 +23,6 @@ from sqlalchemy.orm import Session
 from control_plane.models import StrategyTemplate
 from control_plane.enums import StrategyTemplateType
 from app.deps import get_db
-from app.settings import settings
 from app.admin import require_admin as require_admin_with_db
 
 router = APIRouter()

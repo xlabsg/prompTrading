@@ -2,8 +2,8 @@
 import pytest
 from decimal import Decimal
 from risk_engine import (
-    RiskValidator, RiskConfig, OrderSpec, Position, Balance,
-    OrderSide, OrderType, PositionSide, PositionStatus
+    RiskValidator, RiskConfig, OrderSpec, Balance,
+    OrderSide, OrderType, PositionSide
 )
 
 

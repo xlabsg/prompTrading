@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -8,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from control_plane.enums import ChatStatus, JobType, StrategyRole
 from control_plane.models import Job, Repository, Strategy, StrategyMember
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from app.auth import get_current_user, require_strategy_member
 from app.deps import get_db
 from app.schemas import RepoImportRequest, RepoResponse, StrategyResponse, TriggerJobResponse

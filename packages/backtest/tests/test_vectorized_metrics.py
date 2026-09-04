@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import pytest
 
 from backtest.vectorized import BacktestConfig, run_backtest
 

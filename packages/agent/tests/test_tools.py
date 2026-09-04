@@ -1,6 +1,6 @@
 import unittest
 import asyncio
-from agent.tools.base import ToolResult, tool
+from agent.tools.base import tool
 from agent.tools.registry import ToolRegistry
 from agent.tools.web_search import DuckDuckGoSearchTool
 from agent.tools.market_analyzer import MarketAnalyzerTool

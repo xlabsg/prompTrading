@@ -13,13 +13,11 @@ Side B (New MVP Decoupled Flow):
 - 内置零门槛 Paper Trading 模拟盘，秒级启动
 """
 
-import asyncio
-import json
 import time
 import numpy as np
 import pandas as pd
 
-from backtest.vectorized import run_backtest, BacktestConfig
+from backtest.vectorized import run_backtest
 from app.trading_engine.paper_client import PaperExchangeClient
 
 

@@ -19,7 +19,6 @@ from app.trading_engine.monitor import PositionMonitor
 from app.trading_engine.strategy_runner import StrategyRunner
 from app.trading_engine.logging_utils import log_trading_event
 from app.trading_engine.sdk_config import build_trading_config
-from app.routers.ws import manager as ws_manager
 
 # Risk Engine imports
 from risk_engine import Reconciler, OrderManager

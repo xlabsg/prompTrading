@@ -4,7 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from control_plane.enums import OrderSide, OrderStatus, OrderType, TradeStatus, TradingSessionStatus
-from control_plane.models import Base, Order, StrategyExchangeAccount, TradingConfig, TradingSession, TradingTrade
+from control_plane.models import Base, Order, TradingConfig, TradingSession, TradingTrade
 from app.trading_engine.executor import OrderExecutor
 
 

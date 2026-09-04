@@ -19,13 +19,12 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.requests import Request
 from pydantic import BaseModel, Field
-from sqlalchemy import Float, case, cast, select, func
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
 from control_plane.enums import (
     StrategyRole,
     StrategyTemplateType,
-    SubscriptionStatus,
 )
 from control_plane.models import (
     Strategy,
@@ -34,13 +33,8 @@ from control_plane.models import (
     StrategySubscription,
     StrategyTemplate,
     StrategyVersion,
-    User,
 )
 from control_plane.templates import instantiate_strategy_from_template
-from control_plane.workspaces import (
-    init_strategy_workspace,
-    snapshot_current_strategy_to_version,
-)
 from app.auth import get_current_user
 from app.deps import get_db
 from app.settings import settings
@@ -488,7 +482,6 @@ async def subscribe_template(
     db.add(version)
 
     # Create exchange account
-    from app.crypto import encrypt_credential
     exchange_account = StrategyExchangeAccount(
         strategy_id=strategy_id,
         name=f"{req.exchange} - {', '.join(req.symbols)}",

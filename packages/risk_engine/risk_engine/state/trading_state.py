@@ -4,8 +4,7 @@ Trading State
 交易状态数据结构
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Any
-from decimal import Decimal
+from typing import Dict, Optional, Any
 from datetime import datetime
 from ..core import Position, Order
 

@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from control_plane.enums import ChatStatus, JobStatus, JobType, StrategyRole
 from control_plane.versions import create_strategy_version
 from control_plane.models import BacktestRun, Dataset, Job, Strategy
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from control_plane.workspaces import get_run_dir, init_strategy_workspace
 from app.auth import require_strategy_member
 from app.deps import get_db, get_redis

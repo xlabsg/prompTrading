@@ -8,8 +8,6 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from control_plane.enums import (
     BacktestStatus,
     ChatStatus,
-    JobStatus,
-    JobType,
     LogLevel,
     TradingSessionStatus,
     OrderSide,
@@ -20,8 +18,6 @@ from control_plane.enums import (
     StrategyRole,
     SignalStatus,
     TradeStatus,
-    TrendingSourceType,
-    TrendingBacktestStatus,
 )
 
 
@@ -453,19 +449,6 @@ class TradingTrade(Base):
 
 # --- Code repositories & search ---
 
-class Installation(Base):
-    __tablename__ = "installations"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid_str)
-    provider: Mapped[str] = mapped_column(String(32), default="github")
-    installation_id: Mapped[str] = mapped_column(String(64), index=True)
-    account_login: Mapped[str] = mapped_column(String(200))
-    target_type: Mapped[str] = mapped_column(String(20), default="Organization")  # or User
-    permissions: Mapped[Optional[dict[str, Any]]] = mapped_column(JSON, nullable=True)
-    active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, index=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
-
 
 class Repository(Base):
     __tablename__ = "repositories"
@@ -477,7 +460,6 @@ class Repository(Base):
     name: Mapped[str] = mapped_column(String(200), index=True)
     visibility: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     default_branch: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
-    installation_id: Mapped[Optional[str]] = mapped_column(ForeignKey("installations.id", ondelete="SET NULL"), nullable=True)
     github_installation_id: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)  # GitHub's raw installation ID for API calls
     sync_mode: Mapped[str] = mapped_column(String(20), default="both")  # webhook/schedule/both
     tracked_branches: Mapped[Optional[list[str]]] = mapped_column(JSON, nullable=True)

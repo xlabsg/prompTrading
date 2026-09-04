@@ -22,7 +22,7 @@ from control_plane.models import (
     TemplatePerformanceRun,
     TemplateSignal,
 )
-from control_plane.enums import JobStatus, JobType, BacktestStatus
+from control_plane.enums import BacktestStatus
 from control_plane.templates import TEMPLATE_STRATEGIES
 from worker.settings import settings
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any
 
 from agent.observability.langfuse_client import get_langfuse
 from agent.observability.metrics import LLMCallMetrics, calculate_cost

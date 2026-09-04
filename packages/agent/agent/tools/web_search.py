@@ -7,7 +7,6 @@ import os
 import re
 import urllib.parse
 import urllib.request
-from typing import Any
 from agent.tools.base import BaseTool, ToolResult
 
 logger = logging.getLogger(__name__)

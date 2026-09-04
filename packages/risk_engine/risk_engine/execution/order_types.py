@@ -4,7 +4,6 @@ Order Types and Utilities
 订单类型定义和工具函数（包括 Snowflake ID 生成）
 """
 import time
-import random
 import os
 import hashlib
 import logging

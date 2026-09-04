@@ -9,7 +9,6 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from control_plane.enums import JobType
 from control_plane.models import (
     StrategyTemplate,
     TemplatePerformanceRun,
@@ -136,7 +135,6 @@ def _publish_log(rds, job_id: str, message: str) -> None:
     if rds is None:
         return
     try:
-        import redis
         import json
 
         channel = f"job:{job_id}:logs"

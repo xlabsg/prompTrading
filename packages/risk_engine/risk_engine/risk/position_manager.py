@@ -11,7 +11,7 @@ import logging
 from decimal import Decimal
 from typing import Optional, Tuple, Dict, Any
 from ..core import (
-    Position, PositionSide, DynamicTPSLConfig, SupportResistance,
+    PositionSide, DynamicTPSLConfig, SupportResistance,
     Bar
 )
 

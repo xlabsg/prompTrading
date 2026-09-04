@@ -4,7 +4,6 @@ import os
 import sys
 import tempfile
 from unittest.mock import MagicMock
-import pytest
 
 # Ensure local test run does not try to write to /var/log/app
 if "LOG_DIR" not in os.environ:

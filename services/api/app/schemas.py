@@ -54,18 +54,6 @@ class DatasetRequest(BaseModel):
     end_ms: Optional[int] = None
 
 
-class DatasetResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    exchange: str
-    symbol: str
-    interval: str
-    start_ms: Optional[int] = None
-    end_ms: Optional[int] = None
-    created_at: datetime
-
-
 class USStockSymbolResponse(BaseModel):
     symbol: str
     name: str
@@ -153,36 +141,11 @@ class ChangeSpec(BaseModel):
     version: int = 1
 
 
-class ChangeOperationResult(BaseModel):
-    """Result of applying a single change operation."""
-    operation_index: int
-    success: bool
-    error_message: Optional[str] = None
-    lines_changed: Optional[tuple[int, int]] = None
-    diff_preview: Optional[str] = None
-
-
-class PatchReport(BaseModel):
-    """Complete report of patch application."""
-    success: bool
-    operations_applied: int
-    operations_failed: int
-    results: list[ChangeOperationResult]
-    final_diff: Optional[str] = None
-    error_summary: Optional[str] = None
-
-
 class RefineStrategyRequest(BaseModel):
     prompt: str
     patch: Optional[str] = None  # Legacy unified diff
     change_spec: Optional[ChangeSpec] = None  # New structured format
     llm_meta: dict[str, Any] = Field(default_factory=dict)
-
-
-class ChatMessage(BaseModel):
-    role: str  # "user" or "assistant"
-    content: str
-    summary: Optional[str] = None
 
 
 class ChatRequest(BaseModel):
@@ -267,21 +230,6 @@ class RepoResponse(BaseModel):
     last_error: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-
-
-class SearchQuery(BaseModel):
-    q: str
-    repo_id: Optional[str] = None
-    branch: Optional[str] = None
-    path_prefix: Optional[str] = None
-    ext: Optional[str] = None
-    limit: int = 20
-    offset: int = 0
-
-
-
-
-# --- Auth & user management ---
 
 class UserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)

@@ -2,15 +2,14 @@
 
 import json
 import time
-from decimal import Decimal
-from typing import Any, Optional
+from typing import Optional
 from urllib.parse import urlencode
 
 import requests
 
 from okx_sdk.auth import generate_headers, generate_timestamp
 from okx_sdk.exceptions import OKXAPIError, OKXAuthError, OKXError
-from okx_sdk.models import Balance, OrderRequest, OrderResponse, Position
+from okx_sdk.models import Balance, OrderResponse, Position
 from okx_sdk.utils import format_decimal, normalize_order_size
 
 

@@ -9,7 +9,6 @@ ignore = [
     "E402",  # Module level import not at top
     "E712",  # Comparison to True should be `cond is True` (conflicts with SQLAlchemy column == True)
     "E741",  # Ambiguous variable name
-    "F401",  # Unused import
     "F841",  # Unused variable
 ]
 exclude = [

@@ -24,8 +24,8 @@ from sqlalchemy import text, or_, update
 from sqlalchemy.orm import Session
 
 from control_plane.db import create_db_engine, create_session_factory, session_scope
-from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingBacktestStatus, TrendingSourceType
-from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyMember, StrategyVersion, Repository, RepoSync, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
+from control_plane.enums import BacktestStatus, ChatStatus, JobStatus, JobType, TrendingSourceType
+from control_plane.models import Base, BacktestRun, Dataset, Job, Strategy, StrategyVersion, Repository, RepoSync, TradingViewTrendingStrategy, TrendingSchedule, TemplatePerformanceSchedule
 from control_plane.queue import QUEUE_NAME, job_log_channel
 from control_plane.workspaces import git_commit, init_git_repo
 from worker.settings import settings
@@ -103,7 +103,6 @@ except ImportError:
 from control_plane.queue import (
     get_file_queue,
     enqueue_job,
-    request_cancel_job,
     is_job_cancelled,
 )
 

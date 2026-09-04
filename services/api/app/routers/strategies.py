@@ -9,14 +9,11 @@ import sys
 import time
 import queue
 import threading
-import shutil
-import tempfile
 from datetime import datetime, timezone
 
 import json
 import hashlib
 import requests
-import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -35,7 +32,7 @@ from control_plane.models import (
     StrategyMember,
     StrategyVersion,
 )
-from control_plane.queue import QUEUE_NAME, enqueue_job
+from control_plane.queue import enqueue_job
 from control_plane.workspaces import get_run_dir, git_commit, init_strategy_workspace
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
 from app.deps import get_db, get_redis, get_session_factory
@@ -476,103 +473,6 @@ Output format:
   ```
 
 IMPORTANT: The "summary" field will be used as the strategy name. Keep it SHORT (10-20 Chinese characters, and no more than 20 characters total), like a title, not a full description.
-"""
-
-# Import new structured refine prompt
-try:
-    from agent.refine_prompts import REFINE_SYSTEM_PROMPT as REFINE_SYSTEM_PROMPT_STRUCTURED, build_refine_user_prompt
-    USE_STRUCTURED_REFINE = True
-except ImportError:
-    # Fallback to legacy prompt if agent module not available
-    USE_STRUCTURED_REFINE = False
-    REFINE_SYSTEM_PROMPT_STRUCTURED = """You are a strategy refinement assistant. The user's strategy has already been generated and they want to make modifications.
-
-You have access to the user's current strategy code which is provided at the start of the conversation.
-When the user describes what they want to change, analyze the current code and provide specific modifications.
-
-Only output [REFINE] when the request is clear and actionable. If anything is ambiguous, ask a brief clarification question WITHOUT [REFINE].
-
-Output format when ready to propose edits:
-  [REFINE]
-  Instructions: <clear description of what to change in the strategy code, referencing specific functions/lines when possible>
-  ChangeSpec:
-  ```json
-  {
-    "operations": [
-      {
-        "type": "exact_replace",
-        "old_text": "<exact code block to replace, including surrounding context (at least 3-5 lines before/after the change)>",
-        "new_text": "<replacement code block with the same surrounding context>"
-      }
-    ]
-  }
-  ```
-
-CRITICAL REQUIREMENTS:
-1. **Use exact_replace type only** - DO NOT use unified diff format
-2. **Include generous context** - Add 3-5 lines before/after the actual change to ensure fuzzy matching works
-3. **Preserve indentation exactly** - Match the original code's indentation (spaces/tabs)
-4. **old_text must exist in current code** - Copy the exact text from the current strategy
-5. **Multiple operations** - If changing multiple locations, create separate operations
-
-Example:
-If changing just `self.lookback = 20` to `self.lookback = 50` in the initialize method, include context:
-```json
-{
-  "operations": [{
-    "type": "exact_replace",
-    "old_text": "    def initialize(self, context: StrategyContext) -> None:\n        \"\"\"Initialize strategy parameters.\"\"\"\n        self.lookback = 20\n        self.entry_threshold = 0.02",
-    "new_text": "    def initialize(self, context: StrategyContext) -> None:\n        \"\"\"Initialize strategy parameters.\"\"\"\n        self.lookback = 50\n        self.entry_threshold = 0.02"
-  }]
-}
-```
-
-Be concise but specific about what needs to be modified in the Python strategy code.
-"""
-
-# Keep legacy prompt name for backward compatibility
-REFINE_SYSTEM_PROMPT = REFINE_SYSTEM_PROMPT_STRUCTURED + (
-    "\n\nYou may call tools to fetch context, such as `get_latest_backtest`, `get_strategy_code`, "
-    "`get_strategy_files`, `get_strategy_meta`, or `get_strategy_params_schema`."
-)
-
-# Retry prompt: force strict JSON schema to reduce provider-specific "answer-only" outputs.
-REFINE_SYSTEM_PROMPT_STRICT = (
-    REFINE_SYSTEM_PROMPT
-    + "\n\n"
-    + "You MUST respond with a single JSON object (no markdown, no code fences).\n"
-    + "Schema:\n"
-    + '{\n  "instructions": "<string>",\n  "change_spec": {"operations": [<operation>, ...]}\n}\n'
-    + "Rules:\n"
-    + "- Do NOT output keys like 'answer' or 'instruction' at the top level.\n"
-    + "- change_spec.operations MUST be a JSON array.\n"
-    + "- If you need clarification, put the question in 'instructions' and set operations to an empty array.\n"
-)
-
-ANALYSIS_SYSTEM_PROMPT = """You are a quantitative trading strategy analyst. Use tools like `get_latest_backtest` or `get_strategy_code` to read the user's latest artifacts.
-Do NOT ask the user to paste logs. Call tools when you need data.
-
-When analyzing backtest results, consider:
-1. **Empty Results Issue**: If there are 0 trades, this is a CRITICAL problem - the strategy is not generating any trading signals. Common causes:
-   - Entry conditions are too strict or never met
-   - Data range is too short
-   - Indicator parameters don't match the market conditions
-   - Logic errors in the strategy code
-
-2. **Poor Performance**: If total return is negative or max drawdown is too high:
-   - Entry/exit timing may be off
-   - Risk management (stop loss/take profit) may need adjustment
-   - Position sizing could be improved
-
-3. **Log Analysis**: Look for errors, warnings, or unusual patterns in execution logs
-
-Based on your analysis:
-- Explain what you observe in the backtest results
-- Identify potential issues or areas for improvement
-- Suggest specific modifications to improve the strategy
-- If appropriate, output [REFINE] followed by modification instructions
-
-Always be specific and actionable in your recommendations.
 """
 
 STRATEGY_NAME_MAX_CHARS = 20

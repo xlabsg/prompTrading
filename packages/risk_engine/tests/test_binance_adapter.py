@@ -1,7 +1,7 @@
 """Unit tests for BinanceClient and BinanceAdapter."""
 
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from risk_engine import (

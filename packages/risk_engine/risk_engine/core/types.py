@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Optional, Dict, Any
 from .enums import (
     OrderType, OrderSide, PositionSide, OrderStatus, PositionStatus,
-    TradingMode, PositionMode, StopLossType
+    StopLossType
 )
 
 
