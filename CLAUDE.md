@@ -38,7 +38,6 @@ prompTrading/
 │   ├── risk_engine/       # Risk control, stop loss, reconciliation, order manager
 │   ├── live_trading_sdk/  # Strategy authoring SDK (Broker / LiveStrategy protocols)
 │   # --- peripheral, not on the MVP path ---
-│   ├── strategy_templates/    # Template system (parallel strategy/backtest flow)
 │   ├── trending_scraper/      # TradingView trending list scraper
 │   ├── tradingview_scraper/   # PineScript import from TradingView URLs
 │   └── youtube_processor/     # YouTube import — TEMPORARILY DISABLED, not deleted.

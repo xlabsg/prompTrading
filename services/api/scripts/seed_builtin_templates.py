@@ -69,10 +69,6 @@ BUILTIN_TEMPLATES = [
                 },
             },
         },
-        "code_snapshot": {
-            "module": "strategy_templates.templates.divergence",
-            "entrypoint": "create_live_strategy",
-        },
         "author": "Stratsmith",
         "tags": ["divergence", "rsi", "macd", "mean_reversion"],
         "risk_level": "medium",
@@ -129,10 +125,6 @@ BUILTIN_TEMPLATES = [
             "trend_neutral_policy": "skip",
             "trend_insufficient_policy": "skip",
             "trend_max_entry_distance_pct": 0.0,
-        },
-        "code_snapshot": {
-            "module": "strategy_templates.templates.flow_right",
-            "entrypoint": "create_live_strategy",
         },
         "author": "Stratsmith",
         "tags": ["order_flow", "momentum", "high_frequency"],
