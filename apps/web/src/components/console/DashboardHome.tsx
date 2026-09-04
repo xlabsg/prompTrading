@@ -417,13 +417,20 @@ const DashboardHome = ({
                             if (data.type === "token") {
                                 setStreamingMessage(prev => prev + data.content);
                             } else if (data.type === "progress") {
-                                const msg = data.message || (data.path ? `正在生成 ${data.path} 文件...` : null);
+                                const isRead = data.tool && ["read_file", "read"].includes(data.tool);
+                                const msg = data.path
+                                    ? (isRead
+                                        ? translate("console.sidebar.readingFile", { path: data.path })
+                                        : translate("console.sidebar.editingFile", { path: data.path }))
+                                    : data.stage === "thinking"
+                                    ? translate("console.sidebar.aiThinking")
+                                    : data.message;
                                 if (msg) setStreamingProgressMessage(msg);
                             } else if (data.type === "done") {
                                 // Refresh strategies to get updated chat history
                                 queryClient.invalidateQueries({ queryKey: ["strategies"] });
                             } else if (data.type === "error") {
-                                const content = String(data.content || "未知错误");
+                                const content = String(data.content || translate("dashboard.generateErrorGeneric"));
                                 setGenerateError(content);
                                 console.error("SSE error:", data.content);
                             }
@@ -726,7 +733,7 @@ const DashboardHome = ({
                                                 <div className="flex items-center gap-2">
                                                     <Loader2 className="w-4 h-4 animate-spin text-primary" />
                                                     <span className="text-sm text-muted-foreground">
-                                                        {streamingProgressMessage || "正在初始化策略工作区..."}
+                                                        {streamingProgressMessage || translate("console.sidebar.initializingWorkspace")}
                                                     </span>
                                                 </div>
                                             </div>

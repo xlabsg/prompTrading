@@ -328,7 +328,17 @@ export const jobsApi = {
     // Stream job events with fallback to polling
     waitForCompletionWithStream: async (
         jobId: string,
-        onEvent?: (event: { type: string; step?: string; detail?: string; message?: string; line?: string; status?: string }) => void,
+        onEvent?: (event: {
+            type: string;
+            step?: string;
+            detail?: string;
+            message?: string;
+            line?: string;
+            status?: string;
+            tool?: string;
+            path?: string;
+            stage?: string;
+        }) => void,
         timeout = 420000
     ): Promise<Job> => {
         return new Promise<Job>((resolve, reject) => {
