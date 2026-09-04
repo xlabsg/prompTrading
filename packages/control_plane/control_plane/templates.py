@@ -147,58 +147,6 @@ def generate_signals(data: pd.DataFrame, params: dict) -> dict:
     }
 ''',
 
-    "tmpl-flow-right": '''import pandas as pd
-import numpy as np
-
-def generate_signals(data: pd.DataFrame, params: dict) -> dict:
-    """Flow Right Strategy - Order-flow momentum & multi-window regime."""
-    close = data["close"]
-    volume = data["volume"]
-    high = data["high"]
-    low = data["low"]
-
-    ema_period = int(params.get("trend_ema_period", 50))
-    vol_lookback = int(params.get("live_history_bars", 60))
-
-    ema_trend = close.ewm(span=ema_period, adjust=False).mean()
-    vol_mean = volume.rolling(vol_lookback).mean()
-    vol_std = volume.rolling(vol_lookback).std().replace(0, np.nan)
-    vol_zscore = ((volume - vol_mean) / vol_std).fillna(0.0)
-
-    # Estimate candle directional flow
-    hl_range = (high - low).replace(0, np.nan)
-    co_delta = close - data["open"]
-    flow_imbalance = (co_delta / hl_range).clip(-1.0, 1.0).fillna(0.0)
-
-    # Price above EMA + positive flow imbalance + volume expansion
-    long_regime = (close > ema_trend) & (flow_imbalance > 0.15) & (vol_zscore > -0.5)
-    short_regime = (close < ema_trend) & (flow_imbalance < -0.15) & (vol_zscore > -0.5)
-
-    target_weights = np.where(long_regime, 1.0, np.where(short_regime, -1.0, 0.0))
-    target_series = pd.Series(target_weights, index=data.index)
-
-    reasons: list[str] = []
-    prev = target_series.shift(1).fillna(0.0)
-    for i in range(len(target_series)):
-        cur = float(target_series.iloc[i])
-        prv = float(prev.iloc[i])
-        if cur > 0 and prv <= 0:
-            reasons.append(f"flow_impulse_long (imb={flow_imbalance.iloc[i]:.2f}, z={vol_zscore.iloc[i]:.2f})")
-        elif cur < 0 and prv >= 0:
-            reasons.append(f"flow_impulse_short (imb={flow_imbalance.iloc[i]:.2f}, z={vol_zscore.iloc[i]:.2f})")
-        elif cur == 0 and prv != 0:
-            reasons.append("flow_regime_exit")
-        else:
-            reasons.append("")
-
-    return {
-        "target_weights": target_series.to_numpy(dtype=float),
-        "weight_reason": reasons,
-        "ema_trend": ema_trend.to_numpy(),
-        "flow_imbalance": flow_imbalance.to_numpy(),
-        "vol_zscore": vol_zscore.to_numpy(),
-    }
-''',
 
     "tmpl-moving-average-crossover": '''import pandas as pd
 import numpy as np

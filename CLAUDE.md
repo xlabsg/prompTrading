@@ -227,6 +227,16 @@ two-step pattern (construct with `""`, flush, patch the path) made easy to forge
 - `snapshot=True` copies the current strategy into `versions/<id>/` now.
 - `snapshot=False` reserves the directory for a job container to populate.
 
+### Builtin Template Code (`control_plane/templates.py`)
+`TEMPLATE_STRATEGIES` is the single source of `generate_signals` code for the
+builtin templates, keyed by template id. Both consumers read it: fork/instantiate
+via `get_template_strategy_code`, and `worker/template_backtest_job.py` by
+importing the dict. Do not add a second copy — the worker used to keep its own,
+the two drifted, and a shipped template lost the ability to backtest.
+
+The `code_snapshot.module` column on `StrategyTemplate` is inert metadata. It is
+never resolved into an import; template code comes from the dict above.
+
 ### Worker Job Dispatch (`services/worker/worker/main.py`)
 `JOB_HANDLERS` maps `JobType` -> handler; every handler is normalised to
 `(db, rds, docker_client, job)`. Add a job type by adding a `JobType` member and a
