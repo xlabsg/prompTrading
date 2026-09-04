@@ -223,6 +223,20 @@ def _fetch_candles_uncached(req: CandlesRequest) -> pd.DataFrame:
     # Keep at most total_limit bars (newest within any filtered range).
     if len(df) > total_limit:
         df = df.tail(total_limit).reset_index(drop=True)
+
+    # Enrich with real crypto derivative metrics (Funding Rate and Open Interest)
+    if not df.empty:
+        try:
+            from data.derivatives import align_derivatives_onto_ohlcv, fetch_okx_funding_rates, fetch_okx_open_interest
+            fr_df = fetch_okx_funding_rates(inst_id, limit=100)
+            oi_df = fetch_okx_open_interest(inst_id, period="1H")
+            df = align_derivatives_onto_ohlcv(df, fr_df, oi_df)
+        except Exception:
+            if "funding_rate" not in df.columns:
+                df["funding_rate"] = 0.0
+            if "open_interest" not in df.columns:
+                df["open_interest"] = 0.0
+
     return df
 
 
@@ -254,6 +268,20 @@ def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
         interval_ms=_bar_ms(req.bar),
         fallback_to_stale_on_error=True,
     )
+
+    # Ensure cached historical entries also have derivative columns
+    if not df.empty and ("funding_rate" not in df.columns or "open_interest" not in df.columns):
+        try:
+            from data.derivatives import align_derivatives_onto_ohlcv, fetch_okx_funding_rates, fetch_okx_open_interest
+            fr_df = fetch_okx_funding_rates(req.inst_id, limit=100)
+            oi_df = fetch_okx_open_interest(req.inst_id, period="1H")
+            df = align_derivatives_onto_ohlcv(df, fr_df, oi_df)
+        except Exception:
+            if "funding_rate" not in df.columns:
+                df["funding_rate"] = 0.0
+            if "open_interest" not in df.columns:
+                df["open_interest"] = 0.0
+
     total_limit = int(req.limit)
     if total_limit > 0 and len(df) > total_limit:
         df = df.tail(total_limit).reset_index(drop=True)

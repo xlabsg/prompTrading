@@ -1,85 +1,149 @@
 ---
 name: quant-indicators
-description: Platform-supported vectorized technical indicators, parameter conventions, and pandas calculations. Read when calculating momentum, trend, volatility, or mean-reversion signals without lookahead bias.
+description: Platform-supported vectorized technical indicators, atomic time-series operators, parameter conventions, and TA-Lib integration. Read when calculating signals without lookahead bias.
 ---
 
-# Platform Technical Indicators Reference
+# Platform Technical Indicators & Quantitative Operators Reference
 
-All indicator functions operate on standard bar data (`pd.DataFrame`) with columns:
-`['timestamp', 'open', 'high', 'low', 'close', 'volume']`.
+All indicators operate on standard market data (`pd.DataFrame`), which includes standard OHLCV columns (`['timestamp', 'open', 'high', 'low', 'close', 'volume']`) as well as crypto derivative columns when available (`['funding_rate', 'open_interest']`).
 
-## 1. Introspecting Available Indicators via CLI
+```python
+# Both import styles are fully supported:
+from backtest import indicators
+import ta
+```
 
-Run `pt-quant indicators` to list all built-in indicators and inspect specific functions:
+---
+
+## 1. Introspecting Indicators via Flat Registry & Multi-Dimensional Filters
+
+The platform organizes indicators in a flat registry where each indicator is enriched with orthogonal tags, required input columns, and functional roles (`trigger`, `confirmation`, `filter`, `sizing`, `transform`).
+
+Run `pt-quant indicators` to explore:
 ```bash
-# List all platform indicators
+# List all registered indicators with roles, tags, and inputs
 pt-quant indicators
 
-# Check exact parameter signature and docstring
-pt-quant indicators rsi
-pt-quant indicators atr
+# Filter by functional role
+pt-quant indicators --role trigger       # Directional decision triggers (SuperTrend, Donchian, EMA)
+pt-quant indicators --role confirmation  # Cross-validation signals (VWAP, CMF, RSI, StochRSI)
+pt-quant indicators --role filter        # Regime / squeeze filters (Funding Z-score, Bollinger Bands)
+pt-quant indicators --role sizing        # Dynamic position sizing & risk stops (ATR)
+
+# Filter by tags or required input column
+pt-quant indicators --tag crypto         # Derivative metrics (funding rate, open interest)
+pt-quant indicators --input volume       # Indicators utilizing volume flow
+
+# Inspect exact signature, inputs, role, and docstring
+pt-quant indicators supertrend
+pt-quant indicators funding_rate_zscore
 ```
 
-## 2. Using Pre-Built Platform Indicators (`backtest.indicators`)
+---
 
-The platform provides vectorized, lookahead-free indicators under `backtest.indicators`:
+## 2. Layer 1: Atomic Time-Series Operators (Alpha 101/Qlib Primitives)
+
+Universal mathematical building blocks for custom factor design and signal transformation:
 
 ```python
-from backtest.indicators import sma, ema, rsi, atr, zscore, cross_over, cross_under
+from backtest.indicators import (
+    ts_rank,          # Rolling percentile rank in [0.0, 1.0]
+    ts_corr,          # Rolling Pearson correlation between 2 series
+    ts_cov,           # Rolling covariance
+    ts_decay_linear,  # Linearly weighted moving average (weights 1, 2, ..., w)
+    ts_max, ts_min,   # Rolling extrema
+    ts_diff,          # Period differences: x - x.shift(k)
+    ts_returns,       # Period returns: x.pct_change(k)
+    safe_div,         # Zero-division safe quotient (handles nan/inf)
+)
 
-# Simple Moving Average
-fast_ma = sma(data["close"], window=10)
+# Example: Rolling Price-Volume Correlation (exhaustion / divergence detection)
+pv_corr = ts_corr(data["close"], data["volume"], window=20)
 
-# Exponential Moving Average
-slow_ma = ema(data["close"], window=30)
+# Example: Percentile Rank of Volatility (regime classification)
+atr_rank = ts_rank(data["high"] - data["low"], window=60)
 
-# Relative Strength Index (Wilder's smoothing)
-rsi_val = rsi(data["close"], window=14)
-
-# Average True Range (True Range smoothed with Wilder's method)
-vol_atr = atr(data["high"], data["low"], data["close"], window=14)
-
-# Standardized Z-Score
-z_score = zscore(data["close"], window=20)
-
-# Crossings (Lookahead-free boolean series)
-golden_cross = cross_over(fast_ma, slow_ma)
-death_cross = cross_under(fast_ma, slow_ma)
+# Example: Linearly weighted momentum
+momentum = ts_decay_linear(data["close"].pct_change(), window=10)
 ```
 
-## 3. Custom Pandas / Vectorized Indicator Implementations
+---
 
-If you need indicators not directly in `backtest.indicators`, implement them using vectorized pandas operations:
+## 3. Layer 2: Modern Quant & Crypto Technical Indicators
 
-### Bollinger Bands
+Pre-built, vectorized, lookahead-free indicators:
+
 ```python
-mid = data["close"].rolling(20).mean()
-std = data["close"].rolling(20).std(ddof=0)
-upper = mid + 2.0 * std
-lower = mid - 2.0 * std
-bandwidth = (upper - lower) / (mid + 1e-9)
+from backtest.indicators import (
+    supertrend,        # Lookahead-safe SuperTrend -> (supertrend, direction)
+    vwap,              # Volume-Weighted Average Price (cumulative or rolling)
+    keltner_channel,   # Keltner Channel -> (upper, middle, lower)
+    donchian_channel,  # Shifted lookahead-free Donchian Channel -> (upper, middle, lower)
+    stoch_rsi,         # Stochastic RSI -> (k, d)
+    cmf,               # Chaikin Money Flow
+    bollinger_bands,   # Bollinger Bands -> (upper, middle, lower, bandwidth, percent_b)
+    atr, rsi, ema, sma # Standard technical indicators
+)
+
+# 1. SuperTrend
+st = supertrend(data["high"], data["low"], data["close"], period=10, multiplier=3.0)
+# st.direction is +1.0 for bullish, -1.0 for bearish
+
+# 2. VWAP
+intraday_vwap = vwap(data["high"], data["low"], data["close"], data["volume"])
+roll_vwap = vwap(data["high"], data["low"], data["close"], data["volume"], window=48)
+
+# 3. Keltner & Donchian Channels (Strictly lookahead-safe)
+kc = keltner_channel(data["high"], data["low"], data["close"], ema_window=20, atr_window=10)
+dc = donchian_channel(data["high"], data["low"], window=24, shift=True)
+
+# 4. Money Flow & Stochastic RSI
+money_flow = cmf(data["high"], data["low"], data["close"], data["volume"], window=20)
+srsi = stoch_rsi(data["close"], rsi_window=14, stoch_window=14)
 ```
 
-### Donchian Channel
+---
+
+## 4. Crypto Derivative Factor Helpers
+
+When trading crypto perpetuals or futures, use derivative factors to detect squeeze and liquidity regimes:
+
 ```python
-# MUST shift(1) to avoid lookahead on the breakout bar!
-upper_channel = data["high"].rolling(20).max().shift(1)
-lower_channel = data["low"].rolling(20).min().shift(1)
+from backtest.indicators import funding_rate_zscore, oi_momentum
+
+if "funding_rate" in data.columns:
+    # Measures funding rate overbought/oversold squeeze risk (72 periods)
+    fr_z = funding_rate_zscore(data["funding_rate"], window=72)
+
+if "open_interest" in data.columns:
+    # 24-period Rate of Change of Open Interest (OI)
+    oi_roc = oi_momentum(data["open_interest"], window=24)
 ```
 
-### Average Directional Index (ADX) / Trend Strength
+---
+
+## 5. Layer 3: C-Accelerated TA-Lib Integration
+
+The container has native `TA-Lib` installed with C-acceleration. The platform's wrapper automatically:
+- Accepts `pd.Series` and `pd.DataFrame` directly.
+- Translates parameter aliases seamlessly (`window=14` or `length=14` -> `timeperiod=14`).
+- Preserves datetime index on returned Series and tuples of Series.
+
 ```python
-up_move = data["high"] - data["high"].shift(1)
-down_move = data["low"].shift(1) - data["low"]
-plus_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-minus_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-# smooth via 14-period EMA or Wilder's smoothing
+import ta
+# or: from backtest import indicators
+
+macd, macdsignal, macdhist = ta.macd(data["close"], fastperiod=12, slowperiod=26, signalperiod=9)
+adx_series = ta.adx(data["high"], data["low"], data["close"], window=14)
+upper, middle, lower = ta.bbands(data["close"], window=20, nbdevup=2.0, nbdevdn=2.0)
 ```
 
-## 4. Strict Lookahead Prohibition (Zero Tolerance)
+---
 
-Lookahead bias invalidates backtests and causes real-world strategy failure:
+## 6. Strict Lookahead Prohibition (Zero Tolerance)
+
+Lookahead bias invalidates backtests and causes catastrophic live trading losses:
 - **NO Negative Shifts**: Never use `shift(-k)`.
 - **NO Backward Fills**: Never use `bfill()` or `fillna(method='bfill')`.
-- **NO Future Aggregations**: At bar `t`, decisions can ONLY use information available at or before `t`.
+- **NO Future Aggregations**: At bar $t$, decisions can ONLY use information available at or before $t$.
 - **Pre-execution Check**: Always run `pt-quant check strategy.py` before backtesting to verify no lookahead leaks exist.

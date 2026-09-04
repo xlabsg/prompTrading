@@ -98,9 +98,9 @@ def _us_stock_allowlist() -> list[str]:
 def build_backtest_allowlist(exchange: str) -> list[str]:
     s = (exchange or "").strip().lower()
     if s == "binance":
-        return ["api.binance.com", "api.binance.us"]
+        return ["api.binance.com", "api.binance.us", "fapi.binance.com"]
     if s == "okx":
-        return ["www.okx.com"]
+        return ["www.okx.com", "okx.com"]
     if s == "us_stock":
         return _us_stock_allowlist()
     return []
