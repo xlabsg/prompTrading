@@ -10,12 +10,13 @@
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Crypto Exchange](https://img.shields.io/badge/Exchange-Crypto%20Live%20%26%20Paper-black.svg)](#)
 [![License](https://img.shields.io/badge/License-Apache%202.0-yellow.svg)](LICENSE)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?logo=discord&logoColor=white)](https://discord.gg/GNDx2rjCP)
 [![Telegram](https://img.shields.io/badge/Telegram-Join%20Chat-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+nzrCKig99880OTRl)
 
 **Turn plain-language market ideas into battle-tested, live algorithmic trading strategies.**  
 *Conversational Strategy Generation · Closed-Loop Autonomous Backtesting · Defense-in-Depth Live Risk Engine*
 
-[Overview](#-overview) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout) • [Community](#-community)
+[Overview](#-overview) • [Community](#-community) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout)
 
 </div>
 
@@ -38,6 +39,16 @@ Tell PrompTrading:
 > *"Build an intraday breakout strategy on BTC/USDT 15m candles with a volume surge filter, 2.5x ATR trailing stop, and dynamic profit targets based on recent swing highs."*
 
 Within minutes, the built-in **Tau coding agent** drafts standard-compliant Python strategy code, launches throwaway Docker containers to backtest it against real historical market data, analyzes the resulting Sharpe ratio and drawdowns, self-repairs any defects, and prepares the strategy for one-click live execution behind a multi-layered risk engine.
+
+---
+
+## 💬 Community
+
+Join our community to discuss trading ideas, get help with setup and exchange integration, and stay updated:
+
+- 👾 **Discord**: [PrompTrading Discord](https://discord.gg/GNDx2rjCP) — In-depth discussions, strategy channels, and developer updates
+- ✈️ **Telegram**: [PrompTrading Group](https://t.me/+nzrCKig99880OTRl) — Real-time chat and quick feedback
+- 🐛 **GitHub Issues**: [Issue Tracker](https://github.com/xlabsg/prompTrading/issues) — Bug reports and feature requests
 
 ---
 
@@ -326,15 +337,6 @@ pytest services/api/tests -q
 # Run package unit tests
 PYTHONPATH="packages/agent:packages/backtest:packages/data" pytest packages/agent/tests packages/data/tests -q
 ```
-
----
-
-## 💬 Community
-
-Join our Telegram community to discuss trading ideas, get help with setup and exchange connections, and stay updated:
-
-- ✈️ **Telegram**: [PrompTrading Community](https://t.me/+nzrCKig99880OTRl)
-- 🐛 **Issues**: [GitHub Issues](https://github.com/xlabsg/prompTrading/issues) for bug reports and feature requests
 
 ---
 
