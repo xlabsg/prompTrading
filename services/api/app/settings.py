@@ -16,9 +16,8 @@ class Settings(BaseSettings):
     okx_simulated_trading: bool = False
     log_dir: str = "/var/log/app"
 
-    # Repositories and search index locations (shared volume)
+    # Repositories location (shared volume)
     repos_dir: Optional[str] = None  # default: f"{workspaces_dir}/repos"
-    search_index_path: Optional[str] = None  # default: f"{workspaces_dir}/search/search.sqlite"
 
     # GitHub App configuration (optional during local dev)
     github_app_id: Optional[str] = None

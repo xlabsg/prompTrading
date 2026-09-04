@@ -410,20 +410,6 @@ export interface RepoFileResponse {
     content: string;
 }
 
-export interface SearchHit {
-    repo_id: string;
-    branch: string;
-    path: string;
-    lang?: string;
-    snippet?: string;
-    score?: number;
-}
-
-export interface SearchResponse {
-    total: number;
-    hits: SearchHit[];
-}
-
 export interface GitHubInstallation {
     id: number;
     account?: {
@@ -624,8 +610,6 @@ export interface TemplateListItem {
     tags: string[] | null;
     subscriber_count: number;
     is_featured: boolean;
-    stable5_qualifies?: boolean | null;
-    stable5_score?: number | null;
     created_at: string;
 }
 
@@ -648,28 +632,6 @@ export interface TemplateDetail {
 export interface TemplateListResponse {
     total: number;
     templates: TemplateListItem[];
-}
-
-export interface Stable5RecommendationItem {
-    id: string;
-    name: string;
-    description: string | null;
-    template_type: TemplateType | string;
-    author: string | null;
-    tags: string[] | null;
-    subscriber_count: number;
-    is_featured: boolean;
-    stable5: Record<string, unknown>;
-}
-
-export interface RunStable5ScreeningRequest {
-    limit?: number;
-    template_ids?: string[];
-}
-
-export interface RunStable5ScreeningResponse {
-    message: string;
-    job_id: string;
 }
 
 export interface SubscribeRequest {

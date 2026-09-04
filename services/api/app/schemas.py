@@ -279,18 +279,6 @@ class SearchQuery(BaseModel):
     offset: int = 0
 
 
-class SearchHit(BaseModel):
-    repo_id: str
-    branch: str
-    path: str
-    lang: Optional[str] = None
-    snippet: Optional[str] = None
-    score: Optional[float] = None
-
-
-class SearchResponse(BaseModel):
-    total: int
-    hits: list[SearchHit]
 
 
 # --- Auth & user management ---

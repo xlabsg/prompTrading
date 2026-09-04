@@ -5,7 +5,6 @@ import { TrendingUp, ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { trendingApi } from "../../lib/api";
 import { useNavigate } from "react-router-dom";
-import type { TrendingStrategy } from "../trending/TrendingStrategyCard";
 import { useTranslation } from "react-i18next";
 import { TRENDING_ENABLED } from "@/lib/featureFlags";
 

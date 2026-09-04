@@ -94,7 +94,6 @@ async def github_webhook(
             "branches": branches,
             "installation_id": repo.github_installation_id,
             "repos_root": settings.repos_dir or os.path.join(settings.workspaces_dir, "repos"),
-            "search_index_path": settings.search_index_path or os.path.join(settings.workspaces_dir, "search", "search.sqlite"),
         },
     )
     db.add(job)

@@ -99,27 +99,6 @@ class RunBacktestResponse(BaseModel):
     job_id: str
 
 
-class RunStable5ScreeningRequest(BaseModel):
-    """Request to run Stable5 screening for templates."""
-    limit: int = Field(default=20, ge=1, le=200, description="Max templates to screen")
-    template_ids: Optional[list[str]] = Field(default=None, description="Optional explicit template IDs to screen")
-
-
-class RunStable5ScreeningResponse(BaseModel):
-    message: str
-    job_id: str
-
-
-class Stable5RecommendationItem(BaseModel):
-    id: str
-    name: str
-    description: str | None
-    template_type: str
-    author: str | None
-    tags: list[str] | None
-    subscriber_count: int
-    is_featured: bool
-    stable5: dict
 
 
 # ============== API Endpoints ==============
@@ -335,80 +314,6 @@ async def get_template_signal_events(
         return json.load(f)
 
 
-@router.post("/templates/screening/stable5", response_model=RunStable5ScreeningResponse)
-async def run_stable5_screening(
-    req: RunStable5ScreeningRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-    rds=Depends(get_redis),
-) -> RunStable5ScreeningResponse:
-    """Run Stable5 screening on OKX BTC/ETH perpetuals (1h + 4h, ≥1y)."""
-    require_admin(request, db=db)
-    job = Job(
-        type=JobType.TEMPLATE_STABLE5_SCREENING,
-        status=JobStatus.QUEUED,
-        payload={
-            "limit": req.limit,
-            "template_ids": req.template_ids,
-        },
-    )
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-
-    enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, priority="batch", redis_client=rds)
-
-    return RunStable5ScreeningResponse(message="Stable5 screening job queued", job_id=job.id)
-
-
-@router.get("/templates/recommendations/stable5", response_model=list[Stable5RecommendationItem])
-async def get_stable5_recommendations(
-    limit: int = 10,
-    db: Session = Depends(get_db),
-) -> list[Stable5RecommendationItem]:
-    """Return Stable5 recommendations.
-
-    Preference order:
-    1) Templates that pass Stable5 gate (qualifies=true), sorted by score
-    2) If none qualify yet but some have Stable5 data, return top candidates by score
-    """
-    limit = max(1, min(int(limit), 50))
-    templates = (
-        db.query(StrategyTemplate)
-        .filter(StrategyTemplate.is_public == True)
-        .all()
-    )
-
-    qualifying: list[tuple[float, StrategyTemplate, dict[str, Any]]] = []
-    candidates: list[tuple[float, StrategyTemplate, dict[str, Any]]] = []
-    for t in templates:
-        stable5 = (t.backtest_summary or {}).get("stable5")
-        if not isinstance(stable5, dict):
-            continue
-        score = float(stable5.get("score") or 0.0)
-        if bool(stable5.get("qualifies")):
-            qualifying.append((score, t, stable5))
-        else:
-            candidates.append((score, t, stable5))
-
-    rows = qualifying if qualifying else candidates
-    rows.sort(key=lambda x: x[0], reverse=True)
-    out: list[Stable5RecommendationItem] = []
-    for score, t, stable5 in rows[:limit]:
-        out.append(
-            Stable5RecommendationItem(
-                id=t.id,
-                name=t.name,
-                description=t.description,
-                template_type=t.template_type,
-                author=t.author,
-                tags=t.tags or [],
-                subscriber_count=int(t.subscriber_count or 0),
-                is_featured=bool(t.is_featured),
-                stable5=stable5,
-            )
-        )
-    return out
 
 
 @router.get("/templates/{template_id}/backtest/status")

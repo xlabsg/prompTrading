@@ -158,7 +158,6 @@ def import_repo(req: RepoImportRequest, request: Request, db: Session = Depends(
         "branches": req.branches or [],  # empty => default only
         "installation_id": req.installation_id,  # GitHub's installation ID for API calls
         "repos_root": _repos_root(),
-        "search_index_path": settings.search_index_path or os.path.join(settings.workspaces_dir, "search", "search.sqlite"),
     })
     db.add(job)
     db.flush()
@@ -257,7 +256,6 @@ def sync_repo(repo_id: str, request: Request, db: Session = Depends(get_db)) -> 
             "branches": repo.tracked_branches or [],
             "installation_id": repo.github_installation_id,
             "repos_root": _repos_root(),
-            "search_index_path": settings.search_index_path or os.path.join(settings.workspaces_dir, "search", "search.sqlite"),
         },
     )
     db.add(job)
