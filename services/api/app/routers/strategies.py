@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import ast
 import os
 import re
 import logging
-import subprocess
-import sys
 import time
-import queue
-import threading
 from datetime import datetime, timezone
 
 import json
@@ -19,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select, or_
 from sqlalchemy.orm import Session
-from typing import Any, Callable, Generator
+from typing import Any, Generator
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +28,7 @@ from control_plane.models import (
     StrategyVersion,
 )
 from control_plane.queue import enqueue_job
-from control_plane.workspaces import get_run_dir, git_commit, init_strategy_workspace
+from control_plane.workspaces import get_run_dir, init_strategy_workspace
 from app.auth import get_current_user, require_strategy_member, user_has_active_subscription
 from app.deps import get_db, get_redis, get_session_factory
 from app.services.worker_rpc import call_worker_rpc
@@ -813,12 +808,13 @@ def _build_strategy_agent_task(
     return "\n\n".join(parts)
 
 
-def _build_autonomous_refine_task(user_message: str, history_context: str = "") -> str:
-    """Backwards-compatible alias for _build_strategy_agent_task."""
-    return _build_strategy_agent_task(user_message, history_context=history_context)
+# Session debris the agent republishes on every run. Hashing these would report
+# "the agent changed your strategy" for a question that changed nothing.
+_NON_STRATEGY_ARTIFACTS = frozenset({"tau_trace.html", "agent.log"})
 
 
 def _snapshot_workspace_fingerprint(strategy_dir: str) -> dict[str, str]:
+    """Hash the strategy content of a workspace, ignoring per-session artifacts."""
     fingerprint: dict[str, str] = {}
     if not os.path.isdir(strategy_dir):
         return fingerprint
@@ -826,6 +822,8 @@ def _snapshot_workspace_fingerprint(strategy_dir: str) -> dict[str, str]:
         if ".git" in root or "__pycache__" in root:
             continue
         for name in sorted(files):
+            if name in _NON_STRATEGY_ARTIFACTS:
+                continue
             path = os.path.join(root, name)
             try:
                 with open(path, "rb") as f:
@@ -833,98 +831,6 @@ def _snapshot_workspace_fingerprint(strategy_dir: str) -> dict[str, str]:
             except OSError:
                 continue
     return fingerprint
-
-
-def _tau_extension_path() -> str:
-    """Where the strategy-domain Tau extension lives in the API image."""
-    return os.getenv("AGENT_TAU_EXTENSION") or "/app/agent/tau_ext.py"
-
-
-def _strategy_code_problems(strategy_dir: str) -> list[str]:
-    """Report why `strategy_dir` does not hold usable strategy code."""
-    path = os.path.join(strategy_dir, "strategy.py")
-    if not os.path.isfile(path):
-        return ["- strategy.py does not exist."]
-    source = _read_strategy_code(path).strip()
-    if not source:
-        return ["- strategy.py is empty."]
-    try:
-        ast.parse(source)
-    except SyntaxError as exc:
-        return [f"- strategy.py does not parse: {exc}"]
-    return []
-
-
-def _overview_problems(strategy_dir: str) -> list[str]:
-    """Report why `strategy_dir` does not hold a usable overview."""
-    path = os.path.join(strategy_dir, "overview.md")
-    if not os.path.isfile(path):
-        return ["- overview.md does not exist."]
-    try:
-        with open(path, encoding="utf-8") as handle:
-            content = handle.read().strip()
-    except OSError as exc:
-        return [f"- overview.md could not be read: {exc}"]
-    if not content:
-        return ["- overview.md is empty."]
-    if "```mermaid" not in content:
-        return ["- overview.md has no ```mermaid diagram block."]
-    return []
-
-
-def _evaluate_strategy_metrics(strategy_dir: str) -> dict[str, Any] | None:
-    """Run an isolated backtest against cached market data to obtain strategy metrics."""
-    strat_path = os.path.join(strategy_dir, "strategy.py")
-    if not os.path.isfile(strat_path):
-        return None
-    if os.getenv("PYTEST_CURRENT_TEST") and not os.getenv("REAL_TEST_METRICS"):
-        return {
-            "total_return": 0.15,
-            "sharpe_ratio": 1.8,
-            "max_drawdown": 0.05,
-            "win_rate": 0.60,
-        }
-    request = {
-        "strategy_path": strat_path,
-        "entry_function": "generate_signals",
-        "dataset": {
-            "exchange": "okx",
-            "symbol": "BTC-USDT-SWAP",
-            "interval": "1h",
-            "bars": 2000,
-        },
-        "runs_used": 0,
-        "max_runs": 1,
-    }
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-m", "agent.backtest_subprocess"],
-            input=json.dumps(request).encode("utf-8"),
-            capture_output=True,
-            timeout=30,
-        )
-        if proc.returncode == 0 and proc.stdout:
-            res = json.loads(proc.stdout)
-            return res.get("metrics")
-    except Exception as exc:
-        logger.warning(f"Failed to evaluate strategy metrics: {exc}")
-    return None
-
-
-def _format_metrics_comparison(before: dict[str, Any] | None, after: dict[str, Any] | None) -> str:
-    """Format before-and-after backtest metrics comparison as language-neutral structured action block."""
-    if not after:
-        return ""
-    payload = {
-        "benchmark": {
-            "exchange": "okx",
-            "symbol": "BTC-USDT-SWAP",
-            "interval": "1h",
-        },
-        "before": before or {},
-        "after": after or {},
-    }
-    return f"\n\n```action:metrics_comparison\n{json.dumps(payload, ensure_ascii=False, indent=2)}\n```\n"
 
 
 def _is_modification_request(user_message: str) -> bool:
@@ -946,138 +852,257 @@ def _is_modification_request(user_message: str) -> bool:
     return has_mod_keyword or not is_pure_question
 
 
-def _run_autonomous_refine(
-    strategy_id: str,
-    user_message: str,
+def _agent_job_timeout_s() -> float:
+    """Wall clock the chat endpoints wait on an agent container."""
+    try:
+        return float(os.getenv("AGENT_CHAT_JOB_TIMEOUT_S") or 1800.0)
+    except ValueError:
+        return 1800.0
+
+
+def _version_workspace_dir(strategy_id: str, version_id: str) -> str:
+    return os.path.join(settings.workspaces_dir, strategy_id, "versions", version_id)
+
+
+def _read_version_agent_meta(strategy_id: str, version_id: str) -> dict[str, Any]:
+    """Read the `llm_meta.json` that `agent.runner_v2` writes into the version dir."""
+    path = os.path.join(_version_workspace_dir(strategy_id, version_id), "llm_meta.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            meta = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _format_agent_backtest_comparison(agent_meta: dict[str, Any]) -> str:
+    """Render the agent's own in-loop backtests as the frontend metrics card.
+
+    The agent backtests each iteration inside its sandbox and records the results
+    in `backtest_iterations`, so its first and last run are a real before/after.
+    The API used to re-run a backtest itself to build this block, which meant
+    executing model-written strategy code inside the API container.
+    """
+    iterations = agent_meta.get("backtest_iterations")
+    if not isinstance(iterations, dict):
+        return ""
+    history = iterations.get("history")
+    if not isinstance(history, list) or not history:
+        return ""
+    dataset = iterations.get("dataset")
+    dataset = dataset if isinstance(dataset, dict) else {}
+    payload = {
+        "benchmark": {
+            "exchange": dataset.get("exchange"),
+            "symbol": dataset.get("symbol"),
+            "interval": dataset.get("interval"),
+        },
+        "before": history[0],
+        "after": history[-1],
+    }
+    block = json.dumps(payload, ensure_ascii=False, indent=2)
+    return f"\n\n```action:metrics_comparison\n{block}\n```\n"
+
+
+def _dispatch_strategy_agent_job(
+    db: Session,
+    rds,
     *,
-    chat_history: list[dict[str, Any]] | None = None,
-    on_progress: Callable[[dict[str, Any]], None] | None = None,
-    backtest_context: str = "",
-) -> dict[str, Any]:
-    from agent import tau_driver
-    from agent.tau_config import ensure_catalog_entry, resolve_provider
+    strategy_id: str,
+    task_prompt: str,
+    user_prompt: str,
+    mode: str,
+) -> tuple[str, str]:
+    """Queue a REFINE_STRATEGY job so Tau runs in the sandboxed agent container.
 
-    strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
-    if not os.path.isfile(os.path.join(strategy_dir, "strategy.py")):
-        raise RuntimeError("strategy_code_not_found")
+    Tau ships a `bash` tool, so a session must never run inside the API process:
+    that container holds the trading-credential encryption key, the admin API
+    key, the GitHub App private key and the application database. The worker
+    hands the agent container an explicit env allowlist instead, and the agent
+    works in `versions/<id>/`, publishing to the live strategy dir only once the
+    workspace validates.
 
-    target = resolve_provider()
-    ensure_catalog_entry(target)
-    if not os.getenv(target.api_key_env):
-        raise RuntimeError("missing_llm_api_key")
-
-    history_context = _build_refine_history_context(
-        chat_history,
-        latest_user_message=user_message,
+    Returns the queued job id and the version id it will populate.
+    """
+    version = create_strategy_version(
+        db,
+        strategy_id=strategy_id,
+        prompt=user_prompt,
+        llm_meta={"mode": mode},
+        snapshot=False,
+        workspaces_dir=settings.workspaces_dir,
     )
-    task_prompt = _build_strategy_agent_task(
-        user_message,
-        history_context=history_context,
-        backtest_context=backtest_context,
+    job = Job(
+        type=JobType.REFINE_STRATEGY,
+        status=JobStatus.QUEUED,
+        payload={
+            "strategy_id": strategy_id,
+            "version_id": version.id,
+            "prompt": task_prompt,
+            "llm_meta": {"mode": mode},
+            "mode": mode,
+        },
     )
+    db.add(job)
+    db.flush()
 
-    # Take backup snapshot of strategy_dir to guarantee safety
-    backup_files: dict[str, bytes] = {}
-    for root, _, files in os.walk(strategy_dir):
-        if ".git" in root or "__pycache__" in root:
-            continue
-        for name in files:
-            p = os.path.join(root, name)
-            rel = os.path.relpath(p, strategy_dir)
-            try:
-                with open(p, "rb") as f:
-                    backup_files[rel] = f.read()
-            except OSError:
-                continue
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is not None:
+        strategy.chat_status = ChatStatus.GENERATING
+        strategy.updated_at = datetime.now(timezone.utc)
 
-    before_fp = _snapshot_workspace_fingerprint(strategy_dir)
-    before_metrics = _evaluate_strategy_metrics(strategy_dir)
+    job_id, version_id = job.id, version.id
+    job_type, payload = job.type, dict(job.payload)
+    db.commit()
+    enqueue_job(settings.workspaces_dir, job_id, job_type, payload, redis_client=rds)
+    return job_id, version_id
 
-    session = tau_driver.run_session(
-        task=task_prompt,
-        workspace=strategy_dir,
-        provider=target.provider,
-        model=target.model,
-        extension_path=_tau_extension_path(),
-        validate=lambda: _strategy_code_problems(strategy_dir),
-        progress_callback=on_progress,
-        env=target.credential_env(),
-    )
 
-    after_fp = _snapshot_workspace_fingerprint(strategy_dir)
-    files_changed = before_fp != after_fp
+_AGENT_JOB_POLL_S = 0.5
+_TOOL_LOG_RE = re.compile(r"^\[agent\] tool (?P<tool>\S+)(?: path=(?P<path>\S+))? \.\.\.$")
+_PROGRESS_TOOLS = {"edit_file", "write_file", "edit", "write", "read_file", "read"}
+_WRITE_TOOLS = {"edit_file", "write_file", "edit", "write"}
 
-    # Safety rollback: if agent left problems in strategy.py, restore from backup
-    problems = _strategy_code_problems(strategy_dir)
-    if problems and files_changed:
-        logger.warning(f"Agent left workspace with problems, rolling back to clean state: {problems}")
-        for rel, content in backup_files.items():
-            p = os.path.join(strategy_dir, rel)
-            try:
-                with open(p, "wb") as f:
-                    f.write(content)
-            except OSError:
-                pass
-        files_changed = False
 
-    metrics_comparison = ""
-    after_metrics = None
-    if files_changed:
-        after_metrics = _evaluate_strategy_metrics(strategy_dir)
-        metrics_comparison = _format_metrics_comparison(before_metrics, after_metrics)
+def _job_terminal_state(session_factory, job_id: str) -> tuple[str, str] | None:
+    """(status, error) once the job leaves queued/running, else None."""
+    with session_factory() as session:
+        job = session.get(Job, job_id)
+        if job is None:
+            return "failed", "job_not_found"
+        # `Job.status` is a plain String column: a freshly loaded row gives a str,
+        # while a row still holding the assigned enum gives a JobStatus.
+        status = getattr(job.status, "value", job.status) or ""
+        if status in (JobStatus.QUEUED.value, JobStatus.RUNNING.value):
+            return None
+        return status or "failed", job.error_message or ""
 
+
+def _stream_agent_job(
+    session_factory,
+    job_id: str,
+    *,
+    timeout_s: float,
+) -> Generator[tuple[str, Any], None, None]:
+    """Yield ("log", line) while the agent container runs, then ("done", (status, error)).
+
+    Reads the same `.queue/logs/<job_id>.log` the job WebSocket tails; the worker
+    writes it on the shared workspaces volume.
+    """
+    log_path = os.path.join(settings.workspaces_dir, ".queue", "logs", f"{job_id}.log")
+    deadline = time.monotonic() + timeout_s
+    handle = None
+    pending = ""
+
+    def _drain() -> Generator[tuple[str, Any], None, None]:
+        nonlocal pending
+        while True:
+            chunk = handle.readline()
+            if not chunk:
+                return
+            pending += chunk
+            if pending.endswith("\n"):
+                yield "log", pending.rstrip("\r\n")
+                pending = ""
+
+    try:
+        while True:
+            if handle is None and os.path.exists(log_path):
+                handle = open(log_path, encoding="utf-8", errors="replace")
+            if handle is not None:
+                yield from _drain()
+
+            terminal = _job_terminal_state(session_factory, job_id)
+            if terminal is not None:
+                # The container is gone; emit whatever it wrote last.
+                if handle is not None:
+                    yield from _drain()
+                if pending.strip():
+                    yield "log", pending.rstrip("\r\n")
+                yield "done", terminal
+                return
+
+            if time.monotonic() > deadline:
+                yield "done", ("timeout", f"agent job did not finish within {int(timeout_s)}s")
+                return
+            time.sleep(_AGENT_JOB_POLL_S)
+    finally:
+        if handle is not None:
+            handle.close()
+
+
+def _wait_for_agent_job(session_factory, job_id: str, *, timeout_s: float) -> tuple[str, str]:
+    """Block until the agent job finishes. Returns (status, error_message)."""
+    for kind, payload in _stream_agent_job(session_factory, job_id, timeout_s=timeout_s):
+        if kind == "done":
+            return payload
+    return "failed", "agent job ended without a status"
+
+
+def _agent_progress_event(line: str) -> dict[str, Any] | None:
+    """Turn one agent log line into the SSE progress event the console renders."""
+    match = _TOOL_LOG_RE.match(line.strip())
+    if match is None:
+        return None
+    tool = match.group("tool")
+    path = match.group("path") or ""
+    if tool not in _PROGRESS_TOOLS or not path:
+        return None
+    action_text = "修改" if tool in _WRITE_TOOLS else "阅读"
     return {
-        "agent_summary": getattr(session, "summary", ""),
-        "history_length": getattr(session, "turns", 0),
-        "refine_context_chars": len(history_context),
-        "files_changed": files_changed,
-        "metrics_comparison": metrics_comparison,
-        "after_metrics": after_metrics,
+        "type": "progress",
+        "tool": tool,
+        "path": path,
+        "message": f"正在{action_text} {path}...",
+        "phase": "tool_start",
     }
 
 
-def _persist_autonomous_refine_result(
+def _agent_job_outcome(
+    strategy_id: str,
+    version_id: str,
+    *,
+    strategy_dir: str,
+    before_fingerprint: dict[str, str],
+) -> dict[str, Any]:
+    """Summarise a finished agent job for the chat reply."""
+    agent_meta = _read_version_agent_meta(strategy_id, version_id)
+    return {
+        "agent_summary": str(agent_meta.get("agent_summary") or "").strip(),
+        "files_changed": _snapshot_workspace_fingerprint(strategy_dir) != before_fingerprint,
+        "metrics_comparison": _format_agent_backtest_comparison(agent_meta),
+        "stop_reason": agent_meta.get("stop_reason"),
+        "used_llm": agent_meta.get("used_llm"),
+        "tau_session_id": agent_meta.get("tau_session_id"),
+        "version_id": version_id,
+    }
+
+
+def _finish_agent_chat_turn(
     db: Session,
     *,
     strategy_id: str,
     final_history: list[dict[str, Any]],
-    prompt: str,
-    llm_meta: dict[str, Any] | None = None,
-) -> tuple[Job, StrategyVersion]:
+    version_id: str,
+    outcome: dict[str, Any],
+) -> None:
+    """Record a finished agent chat turn.
+
+    The version row and the REFINE_STRATEGY job were created before dispatch and
+    the worker owns the git commit and the published files, so all that is left
+    here is the chat transcript and the agent metadata the console reads back.
+    """
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
-
-    strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
-    git_commit(strategy_dir, f"Refine strategy: {prompt[:60]}")
 
     strategy.chat_history = final_history
     strategy.chat_status = ChatStatus.DONE
     strategy.updated_at = datetime.now(timezone.utc)
 
-    version = create_strategy_version(
-        db,
-        strategy_id=strategy_id,
-        prompt=prompt,
-        llm_meta=llm_meta,
-        snapshot=True,
-        workspaces_dir=settings.workspaces_dir,
-    )
-
-    job = Job(
-        type=JobType.REFINE_STRATEGY,
-        status=JobStatus.SUCCEEDED,
-        payload={
-            "strategy_id": strategy_id,
-            "version_id": version.id,
-            "prompt": prompt,
-            "llm_meta": llm_meta or {},
-            "mode": "autonomous_chat_refine",
-        },
-    )
-    db.add(job)
-    db.flush()
-    return job, version
+    version = db.get(StrategyVersion, version_id)
+    if version is not None:
+        version.llm_meta = {**(version.llm_meta or {}), **outcome}
 
 
 def _extract_search_terms(message: str, limit: int = 6) -> list[str]:
@@ -1651,6 +1676,7 @@ def chat_with_strategy(
     request: Request,
     db: Session = Depends(get_db),
     rds=Depends(get_redis),
+    session_factory=Depends(get_session_factory),
 ) -> ChatResponse:
     """Chat with AI to define strategy requirements or refine existing strategy."""
     require_strategy_member(request, db, strategy_id, [StrategyRole.ADMIN, StrategyRole.EDITOR])
@@ -1691,18 +1717,39 @@ def chat_with_strategy(
                     refine_proposal=None,
                 )
             backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
+            strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
+            before_fingerprint = _snapshot_workspace_fingerprint(strategy_dir)
+            task_prompt = _build_strategy_agent_task(
+                user_message,
+                history_context=_build_refine_history_context(
+                    history, latest_user_message=user_message
+                ),
+                backtest_context=backtest_context,
+            )
             try:
-                refine_meta = _run_autonomous_refine(
-                    strategy_id,
-                    user_message,
-                    chat_history=history,
-                    backtest_context=backtest_context,
+                job_id, version_id = _dispatch_strategy_agent_job(
+                    db,
+                    rds,
+                    strategy_id=strategy_id,
+                    task_prompt=task_prompt,
+                    user_prompt=user_message,
+                    mode="autonomous_chat_refine",
+                )
+                status, error_message = _wait_for_agent_job(
+                    session_factory, job_id, timeout_s=_agent_job_timeout_s()
                 )
             except Exception as exc:
-                clean_reply = f"Agent 处理失败：{exc}"
+                logger.error("agent chat dispatch failed", exc_info=True)
+                status, error_message, version_id = "failed", str(exc), ""
+
+            if status != JobStatus.SUCCEEDED.value:
+                clean_reply = f"Agent 处理失败：{error_message or status}"
                 _append_assistant_message(history, clean_reply)
-                strategy.chat_history = history
-                strategy.updated_at = datetime.now(timezone.utc)
+                strategy = db.get(Strategy, strategy_id)
+                if strategy is not None:
+                    strategy.chat_history = history
+                    strategy.chat_status = ChatStatus.DONE
+                    strategy.updated_at = datetime.now(timezone.utc)
                 db.commit()
                 db.refresh(strategy)
                 return ChatResponse(
@@ -1713,31 +1760,32 @@ def chat_with_strategy(
                     refine_proposal=None,
                 )
 
-            files_changed = bool(refine_meta.get("files_changed"))
-            agent_summary = str(refine_meta.get("agent_summary") or "").strip()
-            if files_changed:
+            outcome = _agent_job_outcome(
+                strategy_id,
+                version_id,
+                strategy_dir=strategy_dir,
+                before_fingerprint=before_fingerprint,
+            )
+            agent_summary = str(outcome.get("agent_summary") or "").strip()
+            if outcome["files_changed"]:
                 clean_reply = (
                     "Agent 已完成本次修改，并已写入策略工作区。\n\n"
                     f"{agent_summary or '修改已应用。'}"
-                )
-                final_history = history + [{"role": "assistant", "content": clean_reply}]
-                _persist_autonomous_refine_result(
-                    db,
-                    strategy_id=strategy_id,
-                    final_history=final_history,
-                    prompt=user_message,
-                    llm_meta={
-                        "mode": "autonomous_refine",
-                        **refine_meta,
-                    },
+                    f"{outcome['metrics_comparison']}"
                 )
             else:
                 clean_reply = agent_summary or "已为您分析完毕。"
-                final_history = history + [{"role": "assistant", "content": clean_reply}]
-                strategy.chat_history = final_history
-                strategy.updated_at = datetime.now(timezone.utc)
-                db.commit()
+            final_history = history + [{"role": "assistant", "content": clean_reply}]
+            _finish_agent_chat_turn(
+                db,
+                strategy_id=strategy_id,
+                final_history=final_history,
+                version_id=version_id,
+                outcome=outcome,
+            )
+            db.commit()
 
+            strategy = db.get(Strategy, strategy_id)
             db.refresh(strategy)
             return ChatResponse(
                 reply=clean_reply,
@@ -1850,35 +1898,47 @@ def chat_with_strategy_stream(
                 session.close()
 
         if user_message.strip() == "/generate_overview":
-            from agent import tau_driver
-            from agent.tau_config import ensure_catalog_entry, resolve_provider
-
             yield f"data: {json.dumps({'type': 'token', 'content': 'Starting autonomous agent to generate overview...\n'})}\n\n"
 
+            task_prompt = (
+                "Analyze `strategy.py` and create/update `overview.md`.\n\n"
+                "Required format:\n"
+                "1. A `# Summary` section describing strategy logic.\n"
+                "2. A `# Trading Board` section describing K-line and PnL dashboard focus.\n"
+                "3. A `# Flow Animation` section that includes a ```mermaid flowchart.\n"
+                "4. Optionally include a ```g6 JSON graph with weighted edges for state transitions.\n"
+                "5. Save the final result to `overview.md`.\n"
+                "6. Verify the file before completing."
+            )
+
             try:
-                strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
-                target = resolve_provider()
-                ensure_catalog_entry(target)
+                dispatch_session = session_factory()
+                try:
+                    job_id, _version_id = _dispatch_strategy_agent_job(
+                        dispatch_session,
+                        rds,
+                        strategy_id=strategy_id,
+                        task_prompt=task_prompt,
+                        user_prompt=user_message,
+                        mode="generate_overview",
+                    )
+                finally:
+                    dispatch_session.close()
 
-                task_prompt = (
-                    "Analyze `strategy.py` and create/update `overview.md`.\n\n"
-                    "Required format:\n"
-                    "1. A `# Summary` section describing strategy logic.\n"
-                    "2. A `# Trading Board` section describing K-line and PnL dashboard focus.\n"
-                    "3. A `# Flow Animation` section that includes a ```mermaid flowchart.\n"
-                    "4. Optionally include a ```g6 JSON graph with weighted edges for state transitions.\n"
-                    "5. Save the final result to `overview.md`.\n"
-                    "6. Verify the file before completing."
-                )
+                status, error_message = "failed", ""
+                for kind, payload in _stream_agent_job(
+                    session_factory, job_id, timeout_s=_agent_job_timeout_s()
+                ):
+                    if kind == "log":
+                        event = _agent_progress_event(payload)
+                        if event is not None:
+                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    else:
+                        status, error_message = payload
 
-                tau_driver.run_session(
-                    task=task_prompt,
-                    workspace=strategy_dir,
-                    provider=target.provider,
-                    model=target.model,
-                    validate=lambda: _overview_problems(strategy_dir),
-                    env=target.credential_env(),
-                )
+                if status != JobStatus.SUCCEEDED.value:
+                    raise RuntimeError(error_message or status)
+
                 clean_reply = "Overview generated successfully and saved to `overview.md`."
 
                 _persist_chat(clean_reply)
@@ -1903,99 +1963,78 @@ def chat_with_strategy_stream(
 
         if is_done_mode:
             yield f"data: {json.dumps({'type': 'progress', 'stage': 'thinking', 'message': 'Agent 正在思考与处理...'}, ensure_ascii=False)}\n\n"
-            progress_queue: queue.Queue[dict[str, Any]] = queue.Queue()
-
-            def _push_progress(event: dict[str, Any]) -> None:
-                progress_queue.put({"kind": "progress", "payload": event})
 
             backtest_context = _get_latest_backtest_context(db, strategy_id) or ""
+            strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
+            before_fingerprint = _snapshot_workspace_fingerprint(strategy_dir)
+            task_prompt = _build_strategy_agent_task(
+                user_message,
+                history_context=_build_refine_history_context(
+                    history, latest_user_message=user_message
+                ),
+                backtest_context=backtest_context,
+            )
 
-            def _run_refine_worker() -> None:
+            status, refine_error, version_id = "failed", "", ""
+            try:
+                dispatch_session = session_factory()
                 try:
-                    refine_meta_result = _run_autonomous_refine(
-                        strategy_id,
-                        user_message,
-                        chat_history=history,
-                        on_progress=_push_progress,
-                        backtest_context=backtest_context,
+                    job_id, version_id = _dispatch_strategy_agent_job(
+                        dispatch_session,
+                        rds,
+                        strategy_id=strategy_id,
+                        task_prompt=task_prompt,
+                        user_prompt=user_message,
+                        mode="autonomous_chat_refine",
                     )
-                    progress_queue.put({"kind": "result", "payload": refine_meta_result})
-                except Exception as worker_error:
-                    progress_queue.put({"kind": "error", "payload": str(worker_error)})
                 finally:
-                    progress_queue.put({"kind": "finished"})
+                    dispatch_session.close()
 
-            worker = threading.Thread(target=_run_refine_worker, daemon=True)
-            worker.start()
+                for kind, payload in _stream_agent_job(
+                    session_factory, job_id, timeout_s=_agent_job_timeout_s()
+                ):
+                    if kind == "log":
+                        event = _agent_progress_event(payload)
+                        if event is not None:
+                            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                    else:
+                        status, refine_error = payload
+            except Exception as dispatch_error:
+                logger.error("agent chat dispatch failed", exc_info=True)
+                status, refine_error = "failed", str(dispatch_error)
 
-            refine_meta: dict[str, Any] | None = None
-            refine_error: str | None = None
-            while True:
-                event = progress_queue.get()
-                kind = str(event.get("kind") or "")
-                if kind == "progress":
-                    payload = event.get("payload") or {}
-                    tool = str(payload.get("tool") or "")
-                    path = str(payload.get("path") or "")
-                    phase = str(payload.get("phase") or "")
-                    args = payload.get("args")
-                    if not path and isinstance(args, dict):
-                        path = str(args.get("path") or "")
-                    if tool in {"edit_file", "write_file", "edit", "write", "read_file", "read"} and path:
-                        file_name = os.path.basename(path)
-                        action_text = "修改" if tool in {"edit_file", "write_file", "edit", "write"} else "阅读"
-                        yield (
-                            f"data: {json.dumps({'type': 'progress', 'tool': tool, 'path': file_name, 'message': f'正在{action_text} {file_name}...', 'phase': phase})}\n\n"
-                        )
-                elif kind == "result":
-                    refine_meta = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-                elif kind == "error":
-                    refine_error = str(event.get("payload") or "unknown_error")
-                elif kind == "finished":
-                    break
-
-            if refine_meta is not None and refine_error is None:
-                files_changed = bool(refine_meta.get("files_changed"))
-                agent_summary = str(refine_meta.get("agent_summary") or "").strip()
-                if files_changed:
-                    metrics_comp = str(refine_meta.get("metrics_comparison") or "")
+            if status == JobStatus.SUCCEEDED.value and version_id:
+                outcome = _agent_job_outcome(
+                    strategy_id,
+                    version_id,
+                    strategy_dir=strategy_dir,
+                    before_fingerprint=before_fingerprint,
+                )
+                agent_summary = str(outcome.get("agent_summary") or "").strip()
+                if outcome["files_changed"]:
                     clean_reply = (
                         "Agent 已完成本次修改，并已写入策略工作区。\n\n"
                         f"{agent_summary or '修改已应用。'}"
-                        f"{metrics_comp}"
+                        f"{outcome['metrics_comparison']}"
                     )
-                    final_history = history + [{"role": "assistant", "content": clean_reply}]
-
-                    session = session_factory()
-                    try:
-                        _persist_autonomous_refine_result(
-                            session,
-                            strategy_id=strategy_id,
-                            final_history=final_history,
-                            prompt=user_message,
-                            llm_meta={
-                                "mode": "autonomous_refine",
-                                **refine_meta,
-                            },
-                        )
-                        session.commit()
-                    finally:
-                        session.close()
                 else:
                     clean_reply = agent_summary or "已为您分析完毕。"
-                    final_history = history + [{"role": "assistant", "content": clean_reply}]
+                final_history = history + [{"role": "assistant", "content": clean_reply}]
 
-                    session = session_factory()
-                    try:
-                        strat = session.get(Strategy, strategy_id)
-                        if strat:
-                            strat.chat_history = final_history
-                            strat.updated_at = datetime.now(timezone.utc)
-                            session.commit()
-                    finally:
-                        session.close()
+                session = session_factory()
+                try:
+                    _finish_agent_chat_turn(
+                        session,
+                        strategy_id=strategy_id,
+                        final_history=final_history,
+                        version_id=version_id,
+                        outcome=outcome,
+                    )
+                    session.commit()
+                finally:
+                    session.close()
             else:
-                clean_reply = f"Agent 处理失败：{refine_error or 'unknown_error'}"
+                clean_reply = f"Agent 处理失败：{refine_error or status or 'unknown_error'}"
                 _persist_chat(clean_reply)
                 final_history = history + [{"role": "assistant", "content": clean_reply}]
 

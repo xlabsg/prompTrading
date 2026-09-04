@@ -1,13 +1,15 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import pytest
 
 from app.routers.strategies import (
+    _agent_progress_event,
     _build_strategy_agent_task,
+    _format_agent_backtest_comparison,
     _snapshot_workspace_fingerprint,
-    _strategy_code_problems,
 )
 
 
@@ -62,75 +64,108 @@ def test_snapshot_workspace_fingerprint_detects_changes():
         assert fp3 != fp4
         assert "overview.md" in fp4
 
-
-def test_strategy_code_problems():
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # 1. strategy.py missing
-        assert len(_strategy_code_problems(tmpdir)) > 0
-
-        # 2. strategy.py empty
-        strat_py = os.path.join(tmpdir, "strategy.py")
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("")
-        assert len(_strategy_code_problems(tmpdir)) > 0
-
-        # 3. strategy.py syntax error
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("def broken(:")
-        assert any("syntax" in p.lower() or "parse" in p.lower() for p in _strategy_code_problems(tmpdir))
-
-        # 4. strategy.py valid
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("def generate_signals(data, params):\n    return {}\n")
-        assert _strategy_code_problems(tmpdir) == []
+        # The agent republishes its session trace on every run, including runs
+        # that only answered a question, so it must not read as a change.
+        with open(os.path.join(tmpdir, "tau_trace.html"), "w", encoding="utf-8") as f:
+            f.write("<html>session 1</html>")
+        fp5 = _snapshot_workspace_fingerprint(tmpdir)
+        assert fp5 == fp4
+        with open(os.path.join(tmpdir, "tau_trace.html"), "w", encoding="utf-8") as f:
+            f.write("<html>session 2 - different</html>")
+        assert _snapshot_workspace_fingerprint(tmpdir) == fp4
 
 
-def test_run_autonomous_refine_detects_files_changed(monkeypatch):
-    from app.routers import strategies
-    from app.routers.strategies import _run_autonomous_refine
+def test_agent_progress_event_parses_tool_log_lines():
+    event = _agent_progress_event("[agent] tool edit path=strategy.py ...")
+    assert event == {
+        "type": "progress",
+        "tool": "edit",
+        "path": "strategy.py",
+        "message": "正在修改 strategy.py...",
+        "phase": "tool_start",
+    }
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        strat_id = "test-strat-1"
-        strat_dir = os.path.join(tmpdir, strat_id, "strategy")
-        os.makedirs(strat_dir, exist_ok=True)
-        strat_py = os.path.join(strat_dir, "strategy.py")
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("def generate_signals(data, params):\n    return {}\n")
+    read_event = _agent_progress_event("[agent] tool read path=overview.md ...")
+    assert read_event is not None
+    assert read_event["message"] == "正在阅读 overview.md..."
 
-        monkeypatch.setattr(strategies.settings, "workspaces_dir", tmpdir)
-        monkeypatch.setenv("OPENAI_API_KEY", "mock-test-key")
-        monkeypatch.setenv("DEEPSEEK_API_KEY", "mock-test-key")
+    # Lines without a path, other tools, and ordinary output carry no progress.
+    assert _agent_progress_event("[agent] tool bash ...") is None
+    assert _agent_progress_event("[agent] tool edit ok") is None
+    assert _agent_progress_event("[agent] seeded workspace with: strategy.py") is None
 
-        class DummySession:
-            def __init__(self, summary):
-                self.summary = summary
-                self.actions = []
 
-        # Case 1: Agent modifies strategy.py
-        def fake_run_session_modify(*args, **kwargs):
-            with open(strat_py, "w", encoding="utf-8") as f:
-                f.write("def generate_signals(data, params):\n    # modified\n    return {'ETH/USDT': 1.0}\n")
-            return DummySession("已将仓位调整为全仓做多。")
+def test_format_agent_backtest_comparison_uses_first_and_last_run():
+    block = _format_agent_backtest_comparison(
+        {
+            "backtest_iterations": {
+                "dataset": {"exchange": "okx", "symbol": "BTC-USDT-SWAP", "interval": "1h"},
+                "history": [
+                    {"sharpe_ratio": 0.4, "total_return": 3.0},
+                    {"sharpe_ratio": 0.9, "total_return": 8.0},
+                    {"sharpe_ratio": 1.1, "total_return": 12.0},
+                ],
+            }
+        }
+    )
+    assert "```action:metrics_comparison" in block
+    payload = json.loads(block.split("```action:metrics_comparison\n")[1].split("\n```")[0])
+    assert payload["benchmark"]["symbol"] == "BTC-USDT-SWAP"
+    assert payload["before"]["sharpe_ratio"] == 0.4
+    assert payload["after"]["sharpe_ratio"] == 1.1
 
-        monkeypatch.setattr("agent.tau_driver.run_session", fake_run_session_modify)
-        res_mod = _run_autonomous_refine(strat_id, "修改仓位为全仓做多")
-        assert res_mod["files_changed"] is True
-        assert res_mod["agent_summary"] == "已将仓位调整为全仓做多。"
+    # No agent backtests means no card rather than an empty one.
+    assert _format_agent_backtest_comparison({}) == ""
+    assert _format_agent_backtest_comparison({"backtest_iterations": {"history": []}}) == ""
 
-        # Case 2: Agent purely answers question without modifying any files
-        def fake_run_session_qa(*args, **kwargs):
-            return DummySession("该策略的核心逻辑是基于均线金叉死叉入场。")
 
-        monkeypatch.setattr("agent.tau_driver.run_session", fake_run_session_qa)
-        res_qa = _run_autonomous_refine(strat_id, "给我描述一下这个策略的逻辑")
-        assert res_qa["files_changed"] is False
-        assert res_qa["agent_summary"] == "该策略的核心逻辑是基于均线金叉死叉入场。"
+def _install_fake_worker(monkeypatch, strategies, session_factory, *, summary, modify_path=None):
+    """Stand in for the worker running the agent container.
+
+    Marks the queued job succeeded, writes the `llm_meta.json` that
+    `agent.runner_v2` would have left in the version dir, and optionally
+    publishes a change to the live strategy dir.
+    """
+    from control_plane.models import Job
+
+    def fake_terminal_state(_session_factory, job_id):
+        with session_factory() as session:
+            job = session.get(Job, job_id)
+            version_id = job.payload["version_id"]
+            strategy_id = job.payload["strategy_id"]
+            job.status = "succeeded"
+            session.commit()
+
+        version_dir = os.path.join(
+            strategies.settings.workspaces_dir, strategy_id, "versions", version_id
+        )
+        os.makedirs(version_dir, exist_ok=True)
+        with open(os.path.join(version_dir, "llm_meta.json"), "w", encoding="utf-8") as f:
+            json.dump({"agent_summary": summary, "stop_reason": "task_done", "used_llm": True}, f)
+
+        if modify_path is not None:
+            with open(modify_path, "w", encoding="utf-8") as f:
+                f.write("def generate_signals(data, params):\n    # refined\n    return {}\n")
+
+        return "succeeded", ""
+
+    monkeypatch.setattr(strategies, "_job_terminal_state", fake_terminal_state)
+    monkeypatch.setattr(strategies, "enqueue_job", lambda *a, **k: None)
+
+
+def _make_workspace(tmpdir, strat_id):
+    strat_dir = os.path.join(tmpdir, strat_id, "strategy")
+    os.makedirs(strat_dir, exist_ok=True)
+    strat_py = os.path.join(strat_dir, "strategy.py")
+    with open(strat_py, "w", encoding="utf-8") as f:
+        f.write("def generate_signals(data, params):\n    return {}\n")
+    return strat_dir, strat_py
 
 
 def test_chat_with_strategy_qa_vs_refine(monkeypatch):
     from unittest.mock import MagicMock
     from control_plane.db import create_db_engine, create_session_factory, session_scope
-    from control_plane.models import Base, Strategy, StrategyVersion
+    from control_plane.models import Base, Job, Strategy
     from control_plane.enums import ChatStatus
     from sqlalchemy import select
     from app.routers import strategies
@@ -146,71 +181,106 @@ def test_chat_with_strategy_qa_vs_refine(monkeypatch):
         monkeypatch.setattr("app.routers.strategies.require_strategy_member", lambda *args, **kwargs: None)
 
         strat_id = "test-strat-qa"
-        strat_dir = os.path.join(tmpdir, strat_id, "strategy")
-        os.makedirs(strat_dir, exist_ok=True)
-        strat_py = os.path.join(strat_dir, "strategy.py")
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("def generate_signals(data, params):\n    return {}\n")
+        _strat_dir, strat_py = _make_workspace(tmpdir, strat_id)
 
         with session_scope(session_factory) as db:
-            s = Strategy(
-                id=strat_id,
-                name="Test Strat",
-                chat_status=ChatStatus.DONE,
-                chat_history=[],
-            )
-            db.add(s)
+            db.add(Strategy(id=strat_id, name="Test Strat", chat_status=ChatStatus.DONE, chat_history=[]))
 
-        # 1. Q&A scenario: Tau does not change files
+        # 1. Q&A: the agent answers without touching the live strategy dir.
+        _install_fake_worker(
+            monkeypatch, strategies, session_factory, summary="这是一个布林带均值回归策略。"
+        )
         with session_scope(session_factory) as db:
-            monkeypatch.setattr(
-                "app.routers.strategies._run_autonomous_refine",
-                lambda *args, **kwargs: {
-                    "agent_summary": "这是一个布林带均值回归策略。",
-                    "files_changed": False,
-                },
+            resp = chat_with_strategy(
+                strat_id,
+                ChatRequest(message="解释一下这个策略"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
             )
-            req = ChatRequest(message="解释一下这个策略")
-            dummy_request = MagicMock()
-            resp = chat_with_strategy(strat_id, req, dummy_request, db=db, rds=None)
 
             assert resp.reply == "这是一个布林带均值回归策略。"
             assert "Agent 已完成本次修改" not in resp.reply
-            # Verify no StrategyVersion was created
-            versions = db.execute(select(StrategyVersion).where(StrategyVersion.strategy_id == strat_id)).scalars().all()
-            assert len(versions) == 0
-            # Verify chat history updated
             assert len(resp.chat_history) == 2
             assert resp.chat_history[-1]["content"] == "这是一个布林带均值回归策略。"
 
-        # 2. Refine scenario: Tau changes files
+        # 2. Refine: the agent publishes a change, so the reply says so.
+        _install_fake_worker(
+            monkeypatch,
+            strategies,
+            session_factory,
+            summary="已将 RSI 阈值调整为 30/70。",
+            modify_path=strat_py,
+        )
         with session_scope(session_factory) as db:
-            monkeypatch.setattr(
-                "app.routers.strategies._run_autonomous_refine",
-                lambda *args, **kwargs: {
-                    "agent_summary": "已将 RSI 阈值调整为 30/70。",
-                    "files_changed": True,
-                },
+            resp = chat_with_strategy(
+                strat_id,
+                ChatRequest(message="把 RSI 阈值改成 30 和 70"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
             )
-            req = ChatRequest(message="把 RSI 阈值改成 30 和 70")
-            dummy_request = MagicMock()
-            resp = chat_with_strategy(strat_id, req, dummy_request, db=db, rds=None)
 
             assert "Agent 已完成本次修改，并已写入策略工作区。" in resp.reply
             assert "已将 RSI 阈值调整为 30/70。" in resp.reply
-            # Verify StrategyVersion was created
-            versions = db.execute(select(StrategyVersion).where(StrategyVersion.strategy_id == strat_id)).scalars().all()
-            assert len(versions) == 1
+
+        # Every agent turn runs in a container, which needs a version workspace to
+        # work in, so both turns are dispatched as REFINE_STRATEGY jobs.
+        with session_scope(session_factory) as db:
+            jobs = db.execute(select(Job)).scalars().all()
+            assert len(jobs) == 2
+            assert {j.payload["mode"] for j in jobs} == {"autonomous_chat_refine"}
+
+
+def test_chat_with_strategy_reports_a_failed_agent_job(monkeypatch):
+    from unittest.mock import MagicMock
+    from control_plane.db import create_db_engine, create_session_factory, session_scope
+    from control_plane.models import Base, Strategy
+    from control_plane.enums import ChatStatus
+    from app.routers import strategies
+    from app.routers.strategies import chat_with_strategy, ChatRequest
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        engine = create_db_engine(f"sqlite:///{os.path.join(tmpdir, 'fail.db')}")
+        Base.metadata.create_all(engine)
+        session_factory = create_session_factory(engine)
+
+        monkeypatch.setattr(strategies.settings, "workspaces_dir", tmpdir)
+        monkeypatch.setattr("app.routers.strategies.require_strategy_member", lambda *a, **k: None)
+        monkeypatch.setattr(strategies, "enqueue_job", lambda *a, **k: None)
+        monkeypatch.setattr(
+            strategies,
+            "_job_terminal_state",
+            lambda _sf, _job_id: ("failed", "agent_container_exit_code=1"),
+        )
+
+        strat_id = "test-strat-fail"
+        _make_workspace(tmpdir, strat_id)
+        with session_scope(session_factory) as db:
+            db.add(Strategy(id=strat_id, name="S", chat_status=ChatStatus.DONE, chat_history=[]))
+
+        with session_scope(session_factory) as db:
+            resp = chat_with_strategy(
+                strat_id,
+                ChatRequest(message="把周期改成 4h"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
+            )
+
+        assert "Agent 处理失败" in resp.reply
+        assert "agent_container_exit_code=1" in resp.reply
 
 
 @pytest.mark.anyio
 async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
-    import json
     from unittest.mock import MagicMock
     from control_plane.db import create_db_engine, create_session_factory, session_scope
-    from control_plane.models import Base, Strategy, StrategyVersion
+    from control_plane.models import Base, Strategy
     from control_plane.enums import ChatStatus
-    from sqlalchemy import select
     from app.routers import strategies
     from app.routers.strategies import chat_with_strategy_stream, ChatRequest
 
@@ -224,83 +294,53 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
         monkeypatch.setattr("app.routers.strategies.require_strategy_member", lambda *args, **kwargs: None)
 
         strat_id = "test-strat-stream"
-        strat_dir = os.path.join(tmpdir, strat_id, "strategy")
-        os.makedirs(strat_dir, exist_ok=True)
-        strat_py = os.path.join(strat_dir, "strategy.py")
-        with open(strat_py, "w", encoding="utf-8") as f:
-            f.write("def generate_signals(data, params):\n    return {}\n")
+        _strat_dir, strat_py = _make_workspace(tmpdir, strat_id)
 
         with session_scope(session_factory) as db:
-            s = Strategy(
-                id=strat_id,
-                name="Test Strat Stream",
-                chat_status=ChatStatus.DONE,
-                chat_history=[],
-            )
-            db.add(s)
+            db.add(Strategy(id=strat_id, name="Test Strat Stream", chat_status=ChatStatus.DONE, chat_history=[]))
 
-        # 1. Q&A streaming: Tau does not modify files
+        # 1. Q&A streaming: no change published.
+        _install_fake_worker(monkeypatch, strategies, session_factory, summary="该策略使用了RSI指标。")
         with session_scope(session_factory) as db:
-            def fake_run_qa(*args, **kwargs):
-                on_progress = kwargs.get("on_progress")
-                if on_progress:
-                    on_progress({"tool": "read", "path": "strategy.py", "phase": "executing"})
-                return {
-                    "agent_summary": "该策略使用了RSI指标。",
-                    "files_changed": False,
-                }
-            monkeypatch.setattr("app.routers.strategies._run_autonomous_refine", fake_run_qa)
-
-            req = ChatRequest(message="使用了什么指标？")
-            dummy_request = MagicMock()
             resp = chat_with_strategy_stream(
-                strat_id, req, dummy_request, db=db, rds=None, session_factory=session_factory
+                strat_id,
+                ChatRequest(message="使用了什么指标？"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
             )
-
             events = [chunk async for chunk in resp.body_iterator]
-            joined = "".join(events)
-            assert "该策略使用了RSI指标。" in joined
-            assert "Agent 已完成本次修改" not in joined
 
-            # Check done event
-            done_line = [line for line in events if '"type": "done"' in line][0]
-            done_payload = json.loads(done_line.replace("data: ", "").strip())
-            assert done_payload["clean_reply"] == "该策略使用了RSI指标。"
+        joined = "".join(events)
+        assert "该策略使用了RSI指标。" in joined
+        assert "Agent 已完成本次修改" not in joined
+        done_line = [line for line in events if '"type": "done"' in line][0]
+        done_payload = json.loads(done_line.replace("data: ", "").strip())
+        assert done_payload["clean_reply"] == "该策略使用了RSI指标。"
 
-            # Verify no version was saved
-            versions = db.execute(select(StrategyVersion).where(StrategyVersion.strategy_id == strat_id)).scalars().all()
-            assert len(versions) == 0
-
-        # 2. Refine streaming: files changed
+        # 2. Refine streaming: files changed.
+        _install_fake_worker(
+            monkeypatch,
+            strategies,
+            session_factory,
+            summary="已将 RSI 周期修改为 21。",
+            modify_path=strat_py,
+        )
         with session_scope(session_factory) as db:
-            def fake_run_mod(*args, **kwargs):
-                on_progress = kwargs.get("on_progress")
-                if on_progress:
-                    on_progress({"tool": "write", "path": "strategy.py", "phase": "executing"})
-                return {
-                    "agent_summary": "已将 RSI 周期修改为 21。",
-                    "files_changed": True,
-                }
-            monkeypatch.setattr("app.routers.strategies._run_autonomous_refine", fake_run_mod)
-
-            req = ChatRequest(message="把 RSI 周期改成 21")
-            dummy_request = MagicMock()
             resp = chat_with_strategy_stream(
-                strat_id, req, dummy_request, db=db, rds=None, session_factory=session_factory
+                strat_id,
+                ChatRequest(message="把 RSI 周期改成 21"),
+                MagicMock(),
+                db=db,
+                rds=None,
+                session_factory=session_factory,
             )
-
             events = [chunk async for chunk in resp.body_iterator]
-            joined = "".join(events)
-            assert "Agent 已完成本次修改，并已写入策略工作区。" in joined
-            assert "已将 RSI 周期修改为 21。" in joined
 
-            # Check done event
-            done_line = [line for line in events if '"type": "done"' in line][0]
-            done_payload = json.loads(done_line.replace("data: ", "").strip())
-            assert "Agent 已完成本次修改，并已写入策略工作区。" in done_payload["clean_reply"]
-
-            # Verify version was saved
-            versions = db.execute(select(StrategyVersion).where(StrategyVersion.strategy_id == strat_id)).scalars().all()
-            assert len(versions) == 1
-
-
+        joined = "".join(events)
+        assert "Agent 已完成本次修改，并已写入策略工作区。" in joined
+        assert "已将 RSI 周期修改为 21。" in joined
+        done_line = [line for line in events if '"type": "done"' in line][0]
+        done_payload = json.loads(done_line.replace("data: ", "").strip())
+        assert "Agent 已完成本次修改，并已写入策略工作区。" in done_payload["clean_reply"]

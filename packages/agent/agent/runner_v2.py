@@ -17,6 +17,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import asyncio
 import json
 import os
 import subprocess
@@ -394,6 +395,26 @@ def _build_agent_task(
     )
 
 
+def _require_model_progress(session: "tau_driver.TauSessionResult") -> None:
+    """Fail a session that never reached the model.
+
+    Tau settles whenever the model stops calling tools -- including when every
+    model call failed, in which case it echoes the task straight back as the
+    summary. Refine seeds the version workspace from the live strategy, so the
+    workspace already validates and such a run would otherwise publish an
+    unchanged strategy, report success, and show the task prompt to the user as
+    the agent's answer. A session that reached the provider always spends
+    tokens, so zero tokens with no tool calls means nothing ran.
+    """
+    tokens = session.tokens if isinstance(session.tokens, dict) else {}
+    if int(tokens.get("total") or 0) > 0 or session.tool_calls:
+        return
+    raise tau_driver.TauSessionError(
+        "agent_made_no_model_progress: the session spent 0 tokens and called no "
+        "tools, so the model provider was never reached"
+    )
+
+
 def _session_stats(session: "tau_driver.TauSessionResult | None") -> dict[str, Any]:
     """Flatten a Tau session into the shape `llm_meta.json` records."""
     if session is None:
@@ -462,10 +483,17 @@ def _print_progress(event: dict[str, Any]) -> None:
     The worker kills a container that has produced no output for
     `AGENT_IDLE_TIMEOUT_S`. Without this the whole Tau session is silent on
     stdout, so a healthy agent looked identical to a hung one.
+
+    The `path=` field is the only channel the API has for telling the user which
+    file the agent is touching: chat refine reads these lines back off the job
+    log, so keep the shape parseable.
     """
     phase = event.get("phase")
     if phase == "tool_start":
-        print(f"[agent] tool {event.get('tool')} ...", flush=True)
+        args = event.get("args")
+        path = str(args.get("path") or "") if isinstance(args, dict) else ""
+        suffix = f" path={os.path.basename(path)}" if path else ""
+        print(f"[agent] tool {event.get('tool')}{suffix} ...", flush=True)
     elif phase == "tool_end":
         outcome = "error" if event.get("is_error") else "ok"
         print(f"[agent] tool {event.get('tool')} {outcome}", flush=True)
@@ -582,27 +610,8 @@ def main() -> int:
     ensure_catalog_entry(tau_target)
     print(f"[agent] tau provider={tau_target.provider} model={tau_target.model}")
 
-    # Pre-flight DAG: Intent-aware routing, market regime diagnosis, and on-demand web research
-    enriched_prompt = prompt
-    try:
-        import asyncio
-        from agent.dag import DAGRunner, build_smart_strategy_dag
-        dag = build_smart_strategy_dag()
-        runner = DAGRunner()
-        dag_ctx = asyncio.run(runner.run(dag, {
-            "prompt": prompt,
-            "symbol": dataset.symbol or "BTC-USDT",
-            "interval": dataset.interval or "1h",
-        }))
-        if dag_ctx.get("enriched_prompt"):
-            enriched_prompt = dag_ctx.get("enriched_prompt")
-            track = dag_ctx.get("execution_track", "fast_track")
-            print(f"[agent] DAG intent routed to: {track} (enriched prompt length: {len(enriched_prompt)})")
-    except Exception as e:
-        print(f"[agent] DAG pre-flight warning: {e}")
-
     task = _build_agent_task(
-        prompt=enriched_prompt,
+        prompt=prompt,
         is_first_generation=is_first_generation,
         files=seeded,
         capabilities=platform_caps,
@@ -612,6 +621,7 @@ def main() -> int:
     used_llm = True
     agent_summary = ""
     stop_reason = "task_done"
+    agent_error = ""
     session: tau_driver.TauSessionResult | None = None
     force_fallback = (
         (os.getenv("FORCE_FALLBACK") or "").strip().lower() in ("1", "true", "yes")
@@ -621,7 +631,7 @@ def main() -> int:
         print("[agent] FORCE_FALLBACK enabled: skipping LLM session and writing fallback strategy.")
         code = fallback_strategy_py(prompt)
         used_llm = False
-        stop_reason = "fallback"
+        stop_reason = "forced_fallback"
         _write_text(os.path.join(version_dir, "strategy.py"), code)
     else:
         thinking_level = os.getenv("AGENT_TAU_THINKING_LEVEL")
@@ -684,6 +694,8 @@ def main() -> int:
                     code = _read_text(strat_path)
                     _validate_strategy_code(code)
                     recovered = True
+                    stop_reason = "recovered_after_error"
+                    agent_error = f"{type(exc).__name__}: {exc}"
                     print("[agent] recovered: strategy.py is valid despite session exception")
                 except Exception:
                     recovered = False
@@ -695,10 +707,22 @@ def main() -> int:
                 )
                 if not fallback_on_error:
                     raise
+                # The fallback is a generic MA crossover that has nothing to do
+                # with the user's prompt. It is written into the version dir so
+                # the failed attempt stays inspectable, but it must never reach
+                # the live strategy dir and the job must still report failure --
+                # publishing it silently replaced working strategies with a stub.
                 code = fallback_strategy_py(prompt)
                 used_llm = False
-                stop_reason = "fallback"
+                stop_reason = "error_fallback"
+                agent_error = f"{type(exc).__name__}: {exc}"
                 _write_text(os.path.join(version_dir, "strategy.py"), code)
+
+    # Checked outside the try above: the recovery branch there would otherwise
+    # "recover" a session that never ran, because refine seeds a workspace that
+    # already validates.
+    if session is not None and stop_reason == "task_done":
+        _require_model_progress(session)
 
     # Spec and protocol are platform-owned; write them if the agent did not.
     for name, payload, writer in (
@@ -753,9 +777,20 @@ def main() -> int:
         "overview_status": overview_status,
         "agent_summary": agent_summary,
         "stop_reason": stop_reason,
+        "degraded": stop_reason in ("error_fallback", "recovered_after_error"),
+        "agent_error": agent_error,
         "backtest_iterations": iteration,
     }
     _write_json(os.path.join(version_dir, "llm_meta.json"), llm_meta_payload)
+
+    if stop_reason == "error_fallback":
+        get_langfuse().flush()
+        print(
+            f"[agent] error_fallback: keeping {strategy_dir} untouched; "
+            f"the fallback strategy is in {version_dir} for inspection.",
+            file=sys.stderr,
+        )
+        raise RuntimeError(f"agent_error_fallback: {agent_error}")
 
     # Publish to the live strategy dir only once the version is complete.
     for name in (
