@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, Play, CheckCircle2, XCircle, ArrowUpRight, TrendingUp, TrendingDown, RefreshCw, BarChart2 } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, ArrowUpRight, TrendingUp, TrendingDown, RefreshCw, BarChart2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { backtestsApi, jobsApi } from "@/lib/api";
 import { ActionHandler, ActionCardProps, ActionContext } from "../actionTypes";

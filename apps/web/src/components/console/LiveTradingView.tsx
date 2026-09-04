@@ -150,6 +150,7 @@ export const LiveTradingView = ({ strategy }: LiveTradingViewProps) => {
 
             // Save config first
             await tradingApi.createConfig(strategy.id, {
+                account_id: accountId,
                 exchange: selectedMode === "paper" ? "paper" : (accounts.find((a) => a.id === accountId)?.exchange || "okx"),
                 symbol,
                 symbols: [symbol],

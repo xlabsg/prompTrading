@@ -22,7 +22,6 @@ from app.routers import auth as auth_router
 from app.routers import billing as billing_router
 from app.routers import repos as repos_router
 from app.routers import github as github_router
-from app.routers import search as search_router
 from app.routers import github_webhooks as github_webhooks_router
 from app.settings import settings
 
@@ -160,7 +159,6 @@ app.include_router(ws.router, prefix="/ws", tags=["ws"])
 app.include_router(auth_router.router, prefix="/api", tags=["auth"])
 app.include_router(billing_router.router, prefix="/api", tags=["billing"])
 app.include_router(repos_router.router, prefix="/api", tags=["repos"])
-app.include_router(search_router.router, prefix="/api", tags=["search"])
 app.include_router(github_router.router, prefix="/api", tags=["github"])
 app.include_router(github_webhooks_router.router, tags=["webhooks"])
 app.include_router(markets.router, prefix="/api", tags=["markets"])
@@ -173,5 +171,6 @@ app.include_router(admin_ops.router, prefix="/api", tags=["admin-ops"])
 
 
 @app.get("/healthz")
+@app.get("/health")
 def healthz() -> dict:
-    return {"ok": True}
+    return {"ok": True, "status": "healthy"}

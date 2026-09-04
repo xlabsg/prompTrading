@@ -152,50 +152,71 @@ class PaperExchangeClient:
     def place_order(
         self,
         *,
-        inst_id: str,
+        inst_id: Optional[str] = None,
+        instId: Optional[str] = None,
         td_mode: str = "cross",
-        side: str,
+        tdMode: Optional[str] = None,
+        side: str = "buy",
         ord_type: str = "market",
-        sz: str,
+        ordType: Optional[str] = None,
+        sz: Optional[str] = None,
+        size: Optional[float] = None,
         px: Optional[str] = None,
+        price: Optional[float] = None,
         pos_side: Optional[str] = None,
+        posSide: Optional[str] = None,
         cl_ord_id: Optional[str] = None,
+        clOrdId: Optional[str] = None,
         reduce_only: bool = False,
+        reduceOnly: Optional[bool] = None,
         **kwargs,
     ) -> Dict[str, Any]:
-        size = float(sz)
-        curr_price = float(px) if (px and float(px) > 0) else self._fetch_public_ticker_price(inst_id)
-        order_id = str(uuid.uuid4().hex[:16])
-        cl_id = cl_ord_id or f"paper_{int(time.time()*1000)}"
+        target_inst_id = inst_id or instId or kwargs.get("symbol", "")
+        if not target_inst_id:
+            raise ValueError("inst_id or instId is required")
 
-        fee = size * curr_price * self.fee_rate
+        target_ord_type = (ord_type or ordType or "market").lower()
+
+        if sz is not None:
+            sz_val = float(sz)
+        elif size is not None:
+            sz_val = float(size)
+        else:
+            sz_val = 0.0
+
+        target_px = px if px is not None else (str(price) if price is not None else None)
+        curr_price = float(target_px) if (target_px and float(target_px) > 0) else self._fetch_public_ticker_price(target_inst_id)
+        order_id = str(uuid.uuid4().hex[:16])
+        cl_id = cl_ord_id or clOrdId or f"paper_{int(time.time()*1000)}"
+
+        fee = sz_val * curr_price * self.fee_rate
         self.cash -= fee
 
-        side_lower = side.lower()
-        existing = self.positions.get(inst_id, {"pos": 0.0, "avgPx": 0.0})
+        side_lower = (side or kwargs.get("side", "buy")).lower()
+        existing = self.positions.get(target_inst_id, {"pos": 0.0, "avgPx": 0.0})
         curr_pos = float(existing.get("pos", 0.0))
         curr_avg = float(existing.get("avgPx", 0.0))
 
         if side_lower == "buy":
-            new_pos = curr_pos + size
+            new_pos = curr_pos + sz_val
             if curr_pos >= 0:
-                new_avg = ((curr_pos * curr_avg) + (size * curr_price)) / max(new_pos, 1e-9)
+                new_avg = ((curr_pos * curr_avg) + (sz_val * curr_price)) / max(new_pos, 1e-9)
             else:
                 # Covering short
-                realized_pnl = (curr_avg - curr_price) * min(abs(curr_pos), size)
+                realized_pnl = (curr_avg - curr_price) * min(abs(curr_pos), sz_val)
                 self.cash += realized_pnl
                 new_avg = curr_avg if new_pos < 0 else curr_price
         else:  # sell
-            new_pos = curr_pos - size
+            new_pos = curr_pos - sz_val
             if curr_pos <= 0:
-                new_avg = ((abs(curr_pos) * curr_avg) + (size * curr_price)) / max(abs(new_pos), 1e-9)
+                new_avg = ((abs(curr_pos) * curr_avg) + (sz_val * curr_price)) / max(abs(new_pos), 1e-9)
             else:
                 # Closing long
-                realized_pnl = (curr_price - curr_avg) * min(curr_pos, size)
+                realized_pnl = (curr_price - curr_avg) * min(curr_pos, sz_val)
                 self.cash += realized_pnl
                 new_avg = curr_avg if new_pos > 0 else curr_price
 
-        self.positions[inst_id] = {
+        self.positions[target_inst_id] = {
             "pos": new_pos,
             "avgPx": new_avg if abs(new_pos) > 1e-8 else 0.0,
         }
@@ -203,13 +224,13 @@ class PaperExchangeClient:
         order_record = {
             "ordId": order_id,
             "clOrdId": cl_id,
-            "instId": inst_id,
-            "side": side,
-            "ordType": ord_type,
-            "sz": str(size),
+            "instId": target_inst_id,
+            "side": side_lower,
+            "ordType": target_ord_type,
+            "sz": str(sz_val),
             "px": str(curr_price),
             "avgPx": str(curr_price),
-            "accFillSz": str(size),
+            "accFillSz": str(sz_val),
             "state": "filled",
             "fee": f"-{round(fee, 4)}",
             "feeCcy": "USDT",

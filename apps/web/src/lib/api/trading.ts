@@ -12,6 +12,7 @@ interface TradingConfigRequest {
     account_id: string;
     max_position_pct: number;
     stop_loss_pct: number;
+    leverage?: number;
 }
 
 interface TradingConfig {

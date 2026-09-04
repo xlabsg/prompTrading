@@ -170,6 +170,7 @@ class OKXAdapter(ExchangeAdapter):
         """规范化价格"""
         # 获取工具信息
         inst_info = self.client.get_instrument(inst_id=symbol)
+        price = Decimal(str(price))
         if not inst_info:
             return price
 
@@ -188,6 +189,7 @@ class OKXAdapter(ExchangeAdapter):
         """规范化订单大小"""
         # 获取工具信息
         inst_info = self.client.get_instrument(inst_id=symbol)
+        size = Decimal(str(size))
         if not inst_info:
             return size
 

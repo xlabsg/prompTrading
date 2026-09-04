@@ -16,8 +16,6 @@ import {
     BarChart3,
     Activity,
     Signal,
-    DollarSign,
-    Percent,
     Target,
 } from "lucide-react";
 import { templatesApi } from "@/lib/api";
@@ -275,7 +273,7 @@ export function TemplatePerformanceDialog({
 interface MetricCardProps {
     label: string;
     value: string;
-    icon: React.ComponentType<{ className?: string }>;
+    icon: React.ComponentType<{ className?: string; size?: number }>;
     trend?: "up" | "down";
 }
 

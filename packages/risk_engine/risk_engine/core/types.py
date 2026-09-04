@@ -156,8 +156,8 @@ class Balance:
     """账户余额"""
     total_equity: Decimal  # 总权益
     available_balance: Decimal  # 可用余额
-    margin_used: Decimal  # 已用保证金
-    unrealized_pnl: Decimal  # 未实现盈亏
+    margin_used: Decimal = Decimal("0")  # 已用保证金
+    unrealized_pnl: Decimal = Decimal("0")  # 未实现盈亏
     currency: str = "USDT"
     timestamp: Optional[datetime] = None
 

@@ -36,11 +36,12 @@ jobs:
           pip install -e packages/live_trading_sdk
           pip install -e packages/agent
           pip install -e packages/okx_sdk
+          pip install -e packages/risk_engine
           pip install -e 'services/api[test]'
 
       - name: Lint with Ruff
         run: |
-          ruff check packages/control_plane packages/agent packages/backtest packages/data services/api
+          ruff check packages/control_plane packages/agent packages/backtest packages/data packages/risk_engine services/api
 
       - name: Run Backend Tests
         env:
@@ -58,6 +59,8 @@ jobs:
           pytest -v packages/data
           pytest -v packages/backtest
           pytest -v packages/agent/tests
+          pytest -v packages/risk_engine/tests
+          pytest -v packages/live_trading_sdk/tests
           pytest -v services/api
 
   frontend-quality:

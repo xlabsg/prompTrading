@@ -253,6 +253,25 @@ class TradingConfig(Base):
     # Risk management
     max_position_pct: Mapped[float] = mapped_column(default=10.0)  # Max position as % of balance
     stop_loss_pct: Mapped[float] = mapped_column(default=5.0)  # Stop loss %
+
+    # Risk control
+    leverage: Mapped[int] = mapped_column(Integer, default=1)
+    max_leverage: Mapped[int] = mapped_column(Integer, default=10)
+    max_daily_loss_pct: Mapped[Optional[float]] = mapped_column(nullable=True)
+    max_drawdown_pct: Mapped[Optional[float]] = mapped_column(nullable=True)
+    require_stop_loss: Mapped[bool] = mapped_column(default=True)
+
+    # Trailing stop
+    trailing_stop_enabled: Mapped[bool] = mapped_column(default=False)
+    trailing_activation_pct: Mapped[float] = mapped_column(default=0.005)
+    trailing_distance_pct: Mapped[float] = mapped_column(default=0.008)
+
+    # Dynamic TP/SL
+    dynamic_tpsl_enabled: Mapped[bool] = mapped_column(default=False)
+    use_support_resistance: Mapped[bool] = mapped_column(default=True)
+    min_risk_reward: Mapped[float] = mapped_column(default=1.0)
+    fallback_sl_pct: Mapped[float] = mapped_column(default=0.01)
+    fallback_tp_pct: Mapped[float] = mapped_column(default=0.02)
     
     is_active: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -321,6 +340,10 @@ class Order(Base):
         SAEnum(OrderStatus, native_enum=False), default=OrderStatus.PENDING, nullable=False
     )
     
+    take_profit: Mapped[Optional[float]] = mapped_column(nullable=True)
+    stop_loss: Mapped[Optional[float]] = mapped_column(nullable=True)
+    reduce_only: Mapped[bool] = mapped_column(default=False)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, onupdate=_utcnow)
     
@@ -348,6 +371,17 @@ class Position(Base):
         SAEnum(PositionStatus, native_enum=False), default=PositionStatus.OPEN, nullable=False
     )
     
+    leverage: Mapped[int] = mapped_column(Integer, default=1)
+    margin: Mapped[float] = mapped_column(default=0.0)
+    liquidation_price: Mapped[Optional[float]] = mapped_column(nullable=True)
+    take_profit: Mapped[Optional[float]] = mapped_column(nullable=True)
+    stop_loss: Mapped[Optional[float]] = mapped_column(nullable=True)
+    stop_loss_type: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    trailing_stop_activated: Mapped[bool] = mapped_column(default=False)
+    trailing_stop_price: Mapped[Optional[float]] = mapped_column(nullable=True)
+    highest_price: Mapped[Optional[float]] = mapped_column(nullable=True)
+    lowest_price: Mapped[Optional[float]] = mapped_column(nullable=True)
+
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     

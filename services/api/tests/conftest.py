@@ -111,12 +111,15 @@ def e2e_api_base_url() -> str:
 @pytest.fixture(scope="session")
 def e2e_db_engine():
     from control_plane.models import Base
-    engine = create_db_engine(settings.db_url)
-    Base.metadata.create_all(bind=engine)
-    # Basic sanity: verify DB is reachable and schema exists.
-    with engine.connect() as conn:
-        conn.execute(text("SELECT 1"))
-    return engine
+    try:
+        engine = create_db_engine(settings.db_url)
+        Base.metadata.create_all(bind=engine)
+        # Basic sanity: verify DB is reachable and schema exists.
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return engine
+    except Exception as e:
+        pytest.skip(f"E2E database not available ({settings.db_url}): {e}")
 
 
 @pytest.fixture(scope="function")
