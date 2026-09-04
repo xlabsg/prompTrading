@@ -10,11 +10,12 @@
 [![Docker Compose](https://img.shields.io/badge/Docker-Compose-2496ED.svg?logo=docker&logoColor=white)](https://www.docker.com/)
 [![Crypto Exchange](https://img.shields.io/badge/Exchange-Crypto%20Live%20%26%20Paper-black.svg)](#)
 [![License](https://img.shields.io/badge/License-Apache%202.0-yellow.svg)](LICENSE)
+[![Telegram](https://img.shields.io/badge/Telegram-Join%20Chat-2CA5E0?logo=telegram&logoColor=white)](https://t.me/+nzrCKig99880OTRl)
 
 **Turn plain-language market ideas into battle-tested, live algorithmic trading strategies.**  
 *Conversational Strategy Generation · Closed-Loop Autonomous Backtesting · Defense-in-Depth Live Risk Engine*
 
-[Overview](#-overview) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout)
+[Overview](#-overview) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout) • [Community](#-community)
 
 </div>
 
@@ -325,6 +326,15 @@ pytest services/api/tests -q
 # Run package unit tests
 PYTHONPATH="packages/agent:packages/backtest:packages/data" pytest packages/agent/tests packages/data/tests -q
 ```
+
+---
+
+## 💬 Community
+
+Join our Telegram community to discuss trading ideas, get help with setup and exchange connections, and stay updated:
+
+- ✈️ **Telegram**: [PrompTrading Community](https://t.me/+nzrCKig99880OTRl)
+- 🐛 **Issues**: [GitHub Issues](https://github.com/xlabsg/prompTrading/issues) for bug reports and feature requests
 
 ---
 
