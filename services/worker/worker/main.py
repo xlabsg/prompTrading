@@ -44,8 +44,35 @@ STRATEGY_NAME_MAX_CHARS = 20
 
 
 def _configure_logging(log_dir: str, service_name: str) -> None:
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, f"{service_name}.log")
+    has_file = True
+    log_path = ""
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"{service_name}.log")
+        with open(log_path, "a", encoding="utf-8"):
+            pass
+    except OSError:
+        has_file = False
+
+    handlers = {
+        "stdout": {
+            "class": "logging.StreamHandler",
+            "formatter": "default",
+            "stream": "ext://sys.stdout",
+        }
+    }
+    root_handlers = ["stdout"]
+    if has_file:
+        handlers["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "formatter": "default",
+            "filename": log_path,
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 5,
+            "encoding": "utf-8",
+        }
+        root_handlers.append("file")
+
     log_config = {
         "version": 1,
         "disable_existing_loggers": False,
@@ -54,22 +81,8 @@ def _configure_logging(log_dir: str, service_name: str) -> None:
                 "format": "%(asctime)s %(levelname)s [%(name)s] %(message)s",
             }
         },
-        "handlers": {
-            "stdout": {
-                "class": "logging.StreamHandler",
-                "formatter": "default",
-                "stream": "ext://sys.stdout",
-            },
-            "file": {
-                "class": "logging.handlers.RotatingFileHandler",
-                "formatter": "default",
-                "filename": log_path,
-                "maxBytes": 10 * 1024 * 1024,
-                "backupCount": 5,
-                "encoding": "utf-8",
-            },
-        },
-        "root": {"level": "INFO", "handlers": ["stdout", "file"]},
+        "handlers": handlers,
+        "root": {"level": "INFO", "handlers": root_handlers},
     }
     logging.config.dictConfig(log_config)
 

@@ -46,6 +46,8 @@ jobs:
 
       - name: Run Backend Tests
         env:
+          APP_LOG_DIR: /tmp/workspaces
+          LOG_DIR: /tmp/workspaces
           APP_WORKSPACES_DIR: /tmp/workspaces
           APP_DB_URL: sqlite:////tmp/workspaces/app.db
           WORKSPACES_DIR: /tmp/workspaces
