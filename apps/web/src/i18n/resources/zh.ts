@@ -167,22 +167,6 @@ const zh = {
       rollbackNoPrevious: "没有可回滚的上一版本。",
       rollbackFailed: "回滚失败，请稍后重试。",
     },
-    overview: {
-      generatingTitle: "策略自主研发进行中...",
-      generatingSubtitle: "AI Agent 正在沙箱中执行代码编写、静态审计与闭环历史数据回测（最多 2 轮），请查看左侧获取实时推演流。",
-      milestones: {
-        prompt: "解析需求",
-        code: "代码编写",
-        audit: "沙箱审计",
-        backtest: "回测调优",
-        done: "定稿交付",
-      },
-      generateButton: "生成工作流与策略解读",
-      retryButton: "重试生成工作流与解读",
-      noOverviewNotice: "暂未生成策略解读文档，默认将自动触发生成。",
-      autoGenerating: "正在自动生成工作流与策略解读...",
-      waitingForStrategy: "策略代码生成完成后，将自动生成工作流图谱与策略解读。",
-    },
     dashboard: {
       title: "创建或优化策略",
       subtitle: "用自然语言创建，或导入 GitHub 仓库构建代码知识库",
@@ -193,6 +177,23 @@ const zh = {
     errors: {
       loadStrategies: "加载策略失败。",
     },
+  },
+  overview: {
+    loadingOverview: "正在加载策略概览...",
+    generatingTitle: "策略自主研发进行中...",
+    generatingSubtitle: "AI Agent 正在沙箱中执行代码编写、静态审计与闭环历史数据回测（最多 2 轮），请查看左侧获取实时推演流。",
+    milestones: {
+      prompt: "解析需求",
+      code: "代码编写",
+      audit: "沙箱审计",
+      backtest: "回测调优",
+      done: "定稿交付",
+    },
+    generateButton: "生成工作流与策略解读",
+    retryButton: "重试生成工作流与解读",
+    noOverviewNotice: "暂未生成策略解读文档，默认将自动触发生成。",
+    autoGenerating: "正在自动生成工作流与策略解读...",
+    waitingForStrategy: "策略代码生成完成后，将自动生成工作流图谱与策略解读。",
   },
   backtest: {
     title: "回测",
@@ -449,6 +450,7 @@ const zh = {
     generateErrorRunning: "该策略已有任务在运行（{jobType}, {jobId}），请稍后再试。",
     generateErrorNotReady: "策略尚未就绪，请先完成对话并确认。",
     generateErrorFailed: "生成失败：{reason}",
+    generateErrorTimeout: "策略生成耗时较长（包含写代码、代码审计与闭环回测调优），后台任务仍在进行中，请稍后刷新查看。",
     generateErrorGeneric: "生成失败，请重试。",
     elapsedSeconds: "已耗时 {{count}} 秒",
     generatingHints: {

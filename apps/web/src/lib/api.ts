@@ -341,10 +341,17 @@ export const jobsApi = {
         }) => void,
         timeout = 420000
     ): Promise<Job> => {
+        const startTime = Date.now();
         return new Promise<Job>((resolve, reject) => {
             const timeoutTimer = setTimeout(() => {
                 cleanup();
-                jobsApi.get(jobId).then(resolve).catch(reject);
+                jobsApi.get(jobId).then((job) => {
+                    if (job.status === "succeeded" || job.status === "failed") {
+                        resolve(job);
+                    } else {
+                        reject(new Error("Job timed out"));
+                    }
+                }).catch(reject);
             }, timeout);
 
             let eventSource: EventSource | null = null;
@@ -363,15 +370,27 @@ export const jobsApi = {
                 finished = true;
                 cleanup();
                 try {
-                    const job = await jobsApi.waitForCompletion(jobId, undefined, 1000, 30000);
+                    const elapsed = Date.now() - startTime;
+                    const remainingTimeout = Math.max(timeout - elapsed, 10000);
+                    const job = await jobsApi.waitForCompletion(jobId, undefined, 1000, remainingTimeout);
                     resolve(job);
                 } catch (err) {
-                    jobsApi.get(jobId).then(resolve).catch(() => reject(err));
+                    try {
+                        const job = await jobsApi.get(jobId);
+                        if (job.status === "succeeded" || job.status === "failed") {
+                            resolve(job);
+                            return;
+                        }
+                    } catch {
+                        // ignore fetch failure, surface original error
+                    }
+                    reject(err);
                 }
             };
 
             try {
-                eventSource = new EventSource(`/api/jobs/${jobId}/stream`);
+                const streamUrl = `${apiBaseUrl()}/api/jobs/${jobId}/stream`;
+                eventSource = new EventSource(streamUrl, { withCredentials: true });
 
                 eventSource.addEventListener("step", (e) => {
                     try {
@@ -405,7 +424,7 @@ export const jobsApi = {
                 });
 
                 eventSource.onerror = () => {
-                    // If stream errors out (e.g. proxy or premature close), complete via DB check
+                    // If stream errors out (e.g. proxy or premature close), complete via DB check/polling
                     complete();
                 };
             } catch {

@@ -519,6 +519,9 @@ const ConsoleSidebar = ({
         if (message.includes("strategy_not_ready_for_generation") || message.includes("strategy_not_ready_for_confirmation")) {
             return t("dashboard.generateErrorNotReady");
         }
+        if (message.includes("timed out") || message.includes("timeout")) {
+            return t("dashboard.generateErrorTimeout");
+        }
         const failedMatch = message.match(/job_failed:(.+)$/);
         if (failedMatch) {
             return t("dashboard.generateErrorFailed").replace("{reason}", failedMatch[1]);
@@ -549,7 +552,8 @@ const ConsoleSidebar = ({
                 }
             );
             if (job.status !== "succeeded") {
-                throw new Error(`job_failed:${job.error_message || job.id}`);
+                const failureReason = job.error_message || (job.status !== "running" ? job.status : "");
+                throw new Error(failureReason ? `job_failed:${failureReason}` : `job_failed:${job.id}`);
             }
             refreshStrategyData();
             onStrategyGenerated?.();
