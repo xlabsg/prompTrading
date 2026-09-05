@@ -4,6 +4,7 @@
 
 ### *Prompt in, Alpha out.*
 
+[![Website](https://img.shields.io/badge/Website-aicryptofx.com-00C7B7?logo=googlechrome&logoColor=white)](https://aicryptofx.com)
 [![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB.svg?logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 18](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
@@ -16,7 +17,7 @@
 **Turn plain-language market ideas into battle-tested, live algorithmic trading strategies.**  
 *Conversational Strategy Generation · Closed-Loop Autonomous Backtesting · Defense-in-Depth Live Risk Engine*
 
-[Overview](#-overview) • [Community](#-community) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout)
+[Live Platform](https://aicryptofx.com) • [Overview](#-overview) • [Community](#-community) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout)
 
 </div>
 
@@ -39,6 +40,13 @@ Tell PrompTrading:
 > *"Build an intraday breakout strategy on BTC/USDT 15m candles with a volume surge filter, 2.5x ATR trailing stop, and dynamic profit targets based on recent swing highs."*
 
 Within minutes, the built-in **Tau coding agent** drafts standard-compliant Python strategy code, launches throwaway Docker containers to backtest it against real historical market data, analyzes the resulting Sharpe ratio and drawdowns, self-repairs any defects, and prepares the strategy for one-click live execution behind a multi-layered risk engine.
+
+---
+
+## 🌐 Live Platform
+
+PrompTrading is deployed and accessible online:
+- 🚀 **Web Platform**: [https://aicryptofx.com](https://aicryptofx.com)
 
 ---
 
