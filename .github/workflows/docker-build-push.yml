@@ -15,7 +15,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
@@ -85,11 +85,9 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          platforms: linux/arm64
+          platforms: linux/amd64
           build-args: |
-            VITE_API_BASE_URL=${{ matrix.name == 'web' && 'https://ai.example.com' || '' }}
             VITE_GA_MEASUREMENT_ID=${{ matrix.name == 'web' && 'G-PMEMB446DS' || '' }}
-            VITE_GA_COOKIE_DOMAIN=${{ matrix.name == 'web' && 'ai.example.com' || '' }}
 
       - name: Image digest
         run: echo ${{ steps.meta.outputs.digest }}

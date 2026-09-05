@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
+import { apiBaseUrl } from "@/lib/api";
+
 const OAuthCallback = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -23,7 +25,7 @@ const OAuthCallback = () => {
     // This page just shows a loading state while that happens
 
     // Construct the API callback URL
-    const apiCallbackUrl = `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}/api/auth/oauth/${provider}/callback?code=${code}&state=${state}`;
+    const apiCallbackUrl = `${apiBaseUrl()}/api/auth/oauth/${provider}/callback?code=${code}&state=${state}`;
 
     // Redirect to API callback endpoint
     window.location.href = apiCallbackUrl;

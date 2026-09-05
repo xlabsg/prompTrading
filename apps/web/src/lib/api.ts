@@ -61,6 +61,10 @@ export function apiBaseUrl(): string {
         return import.meta.env.VITE_API_BASE_URL;
     }
 
+    if (typeof window !== "undefined" && import.meta.env.PROD) {
+        return window.location.origin;
+    }
+
     // In docker-compose dev environment, we want to hit localhost:8000
     // even if PROD is false (Vite dev server)
     return "http://localhost:8000";
