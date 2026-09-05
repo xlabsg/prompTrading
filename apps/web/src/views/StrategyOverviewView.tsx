@@ -824,7 +824,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                     </ReactMarkdown>
                   </div>
                 ) : filesQuery.isLoading ? (
-                  <div className="text-sm text-muted-foreground">Loading overview...</div>
+                  <div className="text-sm text-muted-foreground">{t("overview.loadingOverview")}</div>
                 ) : strategy?.chat_status === "generating" ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50">
                     <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">

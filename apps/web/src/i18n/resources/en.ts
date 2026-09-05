@@ -168,22 +168,6 @@ const en = {
       rollbackNoPrevious: "No previous version available to rollback.",
       rollbackFailed: "Rollback failed. Please try again.",
     },
-    overview: {
-      generatingTitle: "Autonomous Strategy Generation in Progress...",
-      generatingSubtitle: "AI Agent is writing code, auditing syntax, and executing closed-loop backtesting (max 2 runs) in sandbox. Check left sidebar for live stream.",
-      milestones: {
-        prompt: "Requirements",
-        code: "Code Generation",
-        audit: "Sandbox Audit",
-        backtest: "Backtest Tuning",
-        done: "Finalizing",
-      },
-      generateButton: "Generate Workflow & Description",
-      retryButton: "Retry Workflow & Description",
-      noOverviewNotice: "No overview markdown available. Auto-generation will run by default.",
-      autoGenerating: "Generating overview automatically...",
-      waitingForStrategy: "Workflow graph and strategy overview will be generated once strategy code is ready.",
-    },
     dashboard: {
       title: "Create or refine a strategy",
       subtitle:
@@ -195,6 +179,23 @@ const en = {
     errors: {
       loadStrategies: "Failed to load strategies.",
     },
+  },
+  overview: {
+    loadingOverview: "Loading overview...",
+    generatingTitle: "Autonomous Strategy Generation in Progress...",
+    generatingSubtitle: "AI Agent is writing code, auditing syntax, and executing closed-loop backtesting (max 2 runs) in sandbox. Check left sidebar for live stream.",
+    milestones: {
+      prompt: "Requirements",
+      code: "Code Generation",
+      audit: "Sandbox Audit",
+      backtest: "Backtest Tuning",
+      done: "Finalizing",
+    },
+    generateButton: "Generate Workflow & Description",
+    retryButton: "Retry Workflow & Description",
+    noOverviewNotice: "No overview markdown available. Auto-generation will run by default.",
+    autoGenerating: "Generating overview automatically...",
+    waitingForStrategy: "Workflow graph and strategy overview will be generated once strategy code is ready.",
   },
   backtest: {
     title: "Backtest",
@@ -464,6 +465,7 @@ const en = {
     generateErrorRunning: "A job is already running for this strategy ({jobType}, {jobId}). Try again later.",
     generateErrorNotReady: "Strategy is not ready to generate yet. Please finish the chat and confirm.",
     generateErrorFailed: "Generation failed: {reason}",
+    generateErrorTimeout: "Strategy generation took longer than usual (includes code writing, syntax audit, and closed-loop backtest). The background job is still running; please refresh later to check.",
     generateErrorGeneric: "Generation failed. Please try again.",
     elapsedSeconds: "Elapsed {{count}}s",
     generatingHints: {
