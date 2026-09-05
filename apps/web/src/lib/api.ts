@@ -56,12 +56,12 @@ import type {
 } from "./types";
 
 export function apiBaseUrl(): string {
-    // Check for environment variable first
-    if (import.meta.env.VITE_API_BASE_URL) {
-        return import.meta.env.VITE_API_BASE_URL;
+    const envUrl = import.meta.env.VITE_API_BASE_URL;
+    if (envUrl && !(import.meta.env.PROD && envUrl.includes("localhost"))) {
+        return envUrl;
     }
 
-    if (typeof window !== "undefined" && import.meta.env.PROD) {
+    if (typeof window !== "undefined") {
         return window.location.origin;
     }
 

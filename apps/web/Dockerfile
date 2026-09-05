@@ -18,7 +18,7 @@ WORKDIR /app
 # Build argument for API URL
 # - Local development: defaults to http://localhost:8000
 # - Production CI/CD: auto-set to production domain via GitHub Actions
-ARG VITE_API_BASE_URL=http://localhost:8000
+ARG VITE_API_BASE_URL=
 ARG VITE_GA_MEASUREMENT_ID=
 ARG VITE_GA_COOKIE_DOMAIN=
 
