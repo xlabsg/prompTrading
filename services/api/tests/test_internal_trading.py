@@ -11,7 +11,6 @@ from control_plane.models import (
     TradingConfig,
     TradingSession,
     Position,
-    Order,
 )
 from control_plane.enums import TradingSessionStatus, PositionStatus
 from app.main import app

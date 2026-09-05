@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Optional
 
 import docker
-from docker.errors import NotFound, APIError
+from docker.errors import NotFound
 
 from worker.settings import settings
 

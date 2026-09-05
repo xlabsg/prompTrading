@@ -76,7 +76,10 @@ def subscription_status(
     strategies_used = _strategy_count(db, user)
     is_active = bool(user.subscription_status and user.subscription_status.lower() in {"active", "trialing"})
     if is_active and user.subscription_current_period_end:
-        is_active = user.subscription_current_period_end > datetime.now(timezone.utc)
+        period_end = user.subscription_current_period_end
+        if period_end.tzinfo is None:
+            period_end = period_end.replace(tzinfo=timezone.utc)
+        is_active = period_end > datetime.now(timezone.utc)
 
     return SubscriptionStatusResponse(
         is_active=is_active,

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import tempfile
 import time
 from typing import Any
@@ -199,37 +198,37 @@ def run_ab_comparison():
     res_a_gen = GroupABaseline.run_blind_poll_generation(job_duration_s=0.5, poll_interval_s=2.0)
     res_b_gen = GroupBUpgraded.run_event_stream(sample_job_events, poll_interval_s=0.05)
 
-    print(f"  Metric 1: User-Visible Progress Steps")
+    print("  Metric 1: User-Visible Progress Steps")
     print(f"    - Group A: {res_a_gen['user_visible_steps']} steps (Blind wait until 100% finished)")
     print(f"    - Group B: {res_b_gen['user_visible_steps']} steps (Live feedback: init -> edit -> audit -> done)")
     print(f"    => Improvement: +{res_b_gen['user_visible_steps']} visible real-time checkpoints!")
 
-    print(f"  Metric 2: Time to First Progress Event (TTFE)")
+    print("  Metric 2: Time to First Progress Event (TTFE)")
     print(f"    - Group A: {res_a_gen['ttfe_ms']:.1f} ms (No feedback during generation)")
     print(f"    - Group B: {res_b_gen['ttfe_ms']:.2f} ms (Near-instant start indicator)")
-    print(f"    => Improvement: >98% reduction in initial feedback latency!")
+    print("    => Improvement: >98% reduction in initial feedback latency!")
 
     # Experiment 2: Event Fidelity & Structured Accuracy
     print("\n>>> Experiment 2: Event Fidelity & Parsing Reliability")
     res_a_refine = GroupABaseline.run_legacy_regex_refine(sample_job_events, poll_interval_s=0.5)
     res_b_refine = GroupBUpgraded.run_event_stream(sample_job_events, poll_interval_s=0.05)
 
-    print(f"  Metric 3: Structured Events Correctly Parsed")
+    print("  Metric 3: Structured Events Correctly Parsed")
     print(f"    - Group A: {res_a_refine['structured_events']}/{res_a_refine['events_count']} events (lost tool_end, step, audit events due to regex mismatch)")
     print(f"    - Group B: {res_b_refine['structured_events']}/{res_b_refine['events_count']} events (100% lossless JSONL delivery)")
-    print(f"    => Accuracy Gain: 100.0% lossless machine-readable events!")
+    print("    => Accuracy Gain: 100.0% lossless machine-readable events!")
 
-    print(f"  Metric 4: Event Delivery Latency (Tail Polling Lag)")
+    print("  Metric 4: Event Delivery Latency (Tail Polling Lag)")
     print(f"    - Group A: {res_a_refine['avg_poll_latency_ms']:.1f} ms lag (500ms sleep poll)")
     print(f"    - Group B: {res_b_refine['avg_poll_latency_ms']:.1f} ms lag (50ms async poll)")
-    print(f"    => Latency Improvement: 10x faster event streaming!")
+    print("    => Latency Improvement: 10x faster event streaming!")
 
     # Experiment 3: Late Join & Replay Resilience
     print("\n>>> Experiment 3: Mid-Stream Reconnect & Replay Test")
-    print(f"  Metric 5: Client Reconnect Replay Capability")
-    print(f"    - Group A: Dropped / unreplayable (pure in-memory or raw log tail)")
+    print("  Metric 5: Client Reconnect Replay Capability")
+    print("    - Group A: Dropped / unreplayable (pure in-memory or raw log tail)")
     print(f"    - Group B: 100% replayed ({res_b_refine['replay_count']} historical events instantly caught up)")
-    print(f"    => Resilience: Zero event loss upon browser refresh or network switch!")
+    print("    => Resilience: Zero event loss upon browser refresh or network switch!")
 
     # Summary Table
     print("\n" + "=" * 78)
