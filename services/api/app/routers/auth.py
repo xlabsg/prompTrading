@@ -234,7 +234,10 @@ def oauth_callback(
         response = Response(status_code=302)
         response.headers["Location"] = error_url
         return response
-    if pending.expires_at < datetime.now(timezone.utc):
+    expires_at = pending.expires_at
+    if expires_at is not None and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at and expires_at < datetime.now(timezone.utc):
         error_url = f"{settings.public_base_url}/auth/error?error=state_expired"
         response = Response(status_code=302)
         response.headers["Location"] = error_url

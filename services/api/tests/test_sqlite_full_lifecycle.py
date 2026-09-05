@@ -20,6 +20,7 @@ from control_plane.models import (
     StrategyMember,
     StrategySignal,
     Order,
+    PendingOAuth,
 )
 from control_plane.enums import (
     ChatStatus,
@@ -223,3 +224,49 @@ def test_sqlite_concurrent_read_write():
         with session_scope(session_factory) as db:
             total = db.query(Strategy).count()
             assert total == 60  # 3 writers * 20 items
+
+
+def test_sqlite_pending_oauth_and_datetime_compatibility():
+    """Verify that datetimes read from SQLite work with timezone comparisons."""
+    from app.auth import user_has_active_subscription
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "oauth_test.db")
+        db_url = f"sqlite:///{db_path}"
+        engine = create_db_engine(db_url)
+        session_factory = create_session_factory(engine)
+        Base.metadata.create_all(engine)
+
+        with session_scope(session_factory) as db:
+            pending = PendingOAuth(
+                provider="google",
+                state="test_state_123",
+                redirect_path="/",
+                expires_at=datetime.now(timezone.utc) + timedelta(minutes=15),
+            )
+            user = User(
+                id="usr_sub_test",
+                email="sub@example.com",
+                name="Sub Tester",
+                subscription_status="active",
+                subscription_current_period_end=datetime.now(timezone.utc) + timedelta(days=30),
+            )
+            db.add_all([pending, user])
+
+        with session_scope(session_factory) as db:
+            queried_pending = db.execute(
+                select(PendingOAuth).where(PendingOAuth.state == "test_state_123")
+            ).scalar_one()
+
+            # Datetime from SQLite may be naive; verify normalization logic
+            expires_at = queried_pending.expires_at
+            if expires_at is not None and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+            # This comparison must not raise TypeError
+            assert expires_at > datetime.now(timezone.utc)
+
+            # Test subscription check with SQLite loaded user
+            queried_user = db.get(User, "usr_sub_test")
+            assert user_has_active_subscription(queried_user) is True
+

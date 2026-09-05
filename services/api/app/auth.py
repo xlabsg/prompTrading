@@ -115,6 +115,9 @@ def user_has_active_subscription(user: User) -> bool:
     status = (user.subscription_status or "").lower()
     if status in {"active", "trialing"}:
         if user.subscription_current_period_end:
-            return user.subscription_current_period_end > datetime.now(timezone.utc)
+            period_end = user.subscription_current_period_end
+            if period_end.tzinfo is None:
+                period_end = period_end.replace(tzinfo=timezone.utc)
+            return period_end > datetime.now(timezone.utc)
         return True
     return False
