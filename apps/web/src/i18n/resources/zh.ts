@@ -809,6 +809,10 @@ const zh = {
     },
   },
   codeView: {
+    modes: {
+      code: "源码",
+      diff: "差异对比",
+    },
     languages: {
       python: "Python",
       yaml: "YAML",

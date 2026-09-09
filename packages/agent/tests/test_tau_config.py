@@ -99,3 +99,48 @@ def test_ensure_catalog_entry_calls_write_when_needed(monkeypatch):
     assert len(written) == 1
     assert written[0].model == "custom-model"
 
+
+def test_gemini_model_selects_native_google_provider(monkeypatch):
+    """Gemini models route to native google provider and bridge LLM_API_KEY to GEMINI_API_KEY."""
+    monkeypatch.setenv("LLM_API_KEY", "AIzaSy-test")
+    monkeypatch.setenv("LLM_MODEL", "gemini-3-flash-preview")
+    monkeypatch.setenv("LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai")
+
+    target = resolve_provider()
+
+    assert target.provider == "google"
+    assert target.model == "gemini-3-flash-preview"
+    assert target.needs_catalog_entry is False
+    assert target.provider_key_env == "GEMINI_API_KEY"
+    assert target.credential_env() == {"GEMINI_API_KEY": "AIzaSy-test"}
+
+
+def test_explicit_google_provider_with_gemini_key(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "google")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSy-direct")
+    monkeypatch.setenv("LLM_MODEL", "gemini-flash-latest")
+
+    target = resolve_provider()
+
+    assert target.provider == "google"
+    assert target.model == "gemini-flash-latest"
+    assert target.needs_catalog_entry is False
+    assert target.provider_key_env == "GEMINI_API_KEY"
+    assert target.credential_env() == {}
+
+
+def test_ensure_catalog_entry_registers_unlisted_google_model(monkeypatch):
+    from agent.tau_config import ensure_catalog_entry
+
+    monkeypatch.setenv("LLM_PROVIDER", "google")
+    monkeypatch.setenv("GEMINI_API_KEY", "AIzaSy-direct")
+    monkeypatch.setenv("LLM_MODEL", "gemini-3.8-flash")
+
+    registered = []
+    monkeypatch.setattr("agent.tau_config.ensure_google_model_registered", lambda model: registered.append(model))
+
+    ensure_catalog_entry()
+    assert registered == ["gemini-3.8-flash"]
+
+
+

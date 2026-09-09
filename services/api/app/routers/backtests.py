@@ -265,6 +265,24 @@ def list_backtests(strategy_id: str, request: Request, db: Session = Depends(get
     return rows
 
 
+def resolve_dataset_request(strategy: Strategy, req_dataset: DatasetRequest | None = None) -> DatasetRequest:
+    if req_dataset is not None:
+        return req_dataset
+    if isinstance(strategy.chat_config, dict):
+        cfg = strategy.chat_config
+        raw_symbol = cfg.get("symbol") or (cfg.get("parameters") or {}).get("symbol")
+        raw_interval = cfg.get("interval") or cfg.get("timeframe") or (cfg.get("parameters") or {}).get("interval") or (cfg.get("parameters") or {}).get("timeframe")
+        raw_exchange = cfg.get("exchange") or (cfg.get("parameters") or {}).get("exchange")
+        exchange = str(raw_exchange).strip().lower() if raw_exchange else "okx"
+        symbol = str(raw_symbol).strip().upper() if raw_symbol else "BTC-USDT-SWAP"
+        interval = str(raw_interval).strip().lower() if raw_interval else "1h"
+        if exchange in ("binance", "okx", "us_stock") and symbol and interval:
+            if exchange == "us_stock" and interval != "1d":
+                interval = "1d"
+            return DatasetRequest(exchange=exchange, symbol=symbol, interval=interval)
+    return DEFAULT_BENCHMARK_DATASET
+
+
 @router.post("/strategies/{strategy_id}/generate_and_backtest", response_model=TriggerJobResponse)
 def generate_and_backtest(
     strategy_id: str,
@@ -302,7 +320,7 @@ def generate_and_backtest(
         snapshot=False,
     )
 
-    dataset_req = req.dataset or DEFAULT_BENCHMARK_DATASET
+    dataset_req = resolve_dataset_request(strategy, req.dataset)
     ds = _create_dataset(db, dataset_req)
 
     run = BacktestRun(
@@ -339,7 +357,11 @@ def generate_and_backtest(
 
     db.refresh(job)
     db.refresh(run)
-    return TriggerJobResponse(job=job, backtest_run=run)
+    return TriggerJobResponse(
+        job=JobResponse.model_validate(job),
+        backtest_run=BacktestRunResponse.model_validate(run),
+        strategy_version=StrategyVersionResponse.model_validate(version),
+    )
 
 
 @router.get("/backtests/{run_id}", response_model=BacktestRunResponse)

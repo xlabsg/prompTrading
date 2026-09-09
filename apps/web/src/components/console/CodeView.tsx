@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, Check, Search, Folder, File, ChevronRight, ChevronDown, Loader2, Eye, EyeOff } from "lucide-react";
+import { Copy, Check, Search, Folder, File, ChevronRight, ChevronDown, Loader2, Eye, EyeOff, FileCode, GitCompare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -167,7 +167,7 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     const [showSystemFiles, setShowSystemFiles] = useState(false);
     const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>("code");
     const [selectedChangedPath, setSelectedChangedPath] = useState<string | null>(null);
-    const [isChangesListExpanded, setIsChangesListExpanded] = useState(true);
+    const [isChangesListExpanded, setIsChangesListExpanded] = useState(false);
     const isRepoStrategy = Boolean(strategy?.repo_id);
     const compareMode = isRepoStrategy ? "repo" : "workspace";
 
@@ -262,8 +262,16 @@ const CodeView = ({ strategy }: CodeViewProps) => {
 
     useEffect(() => {
         if (allFiles.length === 0) return;
-        if (!selectedFile || !allFiles.find((file) => file.path === selectedFile.path)) {
-            setSelectedFile(allFiles[0]);
+        const defaultTarget = allFiles.find((file) => file.name === "strategy.py") || allFiles[0];
+        if (!selectedFile) {
+            setSelectedFile(defaultTarget);
+            return;
+        }
+        const currentInNew = allFiles.find((file) => file.path === selectedFile.path);
+        if (!currentInNew) {
+            setSelectedFile(defaultTarget);
+        } else if (!selectedFile.content && currentInNew.content) {
+            setSelectedFile(currentInNew);
         }
     }, [allFiles, selectedFile]);
 
@@ -275,9 +283,10 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     }, [changedFiles, selectedChangedPath]);
 
     useEffect(() => {
+        setSelectedFile(null);
         setRightPanelMode("code");
         setSelectedChangedPath(null);
-        setIsChangesListExpanded(true);
+        setIsChangesListExpanded(false);
         setSearchQuery("");
         setActiveTab("files");
     }, [strategy?.id]);
@@ -290,27 +299,42 @@ const CodeView = ({ strategy }: CodeViewProps) => {
         setTimeout(() => setCopied(false), 2000);
     };
 
+    const handleSwitchToCode = (targetPath?: string) => {
+        setRightPanelMode("code");
+        const path = targetPath || selectedChangedPath || selectedFile?.path;
+        if (path) {
+            const found = allFiles.find((f) => f.path === path);
+            if (found) {
+                setSelectedFile(found);
+            }
+        }
+    };
+
+    const handleSwitchToDiff = (targetPath?: string) => {
+        setRightPanelMode("changes");
+        const path = targetPath || selectedFile?.path || selectedChangedPath;
+        if (path && changedFiles.some((f) => f.path === path)) {
+            setSelectedChangedPath(path);
+        } else if (changedFiles.length > 0) {
+            setSelectedChangedPath(changedFiles[0].path);
+        }
+    };
 
     const handleSelectFile = (node: FileNode) => {
         setSelectedFile(node);
         setRightPanelMode("code");
+        if (changedFiles.some((f) => f.path === node.path)) {
+            setSelectedChangedPath(node.path);
+        }
         if (fileDialogOpen) {
             setFileDialogOpen(false);
         }
     };
 
     const handleOpenCurrentChanges = () => {
+        setIsChangesListExpanded((expanded) => !expanded);
         if (!isShowingChanges) {
-            setIsChangesListExpanded(true);
-            setRightPanelMode("changes");
-            setSelectedChangedPath((previousPath) => {
-                if (previousPath && changedFiles.some((file) => file.path === previousPath)) {
-                    return previousPath;
-                }
-                return changedFiles[0]?.path ?? null;
-            });
-        } else {
-            setIsChangesListExpanded((expanded) => !expanded);
+            handleSwitchToDiff();
         }
         if (fileDialogOpen) {
             setFileDialogOpen(false);
@@ -320,6 +344,10 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     const handleSelectChangedFile = (filePath: string) => {
         setRightPanelMode("changes");
         setSelectedChangedPath(filePath);
+        const found = allFiles.find((f) => f.path === filePath);
+        if (found) {
+            setSelectedFile(found);
+        }
         if (fileDialogOpen) {
             setFileDialogOpen(false);
         }
@@ -697,6 +725,37 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
+                        {/* Mode Switcher: Code / Diff */}
+                        <div className="flex items-center rounded-lg border border-border bg-muted/40 p-0.5 text-xs">
+                            <Button
+                                variant={!isShowingChanges ? "secondary" : "ghost"}
+                                size="sm"
+                                className={cn("h-7 px-2.5 text-xs gap-1.5", !isShowingChanges && "bg-background text-foreground shadow-sm font-medium")}
+                                onClick={() => handleSwitchToCode()}
+                            >
+                                <FileCode size={13} />
+                                <span>{t("codeView.modes.code")}</span>
+                            </Button>
+                            <Button
+                                variant={isShowingChanges ? "secondary" : "ghost"}
+                                size="sm"
+                                className={cn("h-7 px-2.5 text-xs gap-1.5", isShowingChanges && "bg-background text-foreground shadow-sm font-medium")}
+                                onClick={() => handleSwitchToDiff()}
+                                disabled={changedFiles.length === 0}
+                            >
+                                <GitCompare size={13} />
+                                <span>{t("codeView.modes.diff")}</span>
+                                {changedFiles.length > 0 && (
+                                    <span className={cn(
+                                        "rounded-full px-1.5 py-0.2 text-[10px] font-mono leading-none",
+                                        isShowingChanges ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"
+                                    )}>
+                                        {changedFiles.length}
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
+
                         {!isRepoStrategy && !isShowingChanges && (
                             <Button
                                 variant="ghost"

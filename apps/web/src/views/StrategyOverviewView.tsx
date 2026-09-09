@@ -550,10 +550,11 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
 
   useEffect(() => {
     if (!strategy?.id || strategy.chat_status !== "done" || hasOverview) return;
+    if (filesQuery.isLoading || !filesQuery.isSuccess) return;
     if (overviewGenerateStatus === "generating") return;
     if (autoGenerateTriggeredRef.current[strategy.id]) return;
     void triggerOverviewGeneration(false);
-  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, triggerOverviewGeneration]);
+  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, triggerOverviewGeneration, filesQuery.isLoading, filesQuery.isSuccess]);
 
   const equitySeries = useMemo(() => {
     const points = equityQuery.data?.data || [];

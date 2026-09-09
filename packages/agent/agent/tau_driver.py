@@ -63,6 +63,7 @@ class TauSessionResult:
     tokens: dict[str, Any] = field(default_factory=dict)
     cost_usd: float | None = None
     turn_limit_hit: bool = False
+    provider_error: str | None = None
 
 
 ProgressCallback = Callable[[dict[str, Any]], None]
@@ -257,7 +258,12 @@ def _drive(
             max_turns=max_turns,
         )
 
+        if result.provider_error:
+            _collect_stats(proc, reader, result, event_timeout_s, workspace=workspace)
+            raise TauSessionError(f"tau_provider_error: {result.provider_error}")
+
         # Allow validator to inspect the latest model summary text to heal missing files
+
         try:
             problems = validate(result.summary)
         except TypeError:
@@ -490,11 +496,27 @@ def _record(
         )
         if name != "task_done":
             _report(progress_callback, {"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."})
-    elif kind == "message_end":
-        text = _message_text(event.get("message"))
-        if text:
-            result.summary = text
-        _report(progress_callback, {"phase": "message", "text": text})
+    elif kind in ("message_end", "turn_end"):
+        msg = event.get("message")
+        if isinstance(msg, dict):
+            if msg.get("stopReason") == "error" or msg.get("errorMessage"):
+                err = msg.get("errorMessage") or "provider error"
+                result.provider_error = str(err)
+                print(f"[agent] tau provider error: {err}", file=sys.stderr)
+            elif isinstance(msg.get("diagnostics"), list):
+                for diag in msg.get("diagnostics", []):
+                    if isinstance(diag, dict) and diag.get("type") == "provider_error":
+                        details = diag.get("details") or {}
+                        err = str(details.get("body") or diag.get("error") or "provider error")
+                        result.provider_error = err
+                        print(f"[agent] tau provider error: {err}", file=sys.stderr)
+                        break
+        if kind == "message_end":
+            text = _message_text(msg)
+            if text:
+                result.summary = text
+            _report(progress_callback, {"phase": "message", "text": text})
+
 
 
 def _absorb_tool_result(name: str, payload: Any, result: TauSessionResult) -> None:

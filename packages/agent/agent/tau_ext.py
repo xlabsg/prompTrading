@@ -295,39 +295,32 @@ def _protocol_section() -> str:
 def _budget_section() -> str:
     return (
         f"`backtest` runs against {_DATASET.describe()} "
-        f"({_DATASET.bars} bars) and is capped at {_BUDGET.max_runs} runs for this "
-        f"session. The metric to improve is `{_BUDGET.score_key}`.\n\n"
-        f"Spend the budget on changes you have a reason to believe in. When "
-        f"repeated runs stop moving `{_BUDGET.score_key}`, finalise instead of "
-        f"tweaking further."
+        f"({_DATASET.bars} bars) and is capped at {_BUDGET.max_runs} run(s) for this "
+        f"session.\n\n"
+        f"Execute `backtest` once to generate performance metrics and artifacts. "
+        f"Do NOT enter prolonged iterative parameter tuning loops, do NOT run custom optimization scripts in bash, "
+        f"and do NOT over-fit to the backtest dataset."
     )
 
 
 def _quant_toolkit_section() -> str:
     return (
         "The CLI utility `pt-quant` is installed and available in bash:\n"
-        "- `pt-quant inspect-data`: View dataset time range, frequency, volatility, and ATR before designing logic.\n"
         "- `pt-quant check strategy.py`: Statically verify syntax, imports, and scan for lookahead leaks.\n"
         "- `pt-quant dry-run strategy.py`: Fast in-memory execution to verify target_weights output contract.\n"
         "- `pt-quant indicators [name]`: Inspect platform built-in vectorized indicators and their parameter signatures.\n\n"
-        "Exchange domain guidance and Agent Trade Kit skills are available under `.tau/skills/`:\n"
-        "- `okx-cex-market`: OKX 70+ built-in technical indicators (RSI/MACD/BB/ATR/KDJ/AHR999), orderbooks, and funding rates.\n"
-        "- `okx-cex-bot`: Native OKX Grid Bot & DCA Bot parameterization and specifications.\n"
-        "- `okx-cex-smartmoney`: Whale tracking, consensus positioning, and top trader leaderboards.\n"
-        "- `binance-cex`: Binance Spot & Futures trading rules, lot size precision filters, and CLI commands.\n"
-        "- Quant skills: `data-exploration`, `quant-indicators`, `alpha-patterns`, `risk-management`, `backtest-optimization`.\n"
-        "Read any skill with `read` when needed."
+        "Execution Rules:\n"
+        "- Focus strictly on the user's requirements. Do not add unrequested indicators or complicated filters.\n"
+        "- Do NOT write custom backtesting/simulation scripts or ad-hoc analysis loops in bash.\n"
+        "- Standard workflow: 1) Write `strategy.py`, 2) Verify with `pt-quant check strategy.py`, 3) Run `backtest` to generate artifacts, 4) Write `overview.md`, 5) Call `task_done`."
     )
 
 
 def _strategy_design_section() -> str:
     return (
         "Design Principles:\n"
-        "- The patterns in `.tau/skills/` are architectural primitives, NOT templates to regurgitate. "
-        "Synthesize novel combinations tailored specifically to the user's prompt, asset dynamics, and timeframe.\n"
-        "- Do not default to trivial moving-average crossovers unless specifically requested. Combine orthogonal dimensions: "
-        "Regime Identification (volatility/trend/crowding) + Alpha Core (momentum/reversion/breakout) + "
-        "Confirmation (volume/VWAP/funding rate) + Dynamic Sizing (continuous scaling or vol-targeting).\n"
+        "- Faithfully reflect the trading rules, indicators, and parameters specified in the user prompt.\n"
+        "- Do not over-engineer with unrequested extra indicators or speculative filter layers.\n"
         "- Both `from backtest.indicators import ...` and `import ta` are fully supported with C-accelerated TA-Lib, "
         "modern indicators (supertrend, vwap, keltner_channel, donchian_channel, stoch_rsi, cmf), and atomic operators (ts_rank, ts_corr, ts_decay_linear)."
     )
@@ -344,7 +337,7 @@ def setup(tau: ExtensionAPI) -> None:
     tau.add_prompt_section("Backtest Budget", _budget_section())
     tau.add_prompt_section("Quant Toolkit & Skills", _quant_toolkit_section())
     tau.add_prompt_guideline(
-        f"Write both {STRATEGY_FILE} and {OVERVIEW_FILE}, then call task_done."
+        f"Direct execution path: write {STRATEGY_FILE}, verify with pt-quant check, run backtest once, write {OVERVIEW_FILE}, and call task_done. Do not perform ad-hoc sandbox deduction or trial-and-error loops."
     )
     tau.on("tool_call", _block_exhausted_backtest)
     if os.getenv("AGENT_TAU_LINT_HOOK", "1") != "0":

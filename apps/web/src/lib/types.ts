@@ -90,6 +90,15 @@ export interface OAuthStartResponse {
     auth_url: string;
 }
 
+export interface StrategyActiveJob {
+    id: string;
+    type: string;
+    status: string;
+    created_at: string;
+    started_at?: string | null;
+    finished_at?: string | null;
+}
+
 export interface Strategy {
     id: string;
     name: string;
@@ -99,6 +108,7 @@ export interface Strategy {
     chat_status: ChatStatus;
     chat_history?: ChatMessage[];
     chat_config?: Record<string, unknown>;
+    active_job?: StrategyActiveJob | null;
 }
 
 export interface StrategyGitCompareFile {

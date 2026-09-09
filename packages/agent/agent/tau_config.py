@@ -36,6 +36,7 @@ _PROVIDER_KEY_ENV = {
     "anthropic": "ANTHROPIC_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY",
     "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
 }
 
 
@@ -81,6 +82,30 @@ def _maybe_env(name: str) -> str | None:
 def resolve_provider() -> TauProvider:
     """Resolve the Tau provider and model from the platform's LLM env vars."""
     provider = (_maybe_env("LLM_PROVIDER") or "").strip().lower()
+    model = _maybe_env("LLM_MODEL") or ""
+    base_url = _maybe_env("LLM_BASE_URL")
+
+    # Detect Google / Gemini: explicitly or inferred from model / endpoint
+    is_google = (
+        provider in ("google", "gemini")
+        or model.strip().lower().startswith("gemini-")
+        or bool(base_url and "generativelanguage.googleapis.com" in base_url)
+    )
+
+    if is_google:
+        api_key_env = (
+            "GEMINI_API_KEY"
+            if _maybe_env("GEMINI_API_KEY")
+            else "LLM_API_KEY"
+            if _maybe_env("LLM_API_KEY")
+            else "OPENAI_API_KEY"
+        )
+        return TauProvider(
+            provider="google",
+            model=model or "gemini-flash-latest",
+            api_key_env=api_key_env,
+        )
+
     if not provider:
         if _maybe_env("ANTHROPIC_API_KEY"):
             provider = "anthropic"
@@ -92,17 +117,16 @@ def resolve_provider() -> TauProvider:
     if provider == "anthropic":
         return TauProvider(
             provider="anthropic",
-            model=_maybe_env("LLM_MODEL") or "claude-sonnet-4-6",
+            model=model or "claude-sonnet-4-6",
             api_key_env="ANTHROPIC_API_KEY",
         )
 
-    base_url = _maybe_env("LLM_BASE_URL")
     if provider == "deepseek":
         base_url = base_url or _maybe_env("DEEPSEEK_BASE_URL")
-        model = _maybe_env("LLM_MODEL") or _maybe_env("DEEPSEEK_MODEL") or "deepseek-chat"
+        model = model or _maybe_env("DEEPSEEK_MODEL") or "deepseek-chat"
         api_key_env = "LLM_API_KEY" if _maybe_env("LLM_API_KEY") else "DEEPSEEK_API_KEY"
     else:
-        model = _maybe_env("LLM_MODEL") or "gpt-4o-mini"
+        model = model or "gpt-4o-mini"
         api_key_env = "LLM_API_KEY" if _maybe_env("LLM_API_KEY") else "OPENAI_API_KEY"
 
     # A base URL matching the provider's own endpoint is not custom: the built-in
@@ -147,12 +171,36 @@ def write_catalog_entry(target: TauProvider) -> None:
     save_provider_settings(updated)
 
 
+def ensure_google_model_registered(model: str) -> None:
+    """Ensure a Gemini model is present in Tau's Google provider config.
+
+    Tau strictly checks the model name against `provider.models`. If a new model
+    (e.g. gemini-3.8-flash) is available in Google's API but was added after Tau's
+    release, dynamically upserting it into the local provider settings allows
+    Tau to accept and execute it.
+    """
+    import dataclasses
+    try:
+        from tau_coding import load_provider_settings, upsert_saved_provider
+
+        settings = load_provider_settings()
+        google = settings.get_provider("google")
+        if model not in google.models:
+            updated_google = dataclasses.replace(google, models=(*google.models, model))
+            upsert_saved_provider(updated_google)
+    except Exception as exc:
+        print(f"[agent] warning: could not register google model '{model}': {exc}", file=sys.stderr)
+
+
 def ensure_catalog_entry(target: TauProvider | None = None) -> None:
-    """Ensure Tau catalog has an entry registered for custom gateway / base_url."""
+    """Ensure Tau catalog has an entry registered for custom gateway / base_url or custom models."""
     if target is None:
         target = resolve_provider()
     if target.needs_catalog_entry:
         write_catalog_entry(target)
+    elif target.provider == "google":
+        ensure_google_model_registered(target.model)
+
 
 
 def main() -> int:

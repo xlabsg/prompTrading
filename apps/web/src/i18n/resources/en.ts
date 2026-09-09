@@ -824,6 +824,10 @@ const en = {
     },
   },
   codeView: {
+    modes: {
+      code: "Source",
+      diff: "Diff",
+    },
     languages: {
       python: "Python",
       yaml: "YAML",

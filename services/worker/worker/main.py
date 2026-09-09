@@ -704,6 +704,8 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         "LLM_PROVIDER",
         "LLM_API_KEY",
         "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
         "LLM_BASE_URL",
         "LLM_MODEL",
         "LLM_TEMPERATURE",
@@ -744,8 +746,10 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         val = os.getenv(key)
         if val:
             agent_env[key] = val
-    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
-        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env:
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(getattr(settings, "agent_backtest_max_runs", None) or "1")
+    if "AGENT_MAX_STEPS" not in agent_env:
+        agent_env["AGENT_MAX_STEPS"] = os.getenv("AGENT_MAX_STEPS", "15")
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(run_dir, "agent.log")
@@ -1259,6 +1263,8 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         "LLM_PROVIDER",
         "LLM_API_KEY",
         "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
         "LLM_BASE_URL",
         "LLM_MODEL",
         "LLM_TEMPERATURE",
@@ -1300,8 +1306,10 @@ def _handle_generate_strategy(db: Session, rds: redis.Redis, docker_client: dock
         val = os.getenv(key)
         if val:
             agent_env[key] = val
-    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
-        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env:
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(getattr(settings, "agent_backtest_max_runs", None) or "1")
+    if "AGENT_MAX_STEPS" not in agent_env:
+        agent_env["AGENT_MAX_STEPS"] = os.getenv("AGENT_MAX_STEPS", "15")
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")
@@ -1407,6 +1415,8 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         "LLM_PROVIDER",
         "LLM_API_KEY",
         "OPENAI_API_KEY",
+        "GEMINI_API_KEY",
+        "ANTHROPIC_API_KEY",
         "LLM_BASE_URL",
         "LLM_MODEL",
         "LLM_TEMPERATURE",
@@ -1448,8 +1458,10 @@ def _handle_refine_strategy(db: Session, rds: redis.Redis, docker_client: docker
         val = os.getenv(key)
         if val:
             agent_env[key] = val
-    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env and getattr(settings, "agent_backtest_max_runs", None):
-        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(settings.agent_backtest_max_runs)
+    if "AGENT_BACKTEST_MAX_RUNS" not in agent_env:
+        agent_env["AGENT_BACKTEST_MAX_RUNS"] = str(getattr(settings, "agent_backtest_max_runs", None) or "1")
+    if "AGENT_MAX_STEPS" not in agent_env:
+        agent_env["AGENT_MAX_STEPS"] = os.getenv("AGENT_MAX_STEPS", "15")
     agent_env.update(_agent_backtest_env(db, job))
 
     agent_log_path = os.path.join(version_dir, "agent.log")

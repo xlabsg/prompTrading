@@ -31,6 +31,26 @@ interface ConsoleSidebarProps {
     onClose?: () => void;
 }
 
+type GenerationStage = "thinking" | "writing" | "auditing" | "backtesting" | "finalizing";
+
+const GENERATION_STAGE_RANKS: Record<GenerationStage, number> = {
+    thinking: 1,
+    writing: 2,
+    auditing: 3,
+    backtesting: 4,
+    finalizing: 5,
+};
+
+const parseIsoToMs = (dateStr?: string | null): number | null => {
+    if (!dateStr) return null;
+    let s = dateStr.trim();
+    if (!s.endsWith("Z") && !s.includes("+") && !/[+-]\d{2}:\d{2}$/.test(s)) {
+        s = s + "Z";
+    }
+    const ms = new Date(s).getTime();
+    return isNaN(ms) ? null : ms;
+};
+
 const cleanSummaryText = (text: string): string => {
     const raw = String(text || "");
     // Strip action blocks (they are rendered as ActionCard UI components)
@@ -79,26 +99,45 @@ const ConsoleSidebar = ({
     const [liveDraftError, setLiveDraftError] = useState<string | null>(null);
     const [isGeneratingStrategyCode, setIsGeneratingStrategyCode] = useState(false);
     const [generationProgressMessage, setGenerationProgressMessage] = useState<string | null>(null);
-    const [generationStage, setGenerationStage] = useState<"thinking" | "writing" | "auditing" | "backtesting" | "finalizing">("thinking");
+    const [generationStage, setGenerationStage] = useState<GenerationStage>("thinking");
     const [generatingElapsedSeconds, setGeneratingElapsedSeconds] = useState(0);
     const [generateStrategyError, setGenerateStrategyError] = useState<string | null>(null);
     const [isRollingBack, setIsRollingBack] = useState(false);
     const [rollbackError, setRollbackError] = useState<string | null>(null);
     const [showDialogRollback, setShowDialogRollback] = useState(false);
     const readyAutoTriggerRef = useRef(false);
+    const activeJobStartTimeRef = useRef<number | null>(null);
+    const activeListeningJobIdRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        setGenerationStage("thinking");
+        setGenerationProgressMessage(null);
+    }, [strategy?.id]);
 
     const isGenerating = isGeneratingStrategyCode || strategy?.chat_status === "generating";
 
     useEffect(() => {
         if (!isGenerating) {
             setGeneratingElapsedSeconds(0);
+            activeJobStartTimeRef.current = null;
             return;
         }
-        const timer = setInterval(() => {
-            setGeneratingElapsedSeconds((prev) => prev + 1);
-        }, 1000);
+
+        const computeElapsed = () => {
+            const jobCreatedMs = parseIsoToMs(strategy?.active_job?.created_at);
+            const jobStartedMs = parseIsoToMs(strategy?.active_job?.started_at);
+            const baseMs = jobCreatedMs || jobStartedMs || activeJobStartTimeRef.current || Date.now();
+            if (!activeJobStartTimeRef.current) {
+                activeJobStartTimeRef.current = baseMs;
+            }
+            const elapsed = Math.max(0, Math.floor((Date.now() - baseMs) / 1000));
+            setGeneratingElapsedSeconds(elapsed);
+        };
+
+        computeElapsed();
+        const timer = setInterval(computeElapsed, 1000);
         return () => clearInterval(timer);
-    }, [isGenerating]);
+    }, [isGenerating, strategy?.active_job?.created_at, strategy?.active_job?.started_at]);
 
     const executeAction = useCallback(async (actionPayload: ActionPayload) => {
         const handler = actionRegistry.get(actionPayload.type);
@@ -165,6 +204,7 @@ const ConsoleSidebar = ({
             queryClient.invalidateQueries({ queryKey: ["strategy-changes-compare", "workspace", strategy.id] });
             queryClient.invalidateQueries({ queryKey: ["strategy-changes-compare-diff", "repo", strategy.id] });
             queryClient.invalidateQueries({ queryKey: ["strategy-changes-compare-diff", "workspace", strategy.id] });
+            queryClient.invalidateQueries({ queryKey: ["backtests"] });
         }
     }, [queryClient, strategy?.id]);
 
@@ -384,7 +424,10 @@ const ConsoleSidebar = ({
         setStreamingProgressPath(null);
         setPendingUserMessage(userMessage);
         setRefineError(null);
+        setGenerateStrategyError(null);
+        readyAutoTriggerRef.current = false;
         setMessage("");
+
 
         try {
             const response = await strategiesApi.chatStream(strategy.id, userMessage);
@@ -529,22 +572,99 @@ const ConsoleSidebar = ({
         return t("dashboard.generateErrorGeneric");
     }, [t]);
 
+    // Auto-attach to active job stream if page was refreshed or loaded while generating
+    useEffect(() => {
+        const activeJob = strategy?.active_job;
+        if (!activeJob || strategy?.chat_status !== "generating") {
+            return;
+        }
+        if (activeJob.status !== "queued" && activeJob.status !== "running") {
+            return;
+        }
+        if (activeListeningJobIdRef.current === activeJob.id) {
+            return;
+        }
+
+        activeListeningJobIdRef.current = activeJob.id;
+        let cancelled = false;
+
+        jobsApi.waitForCompletionWithStream(
+            activeJob.id,
+            (evt) => {
+                if (cancelled) return;
+                const stage = getGenerationStage(evt);
+                setGenerationStage((prev) => {
+                    const prevRank = GENERATION_STAGE_RANKS[prev] ?? 1;
+                    const nextRank = GENERATION_STAGE_RANKS[stage] ?? 1;
+                    return nextRank >= prevRank ? stage : prev;
+                });
+                const msg = getProgressMessage(evt);
+                if (msg) {
+                    setGenerationProgressMessage(msg);
+                }
+            }
+        ).then((job) => {
+            if (cancelled) return;
+            if (job.status !== "succeeded") {
+                const failureReason = job.error_message || (job.status !== "running" ? job.status : "");
+                setGenerateStrategyError(getGenerateErrorMessage(new Error(failureReason ? `job_failed:${failureReason}` : `job_failed:${job.id}`)));
+            }
+            refreshStrategyData();
+            onStrategyGenerated?.();
+        }).catch((err) => {
+            if (cancelled) return;
+            setGenerateStrategyError(getGenerateErrorMessage(err));
+            refreshStrategyData();
+        }).finally(() => {
+            if (!cancelled) {
+                setGenerationProgressMessage(null);
+            }
+        });
+
+        return () => {
+            cancelled = true;
+            if (activeListeningJobIdRef.current === activeJob.id) {
+                activeListeningJobIdRef.current = null;
+            }
+        };
+    }, [
+        strategy?.id,
+        strategy?.chat_status,
+        strategy?.active_job,
+        getGenerationStage,
+        getProgressMessage,
+        getGenerateErrorMessage,
+        refreshStrategyData,
+        onStrategyGenerated,
+    ]);
+
     const handleConfirmAndGenerateStrategy = useCallback(async () => {
         if (!strategy || strategy.chat_status !== "ready" || isStreaming || isGeneratingStrategyCode) return;
         setGenerateStrategyError(null);
         setIsGeneratingStrategyCode(true);
+        activeJobStartTimeRef.current = Date.now();
+        setGeneratingElapsedSeconds(0);
         setGenerationProgressMessage(t("console.sidebar.confirmGenerating"));
         setGenerationStage("thinking");
         try {
             await strategiesApi.confirmChat(strategy.id);
             const prompt = buildGenerationPrompt(strategy);
-            const result = await strategiesApi.generate(strategy.id, { prompt });
+            const result = await strategiesApi.generateAndBacktest(strategy.id, { prompt });
+            activeListeningJobIdRef.current = result.job.id;
+            const jobCreatedMs = parseIsoToMs(result.job.created_at);
+            if (jobCreatedMs) {
+                activeJobStartTimeRef.current = jobCreatedMs;
+            }
             refreshStrategyData();
             const job = await jobsApi.waitForCompletionWithStream(
                 result.job.id,
                 (evt) => {
                     const stage = getGenerationStage(evt);
-                    setGenerationStage(stage);
+                    setGenerationStage((prev) => {
+                        const prevRank = GENERATION_STAGE_RANKS[prev] ?? 1;
+                        const nextRank = GENERATION_STAGE_RANKS[stage] ?? 1;
+                        return nextRank >= prevRank ? stage : prev;
+                    });
                     const msg = getProgressMessage(evt);
                     if (msg) {
                         setGenerationProgressMessage(msg);
@@ -560,6 +680,7 @@ const ConsoleSidebar = ({
         } catch (error) {
             setGenerateStrategyError(getGenerateErrorMessage(error));
         } finally {
+            activeListeningJobIdRef.current = null;
             setIsGeneratingStrategyCode(false);
             setGenerationProgressMessage(null);
             refreshStrategyData();
@@ -619,10 +740,9 @@ const ConsoleSidebar = ({
 
     useEffect(() => {
         if (!strategy || strategy.chat_status !== "ready") {
-            readyAutoTriggerRef.current = false;
             return;
         }
-        if (readyAutoTriggerRef.current || isStreaming || isGeneratingStrategyCode || isRollingBack) return;
+        if (readyAutoTriggerRef.current || isStreaming || isGeneratingStrategyCode || isRollingBack || generateStrategyError) return;
         readyAutoTriggerRef.current = true;
         void handleConfirmAndGenerateStrategy();
     }, [
@@ -630,8 +750,10 @@ const ConsoleSidebar = ({
         isStreaming,
         isGeneratingStrategyCode,
         isRollingBack,
+        generateStrategyError,
         handleConfirmAndGenerateStrategy,
     ]);
+
 
     const handleConfirmLive = async () => {
         if (!strategy || !liveDraft) return;
@@ -1047,20 +1169,34 @@ const ConsoleSidebar = ({
                                         </div>
 
                                         {/* Stage progress pipeline */}
-                                        <div className="grid grid-cols-4 gap-1 text-[10px] text-center pt-1 border-t border-border/40">
-                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "thinking" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
-                                                1. {t("console.sidebar.stageLabels.thinking")}
-                                            </div>
-                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "writing" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
-                                                2. {t("console.sidebar.stageLabels.writing")}
-                                            </div>
-                                            <div className={cn("py-1 rounded font-medium transition-colors", generationStage === "auditing" ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
-                                                3. {t("console.sidebar.stageLabels.auditing")}
-                                            </div>
-                                            <div className={cn("py-1 rounded font-medium transition-colors", (generationStage === "backtesting" || generationStage === "finalizing") ? "bg-primary/15 text-primary font-bold" : "text-muted-foreground/60")}>
-                                                4. {t("console.sidebar.stageLabels.backtesting")}
-                                            </div>
-                                        </div>
+                                        {(() => {
+                                            const currentRank = GENERATION_STAGE_RANKS[generationStage] ?? 1;
+                                            const getStepStyle = (stepRank: number) => {
+                                                if (currentRank > stepRank) {
+                                                    return "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-medium";
+                                                }
+                                                if (currentRank === stepRank) {
+                                                    return "bg-primary/15 text-primary font-bold animate-pulse ring-1 ring-primary/30";
+                                                }
+                                                return "text-muted-foreground/50";
+                                            };
+                                            return (
+                                                <div className="grid grid-cols-4 gap-1 text-[10px] text-center pt-1 border-t border-border/40">
+                                                    <div className={cn("py-1 rounded transition-colors", getStepStyle(1))}>
+                                                        {currentRank > 1 ? "✓ " : "1. "}{t("console.sidebar.stageLabels.thinking")}
+                                                    </div>
+                                                    <div className={cn("py-1 rounded transition-colors", getStepStyle(2))}>
+                                                        {currentRank > 2 ? "✓ " : "2. "}{t("console.sidebar.stageLabels.writing")}
+                                                    </div>
+                                                    <div className={cn("py-1 rounded transition-colors", getStepStyle(3))}>
+                                                        {currentRank > 3 ? "✓ " : "3. "}{t("console.sidebar.stageLabels.auditing")}
+                                                    </div>
+                                                    <div className={cn("py-1 rounded transition-colors", getStepStyle(4))}>
+                                                        {currentRank > 4 ? "✓ " : "4. "}{t("console.sidebar.stageLabels.backtesting")}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 </motion.div>
                             )}

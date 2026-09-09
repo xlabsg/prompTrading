@@ -36,6 +36,7 @@ from app.schemas import (
     ChatRequest,
     ChatResponse,
     GenerateStrategyRequest,
+    JobResponse,
     LiveConfirmRequest,
     LiveGenerateRequest,
     LiveGenerateResponse,
@@ -244,7 +245,27 @@ def list_strategies(request: Request, db: Session = Depends(get_db)) -> list[Str
         .scalars()
         .all()
     )
-    return rows
+    gen_ids = {s.id for s in rows if s.chat_status == ChatStatus.GENERATING}
+    active_jobs_map: dict[str, Job] = {}
+    if gen_ids:
+        jobs = db.execute(
+            select(Job)
+            .where(Job.type.in_([JobType.GENERATE_STRATEGY, JobType.REFINE_STRATEGY, JobType.GENERATE_AND_BACKTEST]))
+            .where(or_(Job.status == JobStatus.QUEUED, Job.status == JobStatus.RUNNING))
+            .order_by(Job.created_at.desc())
+        ).scalars().all()
+        for j in jobs:
+            sid = str(j.payload.get("strategy_id", ""))
+            if sid in gen_ids and sid not in active_jobs_map:
+                active_jobs_map[sid] = j
+
+    results: list[StrategyResponse] = []
+    for s in rows:
+        resp = StrategyResponse.model_validate(s)
+        if s.id in active_jobs_map:
+            resp.active_job = JobResponse.model_validate(active_jobs_map[s.id])
+        results.append(resp)
+    return results
 
 
 @router.get("/strategies/{strategy_id}/live-ready")
@@ -2205,7 +2226,20 @@ def get_strategy(strategy_id: str, request: Request, db: Session = Depends(get_d
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
-    return strategy
+    
+    resp = StrategyResponse.model_validate(strategy)
+    if strategy.chat_status == ChatStatus.GENERATING:
+        active_job = db.execute(
+            select(Job)
+            .where(Job.type.in_([JobType.GENERATE_STRATEGY, JobType.REFINE_STRATEGY, JobType.GENERATE_AND_BACKTEST]))
+            .where(or_(Job.status == JobStatus.QUEUED, Job.status == JobStatus.RUNNING))
+            .where(Job.payload["strategy_id"].as_string() == strategy_id)
+            .order_by(Job.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if active_job is not None:
+            resp.active_job = JobResponse.model_validate(active_job)
+    return resp
 
 
 @router.get("/strategies/{strategy_id}/versions", response_model=list[StrategyVersionResponse])
@@ -2268,20 +2302,42 @@ def generate_strategy(
         snapshot=False,
     )
 
+    from app.routers.backtests import _create_dataset, resolve_dataset_request
+
+    dataset_req = resolve_dataset_request(strategy, None)
+    ds = _create_dataset(db, dataset_req)
+
+    run = BacktestRun(
+        strategy_id=strategy_id,
+        strategy_version_id=version.id,
+        dataset_id=ds.id,
+        job_id=None,
+        run_path="",
+        params={},
+    )
+    db.add(run)
+    db.flush()
+    run.run_path = f"runs/{run.id}"
+
     job = Job(
-        type=JobType.GENERATE_STRATEGY,
+        type=JobType.GENERATE_AND_BACKTEST,
         status=JobStatus.QUEUED,
         payload={
             "strategy_id": strategy_id,
             "version_id": version.id,
+            "run_id": run.id,
+            "dataset_id": ds.id,
             "prompt": final_prompt,
             "llm_meta": {
                 **(req.llm_meta or {}),
                 "prompt_source": prompt_source,
             },
+            "params": {},
         },
     )
     db.add(job)
+    db.flush()
+    run.job_id = job.id
     
     # Atomically set status to GENERATING when job is created
     # This prevents stuck state if previous /generate call failed
@@ -2294,7 +2350,8 @@ def generate_strategy(
 
     db.refresh(job)
     db.refresh(version)
-    return TriggerJobResponse(job=job, strategy_version=version)
+    db.refresh(run)
+    return TriggerJobResponse(job=job, strategy_version=version, backtest_run=run)
 
 
 @router.post("/strategies/{strategy_id}/refine", response_model=TriggerJobResponse)

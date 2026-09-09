@@ -32,6 +32,7 @@ class StrategyResponse(BaseModel):
     chat_status: ChatStatus
     chat_history: Optional[list[dict[str, Any]]] = None
     chat_config: Optional[dict[str, Any]] = None
+    active_job: Optional[JobResponse] = None
 
 
 class StrategyVersionResponse(BaseModel):
