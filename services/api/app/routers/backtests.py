@@ -356,12 +356,7 @@ def generate_and_backtest(
     enqueue_job(settings.workspaces_dir, job.id, job.type, job.payload, redis_client=rds)
 
     db.refresh(job)
-    db.refresh(run)
-    return TriggerJobResponse(
-        job=JobResponse.model_validate(job),
-        backtest_run=BacktestRunResponse.model_validate(run),
-        strategy_version=StrategyVersionResponse.model_validate(version),
-    )
+    return TriggerJobResponse(job=job, backtest_run=run, strategy_version=version)
 
 
 @router.get("/backtests/{run_id}", response_model=BacktestRunResponse)
