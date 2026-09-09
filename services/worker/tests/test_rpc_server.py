@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 
-def test_rpc_server_list_strategy_files_include_system_toggle(tmp_path):
+def test_rpc_server_list_strategy_files_only_returns_code_files(tmp_path):
     from worker.rpc_server import _list_strategy_files
 
     strat_dir = tmp_path / "strat"
@@ -11,13 +11,9 @@ def test_rpc_server_list_strategy_files_include_system_toggle(tmp_path):
     (strat_dir / "overview.md").write_text("# Overview", encoding="utf-8")
     (strat_dir / "strategy_meta.json").write_text("{}", encoding="utf-8")
     (strat_dir / "params_schema.json").write_text("{}", encoding="utf-8")
+    (strat_dir / "strategy_spec.yaml").write_text("spec", encoding="utf-8")
+    (strat_dir / "strategy_protocol.json").write_text("{}", encoding="utf-8")
 
-    # Default (include_system=False)
-    res_default = _list_strategy_files(str(strat_dir), include_system=False)
-    names_default = {f["name"] for f in res_default["files"]}
-    assert names_default == {"strategy.py", "strategy_live.py"}
-
-    # With include_system=True
-    res_system = _list_strategy_files(str(strat_dir), include_system=True)
-    names_system = {f["name"] for f in res_system["files"]}
-    assert names_system == {"strategy.py", "strategy_live.py", "overview.md", "strategy_meta.json", "params_schema.json"}
+    res = _list_strategy_files(str(strat_dir))
+    names = {f["name"] for f in res["files"]}
+    assert names == {"strategy.py", "strategy_live.py"}

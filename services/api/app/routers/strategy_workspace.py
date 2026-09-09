@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import difflib
+import json
 import os
 from typing import Any
 
@@ -225,7 +226,6 @@ def _build_workspace_diff(strategy_id: str, path: str, db: Session) -> dict[str,
 def get_strategy_files(
     strategy_id: str,
     request: Request,
-    include_system: bool = Query(default=False),
     db: Session = Depends(get_db),
 ):
     require_strategy_member(request, db, strategy_id)
@@ -234,8 +234,58 @@ def get_strategy_files(
         raise HTTPException(status_code=404, detail="strategy_not_found")
     return call_worker_rpc(
         "/internal/strategies/files",
-        {"strategy_id": strategy_id, "include_system": include_system},
+        {"strategy_id": strategy_id},
     )
+
+
+@router.get("/strategies/{strategy_id}/overview")
+def get_strategy_overview(
+    strategy_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, str]:
+    require_strategy_member(request, db, strategy_id)
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="strategy_not_found")
+    overview_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "overview.md")
+    content = _read_text_file_if_exists(overview_path) or ""
+    return {"content": content}
+
+
+@router.get("/strategies/{strategy_id}/params-schema")
+def get_strategy_params_schema(
+    strategy_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    require_strategy_member(request, db, strategy_id)
+    strategy = db.get(Strategy, strategy_id)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="strategy_not_found")
+    strategy_dir = os.path.join(settings.workspaces_dir, strategy_id, "strategy")
+    meta_path = os.path.join(strategy_dir, "strategy_meta.json")
+    schema_path = os.path.join(strategy_dir, "params_schema.json")
+    meta_text = _read_text_file_if_exists(meta_path)
+    schema_text = _read_text_file_if_exists(schema_path)
+    meta: dict[str, Any] = {}
+    if meta_text:
+        try:
+            meta = json.loads(meta_text)
+        except Exception:
+            meta = {}
+    params_schema = None
+    if isinstance(meta, dict) and meta.get("params_schema"):
+        params_schema = meta.get("params_schema")
+    elif schema_text:
+        try:
+            params_schema = json.loads(schema_text)
+        except Exception:
+            params_schema = None
+    return {
+        "params_schema": params_schema,
+        "parameters": meta.get("parameters") if isinstance(meta, dict) else {},
+    }
 
 
 @router.get("/strategies/{strategy_id}/workspace/compare")

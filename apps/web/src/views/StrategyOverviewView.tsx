@@ -419,9 +419,9 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   const autoGenerateTriggeredRef = useRef<Record<string, boolean>>({});
   const strategyId = strategy?.id;
 
-  const filesQuery = useQuery({
-    queryKey: ["strategy-files", strategyId, "system"],
-    queryFn: () => strategiesApi.getFiles(strategyId as string, { include_system: true }),
+  const overviewQuery = useQuery({
+    queryKey: ["strategy-overview", strategyId],
+    queryFn: () => strategiesApi.getOverview(strategyId as string),
     enabled: Boolean(strategyId),
   });
 
@@ -480,9 +480,8 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   });
 
   const overviewContent = useMemo(() => {
-    const overviewFile = filesQuery.data?.files.find((file) => file.name === "overview.md");
-    return overviewFile?.content?.trim() || "";
-  }, [filesQuery.data]);
+    return overviewQuery.data?.content?.trim() || "";
+  }, [overviewQuery.data]);
 
   const hasOverview = overviewContent.length > 0;
 
@@ -534,7 +533,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
         }
 
         await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["strategy-files", strategy.id] }),
+          queryClient.invalidateQueries({ queryKey: ["strategy-overview", strategy.id] }),
           queryClient.invalidateQueries({ queryKey: ["strategy", strategy.id] }),
           queryClient.invalidateQueries({ queryKey: ["strategies"] }),
         ]);
@@ -550,11 +549,11 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
 
   useEffect(() => {
     if (!strategy?.id || strategy.chat_status !== "done" || hasOverview) return;
-    if (filesQuery.isLoading || !filesQuery.isSuccess) return;
+    if (overviewQuery.isLoading || !overviewQuery.isSuccess) return;
     if (overviewGenerateStatus === "generating") return;
     if (autoGenerateTriggeredRef.current[strategy.id]) return;
     void triggerOverviewGeneration(false);
-  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, triggerOverviewGeneration, filesQuery.isLoading, filesQuery.isSuccess]);
+  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, triggerOverviewGeneration, overviewQuery.isLoading, overviewQuery.isSuccess]);
 
   const equitySeries = useMemo(() => {
     const points = equityQuery.data?.data || [];
@@ -824,7 +823,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                       {overviewContent}
                     </ReactMarkdown>
                   </div>
-                ) : filesQuery.isLoading ? (
+                ) : overviewQuery.isLoading ? (
                   <div className="text-sm text-muted-foreground">{t("overview.loadingOverview")}</div>
                 ) : strategy?.chat_status === "generating" ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50">

@@ -162,38 +162,16 @@ const BacktestView = ({
         };
     }, [mode]);
 
-    const { data: strategyFiles } = useQuery({
-        queryKey: ["strategy-files", strategy?.id, "system"],
-        queryFn: () => (strategy ? strategiesApi.getFiles(strategy.id, { include_system: true }) : Promise.resolve({ files: [] })),
+    const { data: paramsSchemaData } = useQuery({
+        queryKey: ["strategy-params-schema", strategy?.id],
+        queryFn: () => (strategy ? strategiesApi.getParamsSchema(strategy.id) : Promise.resolve({ params_schema: null, parameters: {} })),
         enabled: mode === "strategy" && !!strategy,
     });
 
-    const { paramsSchema } = (() => {
-        const files = strategyFiles?.files || [];
-        const metaFile = files.find((f) => f.name === "strategy_meta.json") || null;
-        const schemaFile = files.find((f) => f.name === "params_schema.json") || null;
-        let meta: StrategyMeta | null = null;
-        let schema: ParamsSchema | null = null;
-        if (metaFile?.content) {
-            try {
-                meta = JSON.parse(metaFile.content) as StrategyMeta;
-            } catch {
-                meta = null;
-            }
-        }
-        if (meta?.params_schema) {
-            schema = meta.params_schema;
-        } else if (schemaFile?.content) {
-            try {
-                schema = JSON.parse(schemaFile.content) as ParamsSchema;
-            } catch {
-                schema = null;
-            }
-        }
-        return {
-            paramsSchema: schema?.params || [],
-        };
-    })();
+    const paramsSchema = useMemo(() => {
+        const schema = paramsSchemaData?.params_schema as ParamsSchema | null | undefined;
+        return schema?.params || [];
+    }, [paramsSchemaData]);
 
     useEffect(() => {
         if (!paramsSchema.length) return;

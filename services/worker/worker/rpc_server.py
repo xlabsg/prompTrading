@@ -23,7 +23,6 @@ app = FastAPI(title="Worker Internal RPC", version="0.1.0")
 
 class StrategyRequest(BaseModel):
     strategy_id: str = Field(min_length=1)
-    include_system: bool = False
 
 
 class StrategyDiffRequest(BaseModel):
@@ -130,29 +129,13 @@ def _latest_commit_compare(strategy_dir: str) -> dict[str, Any]:
     }
 
 
-SYSTEM_STRATEGY_FILES = {
-    "strategy_spec.yaml",
-    "overview.md",
-    "params_schema.json",
-    "strategy_meta.json",
-    "strategy_protocol.json",
-}
-
-
-def _list_strategy_files(strategy_dir: str, include_system: bool = False) -> dict[str, Any]:
+def _list_strategy_files(strategy_dir: str) -> dict[str, Any]:
     files: list[dict[str, str]] = []
     entries = (
         ("strategy.py", "strategy/strategy.py"),
-        ("strategy_spec.yaml", "strategy/strategy_spec.yaml"),
-        ("overview.md", "strategy/overview.md"),
-        ("params_schema.json", "strategy/params_schema.json"),
-        ("strategy_meta.json", "strategy/strategy_meta.json"),
-        ("strategy_protocol.json", "strategy/strategy_protocol.json"),
         ("strategy_live.py", "strategy/strategy_live.py"),
     )
     for name, path in entries:
-        if not include_system and name in SYSTEM_STRATEGY_FILES:
-            continue
         full_path = os.path.join(strategy_dir, name)
         if not os.path.isfile(full_path):
             continue
@@ -177,7 +160,7 @@ def strategy_files(
     strategy_dir = _strategy_git_dir(req.strategy_id)
     if not os.path.isdir(strategy_dir):
         raise HTTPException(status_code=404, detail="strategy_workspace_not_found")
-    return _list_strategy_files(strategy_dir, include_system=req.include_system)
+    return _list_strategy_files(strategy_dir)
 
 
 @app.post("/internal/strategies/git/compare")

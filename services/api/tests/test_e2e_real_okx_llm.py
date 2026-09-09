@@ -69,14 +69,15 @@ def test_e2e_generate_and_backtest_real_okx_llm(e2e_client: E2EClient, e2e_strat
     eq = e2e_client.get_json(f"/api/backtests/{run_id}/equity_curve")
     assert isinstance(eq.get("data"), list) and len(eq["data"]) > 0
 
-    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files?include_system=true").get("files", [])
+    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files").get("files", [])
+    assert next((f for f in files if f.get("name") == "overview.md"), None) is None
     strategy_py = next((f for f in files if f.get("name") == "strategy.py"), None)
     assert strategy_py is not None, "Missing strategy.py"
     content = strategy_py.get("content") or ""
     assert "def generate_signals" in content, "Generated strategy.py missing generate_signals()"
-    overview_md = next((f for f in files if f.get("name") == "overview.md"), None)
-    assert overview_md is not None, "Missing overview.md"
-    overview_content = (overview_md.get("content") or "").strip()
+
+    overview_resp = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/overview")
+    overview_content = (overview_resp.get("content") or "").strip()
     assert overview_content, "overview.md is empty"
     assert "# Summary" in overview_content
     assert "# Trading Board" in overview_content

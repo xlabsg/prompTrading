@@ -167,9 +167,17 @@ export const strategiesApi = {
             method: "POST",
         }),
 
-    getFiles: (strategyId: string, params?: { include_system?: boolean }) =>
+    getFiles: (strategyId: string) =>
         fetchApi<{ files: Array<{ name: string; path: string; type: string; content: string }> }>(
-            `/api/strategies/${strategyId}/files${buildQuery(params || {})}`
+            `/api/strategies/${strategyId}/files`
+        ),
+
+    getOverview: (strategyId: string) =>
+        fetchApi<{ content: string }>(`/api/strategies/${strategyId}/overview`),
+
+    getParamsSchema: (strategyId: string) =>
+        fetchApi<{ params_schema: any; parameters: Record<string, any> }>(
+            `/api/strategies/${strategyId}/params-schema`
         ),
 
     getGitCompare: (strategyId: string) =>

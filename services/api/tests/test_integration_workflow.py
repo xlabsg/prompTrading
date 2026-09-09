@@ -86,17 +86,16 @@ def test_e2e_generate_and_backtest_with_fallback(e2e_client: E2EClient, e2e_stra
         for key in ("time_ms", "type", "side", "signal_reason", "signal_detail", "weight_from", "weight_to", "price"):
             assert key in e0
 
-    files_default = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files").get("files", [])
-    assert next((f for f in files_default if f.get("name") == "overview.md"), None) is None
-    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files?include_system=true").get("files", [])
+    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files").get("files", [])
+    assert next((f for f in files if f.get("name") == "overview.md"), None) is None
     strategy_py = next((f for f in files if f.get("name") == "strategy.py"), None)
     assert strategy_py is not None, "Missing strategy.py"
     content = (strategy_py.get("content") or "").strip()
     assert "def generate_signals" in content, "strategy.py missing generate_signals()"
-    overview_md = next((f for f in files if f.get("name") == "overview.md"), None)
-    assert overview_md is not None, "Missing overview.md"
-    overview_content = (overview_md.get("content") or "").strip()
-    assert overview_content, "overview.md is empty"
+
+    overview_resp = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/overview")
+    overview_content = (overview_resp.get("content") or "").strip()
+    assert overview_content, "overview is empty"
     assert "# Summary" in overview_content
     assert "# Trading Board" in overview_content
     assert "# Flow Animation" in overview_content
