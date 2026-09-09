@@ -852,8 +852,6 @@ const en = {
     truncatedHint: "Too many files to display. Use search to find what you need.",
     noFileSelected: "No file selected",
     loadingFileContent: "Loading file content...",
-    showSystemFiles: "Show system files",
-    hideSystemFiles: "Hide system files",
     changes: {
       tab: "Current changes",
       title: "Git Diff",

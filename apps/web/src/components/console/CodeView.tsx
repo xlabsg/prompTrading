@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Copy, Check, Search, Folder, File, ChevronRight, ChevronDown, Loader2, Eye, EyeOff, FileCode, GitCompare } from "lucide-react";
+import { Copy, Check, Search, Folder, File, ChevronRight, ChevronDown, Loader2, FileCode, GitCompare } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -164,7 +164,6 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     const [searchQuery, setSearchQuery] = useState("");
     const [activeTab, setActiveTab] = useState<"files" | "search">("files");
     const [fileDialogOpen, setFileDialogOpen] = useState(false);
-    const [showSystemFiles, setShowSystemFiles] = useState(false);
     const [rightPanelMode, setRightPanelMode] = useState<RightPanelMode>("code");
     const [selectedChangedPath, setSelectedChangedPath] = useState<string | null>(null);
     const [isChangesListExpanded, setIsChangesListExpanded] = useState(false);
@@ -200,12 +199,10 @@ const CodeView = ({ strategy }: CodeViewProps) => {
             return buildFileTreeFromPaths(paths);
         }
         const allFiles = strategyFilesQuery.data?.files || [];
-        const files = showSystemFiles
-            ? allFiles
-            : allFiles.filter((file) => !SYSTEM_STRATEGY_FILE_PATHS.has(file.path));
+        const files = allFiles.filter((file) => !SYSTEM_STRATEGY_FILE_PATHS.has(file.path));
         const contentByPath = Object.fromEntries(files.map((file) => [file.path, file.content]));
         return buildFileTreeFromPaths(files.map((file) => file.path), contentByPath);
-    }, [isRepoStrategy, repoTreeQuery.data, strategyFilesQuery.data, showSystemFiles]);
+    }, [isRepoStrategy, repoTreeQuery.data, strategyFilesQuery.data]);
 
     const allFiles = useMemo(() => getAllFiles(fileTree), [fileTree]);
     const [selectedFile, setSelectedFile] = useState<FileNode | null>(null);
@@ -236,7 +233,8 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     const changedFiles = useMemo(
         () => (compareQuery.data?.files || []).filter((file) => {
             const normalized = file.path.replace(/\\/g, "/").toLowerCase();
-            return !normalized.endsWith("/overview.md") && normalized !== "overview.md" && normalized !== "strategy/overview.md";
+            const withPrefix = normalized.startsWith("strategy/") ? normalized : `strategy/${normalized}`;
+            return !SYSTEM_STRATEGY_FILE_PATHS.has(withPrefix);
         }),
         [compareQuery.data?.files]
     );
@@ -756,19 +754,7 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                             </Button>
                         </div>
 
-                        {!isRepoStrategy && !isShowingChanges && (
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => setShowSystemFiles((prev) => !prev)}
-                                className="hidden gap-2 sm:inline-flex"
-                            >
-                                {showSystemFiles ? <EyeOff size={14} /> : <Eye size={14} />}
-                                <span>
-                                    {showSystemFiles ? t("codeView.hideSystemFiles") : t("codeView.showSystemFiles")}
-                                </span>
-                            </Button>
-                        )}
+
                         <Button
                             variant="ghost"
                             size="sm"

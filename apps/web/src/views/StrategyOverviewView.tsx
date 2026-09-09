@@ -420,8 +420,8 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   const strategyId = strategy?.id;
 
   const filesQuery = useQuery({
-    queryKey: ["strategy-files", strategyId],
-    queryFn: () => strategiesApi.getFiles(strategyId as string),
+    queryKey: ["strategy-files", strategyId, "system"],
+    queryFn: () => strategiesApi.getFiles(strategyId as string, { include_system: true }),
     enabled: Boolean(strategyId),
   });
 

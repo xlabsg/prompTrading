@@ -86,8 +86,9 @@ def test_e2e_generate_and_backtest_with_fallback(e2e_client: E2EClient, e2e_stra
         for key in ("time_ms", "type", "side", "signal_reason", "signal_detail", "weight_from", "weight_to", "price"):
             assert key in e0
 
-    # Validate generated code artifact exists (fallback still generates code).
-    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files").get("files", [])
+    files_default = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files").get("files", [])
+    assert next((f for f in files_default if f.get("name") == "overview.md"), None) is None
+    files = e2e_client.get_json(f"/api/strategies/{e2e_strategy_id}/files?include_system=true").get("files", [])
     strategy_py = next((f for f in files if f.get("name") == "strategy.py"), None)
     assert strategy_py is not None, "Missing strategy.py"
     content = (strategy_py.get("content") or "").strip()

@@ -163,8 +163,8 @@ const BacktestView = ({
     }, [mode]);
 
     const { data: strategyFiles } = useQuery({
-        queryKey: ["strategy-files", strategy?.id],
-        queryFn: () => (strategy ? strategiesApi.getFiles(strategy.id) : Promise.resolve({ files: [] })),
+        queryKey: ["strategy-files", strategy?.id, "system"],
+        queryFn: () => (strategy ? strategiesApi.getFiles(strategy.id, { include_system: true }) : Promise.resolve({ files: [] })),
         enabled: mode === "strategy" && !!strategy,
     });
 

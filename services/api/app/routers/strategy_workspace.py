@@ -30,8 +30,8 @@ WORKSPACE_VERSIONED_FILES = (
 )
 
 WORKSPACE_COMPARE_FILES = (
-    *WORKSPACE_VERSIONED_FILES,
-    "overview.md",
+    "strategy.py",
+    "strategy_live.py",
 )
 
 
@@ -222,12 +222,20 @@ def _build_workspace_diff(strategy_id: str, path: str, db: Session) -> dict[str,
 
 
 @router.get("/strategies/{strategy_id}/files")
-def get_strategy_files(strategy_id: str, request: Request, db: Session = Depends(get_db)):
+def get_strategy_files(
+    strategy_id: str,
+    request: Request,
+    include_system: bool = Query(default=False),
+    db: Session = Depends(get_db),
+):
     require_strategy_member(request, db, strategy_id)
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
         raise HTTPException(status_code=404, detail="strategy_not_found")
-    return call_worker_rpc("/internal/strategies/files", {"strategy_id": strategy_id})
+    return call_worker_rpc(
+        "/internal/strategies/files",
+        {"strategy_id": strategy_id, "include_system": include_system},
+    )
 
 
 @router.get("/strategies/{strategy_id}/workspace/compare")

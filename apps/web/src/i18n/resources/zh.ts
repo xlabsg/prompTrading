@@ -837,8 +837,6 @@ const zh = {
     truncatedHint: "文件过多，已部分显示，可使用搜索。",
     noFileSelected: "未选择文件",
     loadingFileContent: "正在加载文件内容...",
-    showSystemFiles: "显示系统文件",
-    hideSystemFiles: "隐藏系统文件",
     changes: {
       tab: "本次修改",
       title: "Git Diff",
