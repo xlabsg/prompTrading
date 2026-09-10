@@ -448,8 +448,23 @@ const en = {
   dashboard: {
     heroTitle: "Build your next strategy",
     heroSubtitle: "Create with natural language, or import a GitHub repo to build a code knowledge base",
+    quickInspirations: "Quick prompts",
+    presets: [
+      {
+        label: "BTC MA Crossover",
+        desc: "BTC-USDT 1h timeframe, dual moving average golden cross to go long, death cross to go short, with 2% trailing stop.",
+      },
+      {
+        label: "ETH Bollinger Breakout",
+        desc: "ETH-USDT 15m timeframe, go long on upper Bollinger band breakout, close on midline cross, 1.5% stop loss.",
+      },
+      {
+        label: "SOL RSI Mean Reversion",
+        desc: "SOL-USDT 1h timeframe, buy on oversold bounce when RSI < 30, take profit when RSI > 70.",
+      },
+    ],
     inputPlaceholder:
-      "Example: Build a trend-following strategy using RSI and MACD. Go long when RSI < 30 and MACD crosses up...",
+      "Example: Build an intraday breakout strategy on ETH/USDT 15m candles with Bollinger Bands, exit at midline, and 1.5% stop loss...",
     inputHint: "Press Enter to send, Shift+Enter for a new line",
     createCta: "Create strategy",
     createStatus: "Creating...",

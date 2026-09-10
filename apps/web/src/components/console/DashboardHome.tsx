@@ -382,20 +382,20 @@ const DashboardHome = ({
                                         <Sparkles size={12} className="text-primary" />
                                         {t.quickInspirations || "快捷灵感"}:
                                     </span>
-                                    {[
+                                    {((Array.isArray(t.presets) && t.presets.length > 0) ? t.presets : [
                                         {
-                                            label: "BTC 均线交叉",
-                                            desc: "BTC-USDT 1小时级别，双均线金叉做多死叉做空，附带 2% 追踪止损",
+                                            label: "BTC MA Crossover",
+                                            desc: "BTC-USDT 1h timeframe, dual moving average golden cross to go long, death cross to go short, with 2% trailing stop.",
                                         },
                                         {
-                                            label: "ETH 布林带突破",
-                                            desc: "ETH-USDT 15分钟级别，突破布林带上轨做多，跌破中轨平仓，止损 1.5%",
+                                            label: "ETH Bollinger Breakout",
+                                            desc: "ETH-USDT 15m timeframe, go long on upper Bollinger band breakout, close on midline cross, 1.5% stop loss.",
                                         },
                                         {
-                                            label: "SOL RSI 超卖反弹",
-                                            desc: "SOL-USDT 1小时级别，RSI 低于 30 超卖反弹买入，高于 70 止盈",
+                                            label: "SOL RSI Mean Reversion",
+                                            desc: "SOL-USDT 1h timeframe, buy on oversold bounce when RSI < 30, take profit when RSI > 70.",
                                         },
-                                    ].map((preset) => (
+                                    ]).map((preset: { label: string; desc: string }) => (
                                         <button
                                             key={preset.label}
                                             type="button"

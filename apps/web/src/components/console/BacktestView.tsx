@@ -50,11 +50,6 @@ type ParamsSchema = {
     params?: ParamSchemaItem[];
 };
 
-type StrategyMeta = {
-    version?: number;
-    params_schema?: ParamsSchema;
-};
-
 const ALL_INTERVAL_OPTIONS = [
     { value: "1m", label: "1m" },
     { value: "5m", label: "5m" },

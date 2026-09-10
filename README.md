@@ -19,6 +19,14 @@
 
 [Live Platform](https://aicryptofx.com) • [Overview](#-overview) • [Community](#-community) • [Key Features](#-key-features) • [How It Works](#-how-it-works) • [Quick Start](#-quick-start) • [Risk Engine](#-defense-in-depth-risk-engine) • [Configuration](#-configuration) • [Architecture](#-repository-layout)
 
+<br /><br />
+
+<a href="https://aicryptofx.com">
+  <img src="docs/assets/hero-demo.gif" alt="PrompTrading End-to-End Demo: Prompt to Backtest & Live Execution" width="100%" style="border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,0.15);" />
+</a>
+
+<p><em>End-to-End Workflow: Natural language prompt &rarr; Executable code &amp; Git diff &rarr; Vectorized backtesting (+10.05% return, 4.94 Sharpe) &rarr; One-click live risk engine.</em></p>
+
 </div>
 
 ---

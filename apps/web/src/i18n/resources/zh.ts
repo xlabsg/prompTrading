@@ -433,8 +433,23 @@ const zh = {
   dashboard: {
     heroTitle: "打造你的下一个策略",
     heroSubtitle: "用自然语言创建，或导入 GitHub 仓库构建代码知识库",
+    quickInspirations: "快捷灵感",
+    presets: [
+      {
+        label: "BTC 均线交叉",
+        desc: "BTC-USDT 1小时级别，双均线金叉做多死叉做空，附带 2% 追踪止损",
+      },
+      {
+        label: "ETH 布林带突破",
+        desc: "ETH-USDT 15分钟级别，突破布林带上轨做多，跌破中轨平仓，止损 1.5%",
+      },
+      {
+        label: "SOL RSI 超卖反弹",
+        desc: "SOL-USDT 1小时级别，RSI 低于 30 超卖反弹买入，高于 70 止盈",
+      },
+    ],
     inputPlaceholder:
-      "示例：使用 RSI 与 MACD 的趋势跟随策略。当 RSI < 30 且 MACD 上穿时做多...",
+      "示例：ETH-USDT 15分钟级别突破策略，突破布林带上轨做多，跌破中轨平仓，止损 1.5%...",
     inputHint: "按 Enter 发送，Shift+Enter 换行",
     createCta: "创建策略",
     createStatus: "创建中...",
