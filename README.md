@@ -74,6 +74,10 @@ Join our community to discuss trading ideas, get help with setup and exchange in
   Driven by [Tau](https://github.com/huggingface/tau) (`tau-ai`), the autonomous coding agent writes, inspects, and refines executable Python strategies inside versioned sandboxes (`versions/<version_id>/`).
 - 🔁 **Closed-Loop Autonomous Backtesting**  
   The agent doesn't guess if the strategy works — it executes backtests against real historical bars in isolated subprocesses, evaluates metrics (Sharpe ratio, max drawdown, win rate, Sortino), and iterates automatically until the strategy meets performance criteria.
+
+  <p align="center">
+    <img src="docs/assets/backtest-dashboard.png" alt="Autonomous Backtest Dashboard: Equity Curve, Drawdown & Trade Execution Details" width="100%" style="border-radius: 6px; border: 1px solid #334155; margin-top: 10px;" />
+  </p>
 - 🛡️ **Defense-in-Depth Risk Engine**  
   Production-grade risk management protecting your capital on live markets:
   - **9 Invasive Pre-Trade Checks** (max order size, leverage caps, price sanity, balance validation, etc.)
