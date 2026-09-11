@@ -1907,7 +1907,7 @@ def chat_with_strategy_stream(
                 "Required format:\n"
                 "1. A `# Summary` section describing strategy logic.\n"
                 "2. A `# Trading Board` section describing K-line and PnL dashboard focus.\n"
-                "3. A `# Flow Animation` section that includes a ```mermaid flowchart.\n"
+                "3. A `# Flow Animation` section that includes a ```mermaid flowchart. Enclose node and edge labels in double quotes when they contain parentheses, indicators, or special characters (e.g. `A[\"Compute SMA(20)\"]`).\n"
                 "4. Optionally include a ```g6 JSON graph with weighted edges for state transitions.\n"
                 "5. Save the final result to `overview.md`.\n"
                 "6. Verify the file before completing."

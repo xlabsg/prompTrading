@@ -194,6 +194,10 @@ const zh = {
     noOverviewNotice: "暂未生成策略解读文档，默认将自动触发生成。",
     autoGenerating: "正在自动生成工作流与策略解读...",
     waitingForStrategy: "策略代码生成完成后，将自动生成工作流图谱与策略解读。",
+    mermaidRenderFailed: "Mermaid 流程图渲染错误",
+    renderingDiagram: "正在渲染工作流图表...",
+    viewRawMermaid: "查看原始代码",
+    hideRawMermaid: "隐藏原始代码",
   },
   backtest: {
     title: "回测",
