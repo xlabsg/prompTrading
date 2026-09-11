@@ -822,8 +822,44 @@ def _handle_generate_and_backtest(db: Session, rds: redis.Redis, docker_client: 
         # Non-fatal: backtest/report still works without these extra artifacts.
         pass
 
-    # Step 2: run backtest
-    _handle_backtest(db, rds, docker_client, job)
+    # Step 2: run backtest (reuse in-loop agent backtest if generated)
+    metrics_path = os.path.join(run_dir, "metrics.json")
+    reused = False
+    if os.path.isfile(metrics_path):
+        try:
+            metrics_payload = load_backtest_metrics(run_dir)
+            run = db.get(BacktestRun, run_id)
+            ds = db.get(Dataset, dataset_id)
+            if run is not None and ds is not None:
+                run.status = BacktestStatus.SUCCEEDED
+                run.started_at = run.started_at or _utcnow()
+                run.finished_at = _utcnow()
+                run.metrics = metrics_payload
+                run.result_summary = {
+                    "exchange": ds.exchange,
+                    "symbol": ds.symbol,
+                    "interval": ds.interval,
+                    "start_ms": ds.start_ms,
+                    "end_ms": ds.end_ms,
+                    "total_return": metrics_payload.get("total_return"),
+                    "max_drawdown": metrics_payload.get("max_drawdown"),
+                    "sharpe_ratio": metrics_payload.get("sharpe_ratio"),
+                    "win_rate": metrics_payload.get("win_rate"),
+                    "profit_factor": metrics_payload.get("profit_factor"),
+                    "total_trades": metrics_payload.get("total_trades"),
+                    "num_bars": metrics_payload.get("num_bars"),
+                    "final_equity": metrics_payload.get("final_equity"),
+                    "initial_cash": metrics_payload.get("initial_cash"),
+                }
+                db.flush()
+                _publish_log(job.id, "Reused agent in-loop backtest artifacts.", rds=rds)
+                reused = True
+        except Exception as e:
+            _publish_log(job.id, f"Could not reuse agent backtest artifacts ({e}), running standalone backtest...", rds=rds)
+            reused = False
+
+    if not reused:
+        _handle_backtest(db, rds, docker_client, job)
 
     # Step 3: generate AI strategy name and mark chat_status as DONE
     strategy_dir = os.path.join(settings.app_workspaces_dir, strategy_id, "strategy")

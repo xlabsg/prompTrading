@@ -227,3 +227,26 @@ def test_unsupported_exchange_rejected():
 def test_us_stock_rejects_non_daily_interval():
     with pytest.raises(ValueError, match="us_stock_only_supports_1d"):
         _REAL_LOAD_DATASET(BacktestDataset(exchange="us_stock", symbol="AAPL", interval="1h"))
+
+
+def test_persist_run_artifacts_when_run_id_set(tmp_path, monkeypatch):
+    monkeypatch.setenv("STRATEGY_ID", "strat_test")
+    monkeypatch.setenv("VERSION_ID", "ver_test")
+    monkeypatch.setenv("RUN_ID", "run_test")
+    monkeypatch.setenv("WORKSPACES_DIR", str(tmp_path))
+
+    ok, report, metrics = run(tmp_path)
+    assert ok, report
+
+    run_dir = tmp_path / "strat_test" / "runs" / "run_test"
+    assert (run_dir / "metrics.json").is_file()
+    assert (run_dir / "candles.parquet").is_file()
+    assert (run_dir / "equity.parquet").is_file()
+    assert (run_dir / "equity_curve.json").is_file()
+    assert (run_dir / "trades.json").is_file()
+    assert (run_dir / "backtest.log").is_file()
+
+    import json
+    with open(run_dir / "metrics.json") as f:
+        saved_metrics = json.load(f)
+    assert saved_metrics.get("sharpe_ratio") == metrics.get("sharpe_ratio")

@@ -47,7 +47,7 @@ In traditional algorithmic trading, turning a trading idea into a live system re
 Tell PrompTrading:
 > *"Build an intraday breakout strategy on BTC/USDT 15m candles with a volume surge filter, 2.5x ATR trailing stop, and dynamic profit targets based on recent swing highs."*
 
-Within minutes, the built-in **Tau coding agent** drafts standard-compliant Python strategy code, launches throwaway Docker containers to backtest it against real historical market data, analyzes the resulting Sharpe ratio and drawdowns, self-repairs any defects, and prepares the strategy for one-click live execution behind a multi-layered risk engine.
+Within minutes, the built-in **autonomous coding agent** drafts standard-compliant Python strategy code, launches throwaway Docker containers to backtest it against real historical market data, analyzes the resulting Sharpe ratio and drawdowns, self-repairs any defects, and prepares the strategy for one-click live execution behind a multi-layered risk engine.
 
 ---
 
@@ -70,8 +70,8 @@ Join our community to discuss trading ideas, get help with setup and exchange in
 
 ## ✨ Key Features
 
-- 🤖 **Prompt-to-Alpha Coding Agent (Tau Engine)**  
-  Driven by [Tau](https://github.com/huggingface/tau) (`tau-ai`), the autonomous coding agent writes, inspects, and refines executable Python strategies inside versioned sandboxes (`versions/<version_id>/`).
+- 🤖 **Prompt-to-Alpha Coding Agent**  
+  The autonomous coding agent writes, inspects, and refines executable Python strategies inside versioned sandboxes (`versions/<version_id>/`).
 - 🔁 **Closed-Loop Autonomous Backtesting**  
   The agent doesn't guess if the strategy works — it executes backtests against real historical bars in isolated subprocesses, evaluates metrics (Sharpe ratio, max drawdown, win rate, Sortino), and iterates automatically until the strategy meets performance criteria.
 
@@ -108,7 +108,7 @@ Join our community to discuss trading ideas, get help with setup and exchange in
                                     │
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                    2. Tau Agent (Coding & Reasoning)                  │
+│                 2. Coding Agent (Strategy & Reasoning)                 │
 │  • Interprets prompt into strategy logic                              │
 │  • Implements LiveStrategy protocol in versions/<id>/ workspace        │
 └───────────────────────────────────┬────────────────────────────────────┘
@@ -197,6 +197,9 @@ Once containers finish initializing, access the services:
 > - Skip image rebuild: `./infra/compose/update.sh --no-build`  
 > - Skip remote image pulls: `./infra/compose/update.sh --no-pull`
 
+> [!TIP]
+> **Proxy & Build Troubleshooting:** If Docker build fails with network timeouts or mirror errors, see the [Docker Network & Proxy Guide](infra/compose/README.md#china-proxy-guide).
+
 ---
 
 ## 🛡️ Defense-in-Depth Risk Engine
@@ -254,7 +257,7 @@ All runtime options are managed via `infra/compose/.env`.
 | :--- | :--- | :--- |
 | `LLM_PROVIDER` | `deepseek` | Provider identifier: `deepseek`, `openai`, `anthropic`, or OpenAI-compatible gateway. |
 | `LLM_BASE_URL` | *provider default* | Base URL for API completions (e.g. `https://api.deepseek.com`, `https://api.openai.com/v1`). |
-| `LLM_MODEL` | `deepseek-chat` | Model name used by the Tau coding agent. See recommended models below. |
+| `LLM_MODEL` | `deepseek-chat` | Model name used by the coding agent. See recommended models below. |
 | `LLM_TEMPERATURE` | `0.2` | Sampling temperature for strategy code generation. |
 | `LLM_HTTP_TIMEOUT_S` | `300` | Request timeout in seconds for LLM inference calls. |
 | `LLM_FALLBACK_ON_ERROR` | `false` | Emit template strategy if agent encounters unrecoverable errors. |
@@ -362,7 +365,7 @@ PYTHONPATH="packages/agent:packages/backtest:packages/data" pytest packages/agen
 
 ## 🤝 Contributing
 
-Contributions are warmly welcome! Whether you are adding new market data providers, refining risk validation rules, or improving the Tau coding agent:
+Contributions are warmly welcome! Whether you are adding new market data providers, refining risk validation rules, or improving the strategy coding agent:
 
 1. Fork the repository & create your feature branch (`git checkout -b feat/my-feature`).
 2. Ensure code passes linters (`ruff` for Python, `npm run lint` for TypeScript).

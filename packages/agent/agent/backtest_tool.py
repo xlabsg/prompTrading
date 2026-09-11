@@ -225,6 +225,69 @@ def _format_metrics(metrics: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _persist_run_artifacts(
+    *,
+    dataset: BacktestDataset,
+    data: pd.DataFrame,
+    result: Any,
+    signals: dict[str, Any],
+    metrics: dict[str, Any],
+    params: dict[str, Any] | None,
+) -> None:
+    run_id = os.getenv("RUN_ID")
+    strategy_id = os.getenv("STRATEGY_ID")
+    workspaces_dir = os.getenv("WORKSPACES_DIR", "/workspaces")
+    if not (run_id and strategy_id):
+        return
+
+    try:
+        import json
+        import sys
+        from backtest.artifacts import RunMeta, write_run_artifacts
+
+        version_id = os.getenv("VERSION_ID", "")
+        target_run_dir = os.path.join(workspaces_dir, strategy_id, "runs", run_id)
+        run_meta = RunMeta(
+            strategy_id=strategy_id,
+            version_id=version_id,
+            run_id=run_id,
+            dataset={
+                "exchange": dataset.exchange,
+                "symbol": dataset.symbol,
+                "interval": dataset.interval,
+                "start_ms": dataset.start_ms,
+                "end_ms": dataset.end_ms,
+            },
+            params=dict(params or {}),
+            engine_type="vectorized",
+            signal_mode=str(signals.get("signal_mode") or "target_weights") if isinstance(signals, dict) else "target_weights",
+            protocol_version=str(signals.get("protocol_version") or "") if isinstance(signals, dict) else "",
+            decision_id=str(signals.get("decision_id") or "") if isinstance(signals, dict) else "",
+            signal_symbol=str(signals.get("signal_symbol") or dataset.symbol) if isinstance(signals, dict) else dataset.symbol,
+        )
+        write_run_artifacts(
+            target_run_dir,
+            candles=data,
+            equity=result.equity,
+            positions=result.positions,
+            trades=result.trades,
+            signals=signals,
+            metrics=metrics,
+            run_meta=run_meta,
+        )
+        log_path = os.path.join(target_run_dir, "backtest.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(
+                f"[runner] strategy_id={strategy_id} version_id={version_id} run_id={run_id}\n"
+                f"[runner] data={dataset.exchange}:{dataset.symbol}:{dataset.interval} start_ms={dataset.start_ms} end_ms={dataset.end_ms}\n"
+                f"[runner] wrote artifacts (reused from agent in-loop backtest)\n"
+                f"{json.dumps(metrics, ensure_ascii=False)}\n"
+            )
+    except Exception as err:
+        import sys
+        print(f"[agent:backtest] warning: failed to write run artifacts: {err}", file=sys.stderr)
+
+
 def run_agent_backtest(
     *,
     strategy_path: str,
@@ -343,6 +406,15 @@ def run_agent_backtest(
 
     previous_best = budget.best_score()
     budget.record(metrics)
+
+    _persist_run_artifacts(
+        dataset=dataset,
+        data=data,
+        result=result,
+        signals=signals,
+        metrics=metrics,
+        params=params,
+    )
 
     score = metrics.get(budget.score_key)
     report = [
