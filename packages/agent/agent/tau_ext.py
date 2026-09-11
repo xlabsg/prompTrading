@@ -285,7 +285,8 @@ def _protocol_section() -> str:
         f"- `{STRATEGY_FILE}` defines `{PROTOCOL.entry_function}()`, the entry point "
         f"the platform calls.\n"
         f"- `{OVERVIEW_FILE}` explains the strategy and contains a "
-        f"`{PROTOCOL.overview_required_marker}` diagram of its decision flow.\n\n"
+        f"`{PROTOCOL.overview_required_marker}` diagram of its decision flow "
+        f'(wrap node and edge labels with parentheses or indicators in double quotes, e.g. `["Compute SMA(20)"]`).\n\n'
         f"The platform also writes `{PROTOCOL.spec_file}`, "
         f"`{PROTOCOL.params_schema_file}` and `{PROTOCOL.meta_file}` itself; leave "
         f"those alone."

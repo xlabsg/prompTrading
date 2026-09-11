@@ -250,6 +250,10 @@ def get_strategy_overview(
         raise HTTPException(status_code=404, detail="strategy_not_found")
     overview_path = os.path.join(settings.workspaces_dir, strategy_id, "strategy", "overview.md")
     content = _read_text_file_if_exists(overview_path) or ""
+    if content:
+        from agent.mermaid_sanitizer import sanitize_overview_markdown
+
+        content = sanitize_overview_markdown(content)
     return {"content": content}
 
 

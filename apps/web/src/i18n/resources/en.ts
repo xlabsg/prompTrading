@@ -196,6 +196,10 @@ const en = {
     noOverviewNotice: "No overview markdown available. Auto-generation will run by default.",
     autoGenerating: "Generating overview automatically...",
     waitingForStrategy: "Workflow graph and strategy overview will be generated once strategy code is ready.",
+    mermaidRenderFailed: "Mermaid render error",
+    renderingDiagram: "Rendering workflow diagram...",
+    viewRawMermaid: "View Raw Code",
+    hideRawMermaid: "Hide Raw Code",
   },
   backtest: {
     title: "Backtest",

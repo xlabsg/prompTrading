@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 from agent import tau_driver
 from agent.backtest_tool import BacktestBudget, BacktestDataset, budget_summary
+from agent.mermaid_sanitizer import sanitize_overview_markdown
 from agent.observability.langfuse_client import get_langfuse
 from agent.observability.metrics import SessionMetrics
 from agent.protocol import OVERVIEW_FILE, STRATEGY_FILE
@@ -244,6 +245,7 @@ def _ensure_overview_sections(markdown: str, summary: str) -> str:
             "```\n"
         )
 
+    value = sanitize_overview_markdown(value)
     return value.strip() + "\n"
 
 
@@ -285,6 +287,7 @@ You are working inside the strategy version workspace. Files present: {files}
 ## Deliverables (both required before `task_done`)
 1. `{strategy_file}` exposing `generate_signals(data, params) -> dict`.
 2. `{overview_file}` containing a `# Summary` section and a ```mermaid diagram.
+   - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{"Cross(fast, slow)"}`), brackets, or special characters.
 
 ## Contract for `generate_signals`
 - `data` is a pandas DataFrame with columns: timestamp, open, high, low, close, volume.

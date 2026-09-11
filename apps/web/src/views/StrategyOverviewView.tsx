@@ -12,6 +12,7 @@ import { backtestsApi, strategiesApi } from "@/lib/api";
 import type { BacktestCandle, BacktestSignalEvent, BacktestTrade, BacktestSignalsPayload, Strategy } from "@/lib/types";
 import TradingViewChart from "@/components/charts/TradingViewChart";
 import StrategyWorkflowGraph, { type WorkflowGraphData } from "@/components/strategy/StrategyWorkflowGraph";
+import { sanitizeMermaid } from "@/lib/mermaidSanitizer";
 
 interface StrategyOverviewViewProps {
   strategy: Strategy | null;
@@ -41,13 +42,16 @@ const TIMEFRAME_LABELS: Record<Exclude<TimeframeOption, "auto">, string> = {
 };
 
 const MermaidBlock: React.FC<{ chart: string }> = ({ chart }) => {
+  const { t } = useTranslation();
   const [svg, setSvg] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
 
   useEffect(() => {
     let active = true;
 
     (async () => {
+      const id = `overview-mermaid-${Math.random().toString(36).slice(2)}`;
       try {
         const mermaid = (await import("mermaid")).default;
         mermaid.initialize({
@@ -55,12 +59,14 @@ const MermaidBlock: React.FC<{ chart: string }> = ({ chart }) => {
           securityLevel: "strict",
           theme: "default",
         });
-        const id = `overview-mermaid-${Math.random().toString(36).slice(2)}`;
-        const result = await mermaid.render(id, chart);
+        const sanitized = sanitizeMermaid(chart);
+        const result = await mermaid.render(id, sanitized);
         if (!active) return;
         setSvg(result.svg);
         setError(null);
       } catch (err) {
+        document.getElementById(id)?.remove();
+        document.getElementById(`d${id}`)?.remove();
         if (!active) return;
         setSvg("");
         setError(err instanceof Error ? err.message : "Mermaid render failed");
@@ -74,8 +80,22 @@ const MermaidBlock: React.FC<{ chart: string }> = ({ chart }) => {
 
   if (error) {
     return (
-      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive whitespace-pre-wrap">
-        Mermaid render error: {error}
+      <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive space-y-2">
+        <div className="flex items-center justify-between font-medium">
+          <span>{t("overview.mermaidRenderFailed")}: {error}</span>
+          <button
+            type="button"
+            onClick={() => setShowRaw((prev) => !prev)}
+            className="ml-2 shrink-0 text-xs text-muted-foreground underline hover:text-foreground cursor-pointer"
+          >
+            {showRaw ? t("overview.hideRawMermaid") : t("overview.viewRawMermaid")}
+          </button>
+        </div>
+        {showRaw && (
+          <pre className="overflow-x-auto rounded border border-border bg-card p-2 text-[11px] text-foreground font-mono whitespace-pre-wrap">
+            {chart}
+          </pre>
+        )}
       </div>
     );
   }
@@ -83,7 +103,7 @@ const MermaidBlock: React.FC<{ chart: string }> = ({ chart }) => {
   if (!svg) {
     return (
       <div className="rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground">
-        Rendering workflow diagram...
+        {t("overview.renderingDiagram")}
       </div>
     );
   }
