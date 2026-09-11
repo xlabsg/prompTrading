@@ -279,6 +279,22 @@ All runtime options are managed via `infra/compose/.env`.
 | :--- | :--- | :--- |
 | `APP_DB_URL` | `sqlite:////workspaces/app.db` | SQLAlchemy connection string. PostgreSQL supported via `postgresql+psycopg://...`. |
 
+### Proxy & Exchange Connectivity (Optional)
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `CONTAINER_HTTP_PROXY` | *empty* | Proxy URL for container outbound traffic (e.g. `http://host.docker.internal:7890`). Automatically injected by the worker into ephemeral agent and backtest containers. |
+| `CONTAINER_HTTPS_PROXY` | *empty* | HTTPS proxy URL for container outbound calls. |
+| `OKX_BASE_URL` | `https://www.okx.com` | Custom endpoint for OKX REST API (e.g. alternative endpoints or internal reverse proxies). |
+| `MARKET_DATA_CACHE_ENABLED` | `1` | Cache fetched historical candles in Parquet format to eliminate redundant external network requests. |
+
+> [!TIP]
+> **Backtesting in Restricted Networks (e.g. China Mainland):**  
+> Direct connections to exchange endpoints (like `okx.com` or `binance.com`) may be blocked.  
+> - **Option 1 (Recommended, Zero-Config)**: Enable **TUN Mode** in your host proxy client (Clash, Surge, etc.). Outbound container traffic will route automatically.  
+> - **Option 2**: Configure `CONTAINER_HTTP_PROXY=http://host.docker.internal:7890` in `infra/compose/.env` (enable "Allow LAN" in your proxy client).  
+> - **Parquet Cache**: Once candles are fetched, they are permanently cached in `/workspaces/market_data_cache` — repeated backtests over the same range execute offline.
+
 ### Observability & Third-Party Integrations
 
 | Variable | Purpose |

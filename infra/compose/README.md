@@ -84,6 +84,13 @@ cat <<'EOF' > ~/.docker/config.json
 EOF
 ```
 
+### 方式四：回测历史数据拉取与交易所网络（OKX / Binance）
+在执行回测时，系统需要向交易所公网 API 请求历史 K 线数据。若遇到 `Failed to fetch candles` 或连接 `okx.com` / `binance.com` 超时：
+1. **首选 TUN 模式**：代理客户端开启 TUN 模式后，容器内的交易所 API 请求会自动透明出海，无需额外配置。
+2. **配置 `.env` 代理**：在 `infra/compose/.env` 中设置 `CONTAINER_HTTP_PROXY=http://host.docker.internal:7890`（代理软件需开启「允许局域网连接 (Allow LAN)」），worker 在启动临时回测容器时会自动注入该代理。
+3. **OKX 备用端点**：可在 `.env` 中设置 `OKX_BASE_URL=https://aws.okx.com` 或反向代理地址。
+4. **本地持久化缓存**：首次成功拉取某时段的 K 线后，数据会自动缓存在 `/workspaces/market_data_cache`（Parquet 格式），后续相同条件的回测直接读本地缓存，不再发起网络请求。
+
 ---
 
 <a id="ai-agent-guide"></a>
