@@ -143,4 +143,46 @@ def test_ensure_catalog_entry_registers_unlisted_google_model(monkeypatch):
     assert registered == ["gemini-3.8-flash"]
 
 
+def test_claude_model_infers_native_anthropic_provider(monkeypatch):
+    """Claude models route to native anthropic provider and bridge LLM_API_KEY to ANTHROPIC_API_KEY."""
+    monkeypatch.setenv("LLM_API_KEY", "sk-ant-generic")
+    monkeypatch.setenv("LLM_MODEL", "claude-3-7-sonnet-20250219")
+
+    target = resolve_provider()
+
+    assert target.provider == "anthropic"
+    assert target.model == "claude-3-7-sonnet-20250219"
+    assert target.needs_catalog_entry is False
+    assert target.provider_key_env == "ANTHROPIC_API_KEY"
+    assert target.credential_env() == {"ANTHROPIC_API_KEY": "sk-ant-generic"}
+
+
+def test_explicit_anthropic_provider_with_llm_api_key_bridging(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("LLM_API_KEY", "sk-ant-bridge")
+
+    target = resolve_provider()
+
+    assert target.provider == "anthropic"
+    assert target.model == "claude-sonnet-4-6"
+    assert target.needs_catalog_entry is False
+    assert target.provider_key_env == "ANTHROPIC_API_KEY"
+    assert target.credential_env() == {"ANTHROPIC_API_KEY": "sk-ant-bridge"}
+
+
+def test_ensure_catalog_entry_registers_unlisted_anthropic_model(monkeypatch):
+    from agent.tau_config import ensure_catalog_entry
+
+    monkeypatch.setenv("LLM_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-direct")
+    monkeypatch.setenv("LLM_MODEL", "claude-3-7-sonnet-20250219")
+
+    registered = []
+    monkeypatch.setattr("agent.tau_config.ensure_anthropic_model_registered", lambda model: registered.append(model))
+
+    ensure_catalog_entry()
+    assert registered == ["claude-3-7-sonnet-20250219"]
+
+
+
 

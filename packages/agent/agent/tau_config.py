@@ -26,6 +26,7 @@ CUSTOM_PROVIDER_NAME = "custom_openai"
 _DEFAULT_BASE_URLS = {
     "deepseek": "https://api.deepseek.com/v1",
     "openai": "https://api.openai.com/v1",
+    "anthropic": "https://api.anthropic.com",
 }
 
 
@@ -106,19 +107,44 @@ def resolve_provider() -> TauProvider:
             api_key_env=api_key_env,
         )
 
-    if not provider:
+    # Detect Anthropic / Claude: explicitly or inferred from model
+    is_anthropic = (
+        provider in ("anthropic", "claude")
+        or model.strip().lower().startswith("claude-")
+    )
+
+    if not provider and not is_anthropic:
         if _maybe_env("ANTHROPIC_API_KEY"):
+            is_anthropic = True
             provider = "anthropic"
         elif _maybe_env("DEEPSEEK_API_KEY"):
             provider = "deepseek"
         else:
             provider = "openai"
 
-    if provider == "anthropic":
+    if is_anthropic:
+        api_key_env = (
+            "ANTHROPIC_API_KEY"
+            if _maybe_env("ANTHROPIC_API_KEY")
+            else "LLM_API_KEY"
+            if _maybe_env("LLM_API_KEY")
+            else "OPENAI_API_KEY"
+        )
+        # A base URL matching Anthropic's own endpoint is not custom
+        if base_url and base_url.rstrip("/") in ("https://api.anthropic.com", "https://api.anthropic.com/v1"):
+            base_url = None
+
+        if base_url is None:
+            return TauProvider(
+                provider="anthropic",
+                model=model or "claude-sonnet-4-6",
+                api_key_env=api_key_env,
+            )
         return TauProvider(
-            provider="anthropic",
+            provider=CUSTOM_PROVIDER_NAME,
             model=model or "claude-sonnet-4-6",
-            api_key_env="ANTHROPIC_API_KEY",
+            api_key_env=api_key_env,
+            base_url=base_url,
         )
 
     if provider == "deepseek":
@@ -192,6 +218,27 @@ def ensure_google_model_registered(model: str) -> None:
         print(f"[agent] warning: could not register google model '{model}': {exc}", file=sys.stderr)
 
 
+def ensure_anthropic_model_registered(model: str) -> None:
+    """Ensure a Claude model is present in Tau's Anthropic provider config.
+
+    Tau strictly checks the model name against `provider.models`. If a model
+    (e.g. claude-3-7-sonnet-20250219 or claude-3-5-sonnet-20241022) is used
+    that was not in Tau's static catalog, dynamically upserting it into the local
+    provider settings allows Tau to accept and execute it.
+    """
+    import dataclasses
+    try:
+        from tau_coding import load_provider_settings, upsert_saved_provider
+
+        settings = load_provider_settings()
+        ant = settings.get_provider("anthropic")
+        if model not in ant.models:
+            updated_ant = dataclasses.replace(ant, models=(*ant.models, model))
+            upsert_saved_provider(updated_ant)
+    except Exception as exc:
+        print(f"[agent] warning: could not register anthropic model '{model}': {exc}", file=sys.stderr)
+
+
 def ensure_catalog_entry(target: TauProvider | None = None) -> None:
     """Ensure Tau catalog has an entry registered for custom gateway / base_url or custom models."""
     if target is None:
@@ -200,11 +247,14 @@ def ensure_catalog_entry(target: TauProvider | None = None) -> None:
         write_catalog_entry(target)
     elif target.provider == "google":
         ensure_google_model_registered(target.model)
+    elif target.provider == "anthropic":
+        ensure_anthropic_model_registered(target.model)
 
 
 
 def main() -> int:
     target = resolve_provider()
+    ensure_catalog_entry(target)
     if not target.needs_catalog_entry:
         print(
             f"[agent] tau provider '{target.provider}' is built in; "
@@ -212,7 +262,6 @@ def main() -> int:
         )
         return 0
 
-    write_catalog_entry(target)
     print(
         f"[agent] registered custom tau provider '{target.provider}' "
         f"base_url={target.base_url} model={target.model} key={target.api_key_env}"
