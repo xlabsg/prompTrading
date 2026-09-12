@@ -6,17 +6,14 @@ this one.
 
 ## Working Rules
 
-- Readability and performance come first.
-- Do not start by writing code. Talk through the approach until told to write it.
-- Think from first principles.
-- Do not add new README-style docs on your own initiative; keep the existing docs
-  (`README.md`, `LIVE_TRADING_SETUP.md`) up to date when a workflow changes.
-- When modifying the worker, Docker orchestration, or agent runtime dependencies,
-  verify with a real container smoke test (Worker -> Docker agent/backtest
-  lifecycle). In-memory mocks alone are not evidence.
-- All frontend user-facing strings must use i18n (`useTranslation` / `t`) with keys
-  declared in both `zh.ts` and `en.ts`. Never hardcode user-facing text in UI
-  components.
+- **Approach by task complexity**:
+  - For complex architectural changes, large refactors, or ambiguous requests: explain the proposed approach or create a plan first before making extensive modifications.
+  - For well-specified tasks, localized bug fixes, and direct instructions: proceed autonomously with minimal friction, surgical edits, and immediate verification.
+- **Surgical edits & minimal surface area**: Prefer targeted modifications over wholesale rewrites. Do not refactor unrelated code or remove working logic unless explicitly requested.
+- **Strict documentation discipline**: Do not add new README-style docs on your own initiative; keep the existing docs (`README.md`, `LIVE_TRADING_SETUP.md`) up to date when workflows change.
+- **Real container smoke testing**: When modifying the worker, Docker orchestration, or agent runtime dependencies, verify with a real container smoke test (Worker -> Docker agent/backtest lifecycle). In-memory mocks alone are not evidence.
+- **Strict frontend i18n parity**: All frontend user-facing strings must use i18n (`useTranslation` / `t`) with keys declared in both `zh.ts` and `en.ts`. Never hardcode user-facing text in UI components.
+- **Verification before completion**: Always verify changes using relevant automated checks (`npm run lint`, `npm run typecheck` in `apps/web`; `ruff check`, `pytest` in backend/packages).
 
 ## Project Overview
 
@@ -68,13 +65,18 @@ cd infra/compose
 ### Frontend (apps/web)
 ```bash
 # Inside web container or locally
-npm run dev      # Start dev server with HMR
-npm run build    # Build for production
-npm run lint     # Run ESLint
+npm run dev        # Start dev server with HMR
+npm run build      # Build for production
+npm run lint       # Run ESLint
+npm run typecheck  # TypeScript check without emit (tsc --noEmit)
 ```
 
-### API Testing
+### Backend & API Testing
 ```bash
+# Code formatting & linting check
+ruff check .
+
+# API tests inside dev container
 docker compose -f infra/compose/docker-compose.dev.yml exec api bash
 pytest services/api/tests -q
 ```
@@ -112,10 +114,19 @@ Frontend (React) → API (FastAPI) → SQLite (default) / PostgreSQL (optional)
 - **Ephemeral Containers**: Worker spawns isolated containers for strategy execution
 
 ### API Routers (`services/api/app/routers/`)
-Strategy endpoints are split by concern: `strategies.py` (CRUD, chat, generate,
-refine, versions), `strategy_members.py`, `strategy_accounts.py` (exchange
-accounts, signals, trades), `strategy_workspace.py` (file listing, workspace and
-git comparison). Each has its own `router` and is registered in `app/main.py`.
+Endpoints are split by domain and registered in `app/main.py`:
+- **Strategy lifecycle**: `strategies.py` (CRUD, chat, generate, refine, versions), `strategies_import.py` (TradingView / PineScript imports), `strategy_members.py`, `strategy_accounts.py` (exchange accounts, signals, trades), `strategy_workspace.py` (workspace file inspection, compare, git diff, `/overview`, `/params-schema`).
+- **Execution & trading**: `trading.py` (live trading sessions, orders, positions, risk settings), `internal_trading.py`, `backtests.py` (backtest runs, metrics, equity curve history).
+- **Templates & market**: `templates.py`, `template_backtests.py`, `template_performance.py`, `templates_admin.py`, `markets.py` (available tickers/pairs), `trending.py` (scraped TradingView strategies).
+- **Platform & infra**: `auth.py` (JWT tokens, Google/GitHub OAuth), `billing.py` (Stripe subscriptions), `portfolio.py`, `repos.py`, `jobs.py`, `admin_ops.py`, `ws.py` (real-time WebSocket broadcasting).
+
+### Strategy Workspace & System Files Conventions
+Inside each strategy directory (`workspaces/<strategy_id>/strategy/` or `versions/<version_id>/`):
+- **User-facing strategy files**: `strategy.py`, `strategy_live.py`, `strategy_spec.yaml`, `strategy_protocol.json`.
+- **Strategy metadata & parameters**: `strategy_meta.json`, `params_schema.json`. Parameters and schema definitions are exposed to the UI via `GET /strategies/{id}/params-schema`.
+- **System & generated files**: `overview.md`, `backtest_iterations.json`.
+  - System files are hidden from `/strategies/{id}/files` to prevent accidental manual edits in the code editor.
+  - Strategy overview markdown is served via `GET /strategies/{id}/overview` and automatically sanitized with `agent.mermaid_sanitizer.sanitize_overview_markdown` to prevent flowchart rendering syntax errors (e.g. unquoted special characters in node labels).
 
 ### Trading Engine (`services/api/app/trading_engine/`)
 - `manager.py`: Session lifecycle and orchestration
@@ -213,18 +224,27 @@ the edit->backtest loop terminating, and both matter — an earlier version that
 on random data with no cap looped forever and had to be disabled:
 
 - `BacktestDataset` — real market data, so a given (code, dataset) pair is deterministic.
-- `BacktestBudget` — caps runs per session (`AGENT_BACKTEST_MAX_RUNS`, default 5)
+- `BacktestBudget` — caps runs per session (`AGENT_BACKTEST_MAX_RUNS`, default 1)
   and reports stalling when the score stops improving.
 
 Per-run results land in `versions/<id>/backtest_iterations.json` and in
-`StrategyVersion.llm_meta`.
+`StrategyVersion.llm_meta`. Worker reuses in-loop agent backtest artifacts during
+`generate_and_backtest`, and strategy generation automatically triggers an official
+backtest on completion.
 
-Tuning env vars: `AGENT_BACKTEST_MAX_RUNS`, `AGENT_BACKTEST_STALL_LIMIT`,
+Tuning env vars: `AGENT_BACKTEST_MAX_RUNS` (default 1), `AGENT_BACKTEST_STALL_LIMIT`,
 `AGENT_BACKTEST_SCORE_KEY`, `AGENT_BACKTEST_BARS`, `AGENT_MAX_STEPS`,
 `AGENT_TAU_EVENT_TIMEOUT_S`, `AGENT_TAU_MAX_FOLLOW_UPS`.
 `AGENT_MAX_TOKENS` is no longer consulted: Tau sizes compaction from the model's
 context window.
 The worker points the agent at the job's own dataset when the job has one.
+
+**Supported Providers & Dynamic Model Registration** (`agent/tau_config.py`):
+Tau supports Anthropic (`ANTHROPIC_API_KEY`), DeepSeek (`DEEPSEEK_API_KEY`),
+Google Gemini (`GEMINI_API_KEY`), OpenAI (`OPENAI_API_KEY`), or custom OpenAI-compatible
+gateways (`LLM_BASE_URL`). When using newer models not present in Tau's static catalog
+(e.g. `claude-3-7-sonnet-*`, `gemini-2.5-*`), `tau_config.ensure_catalog_entry` dynamically
+upserts model configurations into the local Tau provider settings at runtime.
 
 ### Market Data Cache (`packages/data/data/cache.py`)
 All three providers (`okx`, `binance`, `us_stock`) fetch through `cached_fetch`, which
@@ -289,15 +309,17 @@ docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 
 ### Frontend
 - React 18, Vite, TypeScript
-- TanStack Query (server state)
-- Tailwind CSS, Radix UI
-- React Router, Recharts
+- TanStack Query (server state), React Router
+- Tailwind CSS, Radix UI, Framer Motion, Sonner
+- Lightweight Charts (v5), AntV G6, Recharts, Mermaid
+- i18next / react-i18next
 
 ### Backend
 - FastAPI, Uvicorn
-- SQLAlchemy 2.0 (async)
-- SQLite (default) / PostgreSQL (optional)
+- SQLAlchemy 2.0 (async), Alembic
+- SQLite (default) / PostgreSQL (optional), Redis
 - Pydantic 2.x
+- Tau AI (pinned 0.4.1), Langfuse (optional observability)
 
 ### Infrastructure
 - Docker Compose (dev & prod)
@@ -306,9 +328,28 @@ docker run --rm ... prompt-trading-api:verify python -c "import app.main"
 
 ## Environment Variables
 
-Required in `infra/compose/.env`:
-- `TRADING_API_ENCRYPTION_KEY`: Fernet key for encrypting trading credentials
-- `LLM_API_KEY` / `OPENAI_API_KEY` / `DEEPSEEK_API_KEY`: For strategy generation
+Configured in `infra/compose/.env` (see `infra/compose/.env.example` for full reference):
+
+- **Core Security & Storage**:
+  - `TRADING_API_ENCRYPTION_KEY`: Fernet key for encrypting trading credentials at rest.
+  - `APP_DB_URL`: SQLite or PostgreSQL database URL (defaults to `sqlite:////workspaces/app.db`).
+
+- **LLM Configuration**:
+  - `LLM_PROVIDER`: Provider name (`deepseek`, `anthropic`, `openai`, `google`).
+  - `LLM_MODEL`: Model identifier (e.g. `deepseek-chat`, `claude-3-7-sonnet-20250219`, `gemini-2.5-pro`, `gpt-4o`).
+  - `LLM_BASE_URL`: Optional custom OpenAI-compatible endpoint.
+  - API Keys: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, or generic fallback `LLM_API_KEY`.
+  - `AGENT_BACKTEST_MAX_RUNS`: Max backtest loop iterations for strategy generation (default: `1`).
+
+- **Container Proxy Configuration** (essential if running proxies on the host for exchange/LLM connectivity):
+  - `HTTP_PROXY`, `HTTPS_PROXY`: Host-level proxy settings.
+  - `CONTAINER_HTTP_PROXY`, `CONTAINER_HTTPS_PROXY`: Injected into Docker containers (e.g. `http://host.docker.internal:7890`).
+  - `NO_PROXY`: Proxy bypass list (default: `localhost,127.0.0.1,api,worker,worker-rpc,web`).
+
+- **Observability & Integrations (Optional)**:
+  - `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`: Langfuse prompt and token tracing.
+  - `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET`, `GOOGLE_OAUTH_REDIRECT_URI`: Google OAuth.
+  - `GITHUB_OAUTH_*`, `GITHUB_APP_*`: GitHub sync and OAuth.
 
 ## Live Trading Setup
 
@@ -326,7 +367,7 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
 - **TypeScript/React**: functional components, PascalCase filenames
   (`BacktestView.tsx`), Tailwind utility classes, hooks under `src/hooks/` near
   their owners. All user-facing strings must use i18n (`t(...)`) with parity in both
-  `zh.ts` and `en.ts`. Run `npm run lint` before pushing.
+  `zh.ts` and `en.ts`. Run `npm run lint` and `npm run typecheck` before pushing.
 - **Config** (`*.env`, YAML): never embed secrets. Document required keys in the
   service docs, not inline.
 
@@ -347,7 +388,7 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
 - Conventional Commit prefixes, with a scope where it helps: `feat(api): ...`,
   `fix:`, `refactor:`, `chore:`, `docs:`. English.
 - A PR states its motivation and its testing evidence (`pytest`, `npm run lint`,
-  Compose logs), and links the issue or runbook. Include screenshots or terminal
-  captures for UI and backtest changes.
+  `npm run typecheck`, Compose logs), and links the issue or runbook. Include
+  screenshots or terminal captures for UI and backtest changes.
 - Keep PRs atomic — backend, frontend, or infra separately, unless the change has
   to land in sync.
