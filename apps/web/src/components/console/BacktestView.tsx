@@ -19,6 +19,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TrendingDown, Play, Loader2, History, Sparkles } from "lucide-react";
 import { backtestsApi, jobsApi, strategiesApi, templateBacktestsApi } from "@/lib/api";
+import { hasGeneratedCode } from "@/lib/strategyState";
 import type { Strategy, BacktestRun, BacktestCreateRequest, BacktestOrder, BacktestPosition, BacktestTrade, BacktestSignalEvent, BacktestCandle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import UsStockPickerDialog from "@/components/market/UsStockPickerDialog";
@@ -546,7 +547,9 @@ const BacktestView = ({
                 </div>
             );
         }
-        if (strategy.chat_status !== "done") {
+        // Runs the user already has outrank any status: a strategy that produced
+        // them has code, whatever the current chat turn is doing.
+        if (!hasGeneratedCode(strategy) && backtests.length === 0) {
             return (
                 <div className="h-full flex items-center justify-center text-muted-foreground">
                     <div className="text-center">

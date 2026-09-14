@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { jobsApi, strategiesApi } from "@/lib/api";
 import { buildGenerationPrompt } from "@/lib/strategyPrompt";
+import { isChatRefineTurn as isChatRefineTurnJob } from "@/lib/strategyState";
 import type { Strategy, ChatMessage } from "@/lib/types";
 import { useTranslation } from "react-i18next";
 import { actionRegistry, parseActionFromMessage, ActionPayload } from "@/lib/actions";
@@ -118,9 +119,7 @@ const ConsoleSidebar = ({
     // A chat refine turn runs the same agent, but it decides for itself whether to
     // touch the strategy at all -- so the four-step generation pipeline must not be
     // claimed up front for one. It gets a neutral working indicator instead.
-    const isChatRefineTurn =
-        !isGeneratingStrategyCode &&
-        strategy?.active_job?.payload?.mode === "autonomous_chat_refine";
+    const isChatRefineTurn = !isGeneratingStrategyCode && isChatRefineTurnJob(strategy);
 
     useEffect(() => {
         if (!isGenerating) {
