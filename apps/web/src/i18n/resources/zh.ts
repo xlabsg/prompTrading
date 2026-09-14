@@ -154,6 +154,8 @@ const zh = {
         backtesting: "历史数据回测",
         finalizing: "定稿发布中",
       },
+      agentWorkingTitle: "Agent 正在处理",
+      agentWorkingSubtitle: "正在阅读策略与回测结果，必要时才会修改代码。",
       generatingCardTitle: "策略自主研发进行中",
       elapsedSeconds: "已耗时 {{count}} 秒",
       liveDraftError: "生成实盘文件失败",

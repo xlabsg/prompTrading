@@ -155,6 +155,8 @@ const en = {
         backtesting: "Backtesting",
         finalizing: "Finalizing",
       },
+      agentWorkingTitle: "Agent at work",
+      agentWorkingSubtitle: "Reading the strategy and backtest results; it will only change code if needed.",
       generatingCardTitle: "Autonomous Strategy Generation in Progress",
       elapsedSeconds: "Elapsed {{count}}s",
       liveDraftError: "Failed to generate live trading file",

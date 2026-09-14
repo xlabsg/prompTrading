@@ -165,7 +165,7 @@ def _make_workspace(tmpdir, strat_id):
 def test_chat_with_strategy_qa_vs_refine(monkeypatch):
     from unittest.mock import MagicMock
     from control_plane.db import create_db_engine, create_session_factory, session_scope
-    from control_plane.models import Base, Job, Strategy
+    from control_plane.models import Base, Job, Strategy, StrategyVersion
     from control_plane.enums import ChatStatus
     from sqlalchemy import select
     from app.routers import strategies
@@ -186,7 +186,7 @@ def test_chat_with_strategy_qa_vs_refine(monkeypatch):
         with session_scope(session_factory) as db:
             db.add(Strategy(id=strat_id, name="Test Strat", chat_status=ChatStatus.DONE, chat_history=[]))
 
-        # 1. Q&A: the agent answers without touching the live strategy dir.
+        # 1. Q&A: the agent answers and publishes nothing.
         _install_fake_worker(
             monkeypatch, strategies, session_factory, summary="这是一个布林带均值回归策略。"
         )
@@ -203,7 +203,13 @@ def test_chat_with_strategy_qa_vs_refine(monkeypatch):
             assert resp.reply == "这是一个布林带均值回归策略。"
             assert "Agent 已完成本次修改" not in resp.reply
             assert len(resp.chat_history) == 2
-            assert resp.chat_history[-1]["content"] == "这是一个布林带均值回归策略。"
+
+        # A turn that published nothing leaves no version behind: the console
+        # counts these rows to find a rollback target, so a question must not
+        # become one.
+        with session_scope(session_factory) as db:
+            assert db.execute(select(StrategyVersion)).scalars().all() == []
+        assert os.listdir(os.path.join(tmpdir, strat_id, "versions")) == []
 
         # 2. Refine: the agent publishes a change, so the reply says so.
         _install_fake_worker(
@@ -226,8 +232,14 @@ def test_chat_with_strategy_qa_vs_refine(monkeypatch):
             assert "Agent 已完成本次修改，并已写入策略工作区。" in resp.reply
             assert "已将 RSI 阈值调整为 30/70。" in resp.reply
 
-        # Every agent turn runs in a container, which needs a version workspace to
-        # work in, so both turns are dispatched as REFINE_STRATEGY jobs.
+        # The published turn keeps its version, with the outcome recorded on it.
+        with session_scope(session_factory) as db:
+            versions = db.execute(select(StrategyVersion)).scalars().all()
+            assert len(versions) == 1
+            assert versions[0].llm_meta["files_changed"] is True
+
+        # Both turns still run in the agent container, which needs a version
+        # workspace to work in, so both are dispatched as REFINE_STRATEGY jobs.
         with session_scope(session_factory) as db:
             jobs = db.execute(select(Job)).scalars().all()
             assert len(jobs) == 2
@@ -279,8 +291,9 @@ def test_chat_with_strategy_reports_a_failed_agent_job(monkeypatch):
 async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
     from unittest.mock import MagicMock
     from control_plane.db import create_db_engine, create_session_factory, session_scope
-    from control_plane.models import Base, Strategy
+    from control_plane.models import Base, Strategy, StrategyVersion
     from control_plane.enums import ChatStatus
+    from sqlalchemy import select
     from app.routers import strategies
     from app.routers.strategies import chat_with_strategy_stream, ChatRequest
 
@@ -299,7 +312,7 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
         with session_scope(session_factory) as db:
             db.add(Strategy(id=strat_id, name="Test Strat Stream", chat_status=ChatStatus.DONE, chat_history=[]))
 
-        # 1. Q&A streaming: no change published.
+        # 1. Q&A streaming: the agent answers and publishes nothing.
         _install_fake_worker(monkeypatch, strategies, session_factory, summary="该策略使用了RSI指标。")
         with session_scope(session_factory) as db:
             resp = chat_with_strategy_stream(
@@ -318,6 +331,10 @@ async def test_chat_with_strategy_stream_qa_vs_refine(monkeypatch):
         done_line = [line for line in events if '"type": "done"' in line][0]
         done_payload = json.loads(done_line.replace("data: ", "").strip())
         assert done_payload["clean_reply"] == "该策略使用了RSI指标。"
+
+        # Nothing was published, so the reserved version is recycled.
+        with session_scope(session_factory) as db:
+            assert db.execute(select(StrategyVersion)).scalars().all() == []
 
         # 2. Refine streaming: files changed.
         _install_fake_worker(

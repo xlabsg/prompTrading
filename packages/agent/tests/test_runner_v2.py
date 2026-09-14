@@ -100,6 +100,62 @@ def test_artifacts_written_to_version_and_published_to_strategy(workspace, monke
     assert (workspace["strategy_dir"] / "strategy.py").read_text() == STRATEGY_SRC
 
 
+class ReadOnlyAgent(FakeAgent):
+    """A session that answered a question: it read the workspace and wrote nothing."""
+
+    def run(self):
+        return tau_driver.TauSessionResult(
+            summary="This strategy is a Bollinger band mean reversion.",
+            turns=2,
+            tool_calls={"read": 3},
+            tokens={"total": 900},
+        )
+
+
+def test_session_that_changed_nothing_publishes_nothing(workspace, monkeypatch):
+    """A refine turn may answer a question; then the live strategy must not move.
+
+    Publishing unconditionally meant a question re-ran the healer over
+    `strategy.py`, rewrote `params_schema.json` and committed, so the console
+    reported "the agent changed your strategy" for a read-only turn.
+    """
+    monkeypatch.setenv("JOB_TYPE", "refine_strategy")
+    original = "def generate_signals(data, params):\n    return {'target_weights': [], 'weight_reason': []}\n"
+    (workspace["strategy_dir"] / "strategy.py").write_text(original)
+    (workspace["strategy_dir"] / "overview.md").write_text("# Summary\n\nold overview\n")
+
+    commits: list[str] = []
+    monkeypatch.setattr(runner_v2, "_git_commit", lambda *a, **k: commits.append(a))
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", ReadOnlyAgent.as_run_session)
+
+    assert runner_v2.main() == 0
+
+    # The live strategy dir is byte-for-byte untouched, and nothing was committed.
+    assert (workspace["strategy_dir"] / "strategy.py").read_text() == original
+    assert (workspace["strategy_dir"] / "overview.md").read_text() == "# Summary\n\nold overview\n"
+    assert not (workspace["strategy_dir"] / "params_schema.json").exists()
+    assert commits == []
+
+    # The verdict is recorded for the API, along with the answer.
+    meta = json.loads((workspace["version_dir"] / "llm_meta.json").read_text())
+    assert meta["files_changed"] is False
+    assert meta["agent_summary"] == "This strategy is a Bollinger band mean reversion."
+    assert meta["overview_status"] == "unchanged"
+
+
+def test_session_that_changed_files_still_publishes(workspace, monkeypatch):
+    """The refine path itself must keep working: a real edit still reaches the user."""
+    monkeypatch.setenv("JOB_TYPE", "refine_strategy")
+    (workspace["strategy_dir"] / "strategy.py").write_text("# existing code\n")
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
+
+    assert runner_v2.main() == 0
+
+    assert (workspace["strategy_dir"] / "strategy.py").read_text() == STRATEGY_SRC
+    meta = json.loads((workspace["version_dir"] / "llm_meta.json").read_text())
+    assert meta["files_changed"] is True
+
+
 def test_agent_task_template_has_no_stray_format_fields():
     """Every brace in the task template is a real field or an escaped literal.
 
@@ -124,6 +180,20 @@ def test_agent_task_template_has_no_stray_format_fields():
         "max_runs",
         "score_key",
     }
+
+
+def test_workspace_fingerprint_ignores_session_artifacts(tmp_path):
+    (tmp_path / "strategy.py").write_text("code")
+    baseline = runner_v2._workspace_fingerprint(str(tmp_path))
+    assert "strategy.py" in baseline
+
+    # Debris the session rewrites every run must not read as a strategy change.
+    for name in ("tau_trace.html", "agent.log", "backtest_iterations.json", "llm_meta.json"):
+        (tmp_path / name).write_text("session debris")
+    assert runner_v2._workspace_fingerprint(str(tmp_path)) == baseline
+
+    (tmp_path / "strategy.py").write_text("different code")
+    assert runner_v2._workspace_fingerprint(str(tmp_path)) != baseline
 
 
 def test_existing_strategy_is_seeded_into_version_workspace(workspace, monkeypatch):
