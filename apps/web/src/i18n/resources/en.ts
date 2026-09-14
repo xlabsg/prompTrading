@@ -443,6 +443,8 @@ const en = {
       twitter: "Twitter",
       discord: "Discord",
       github: "GitHub",
+      telegram: "Telegram",
+      issues: "Report an Issue",
       documentation: "Documentation",
       apiReference: "API Reference",
       about: "About",

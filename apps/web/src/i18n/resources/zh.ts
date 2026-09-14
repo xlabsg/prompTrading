@@ -428,6 +428,8 @@ const zh = {
       twitter: "Twitter",
       discord: "Discord",
       github: "GitHub",
+      telegram: "Telegram",
+      issues: "问题反馈",
       documentation: "文档",
       apiReference: "API 参考",
       about: "关于我们",
