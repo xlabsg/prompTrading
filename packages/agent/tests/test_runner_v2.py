@@ -100,6 +100,32 @@ def test_artifacts_written_to_version_and_published_to_strategy(workspace, monke
     assert (workspace["strategy_dir"] / "strategy.py").read_text() == STRATEGY_SRC
 
 
+def test_agent_task_template_has_no_stray_format_fields():
+    """Every brace in the task template is a real field or an escaped literal.
+
+    The template documents mermaid syntax, so it contains literal braces like
+    `{{"Cross(fast, slow)"}}`. Leaving one unescaped makes `.format()` raise
+    KeyError before the session starts, which fails every agent job.
+    """
+    import string
+
+    fields = {
+        field
+        for _, field, _, _ in string.Formatter().parse(runner_v2.AGENT_TASK_TEMPLATE)
+        if field is not None
+    }
+    assert fields == {
+        "intent",
+        "prompt",
+        "files",
+        "strategy_file",
+        "overview_file",
+        "capabilities",
+        "max_runs",
+        "score_key",
+    }
+
+
 def test_existing_strategy_is_seeded_into_version_workspace(workspace, monkeypatch):
     (workspace["strategy_dir"] / "strategy.py").write_text("# existing code\n")
     (workspace["strategy_dir"] / "overview.md").write_text("# Summary\n\nold\n")

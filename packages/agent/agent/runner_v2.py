@@ -287,7 +287,7 @@ You are working inside the strategy version workspace. Files present: {files}
 ## Deliverables (both required before `task_done`)
 1. `{strategy_file}` exposing `generate_signals(data, params) -> dict`.
 2. `{overview_file}` containing a `# Summary` section and a ```mermaid diagram.
-   - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{"Cross(fast, slow)"}`), brackets, or special characters.
+   - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{{"Cross(fast, slow)"}}`), brackets, or special characters.
 
 ## Contract for `generate_signals`
 - `data` is a pandas DataFrame with columns: timestamp, open, high, low, close, volume.
