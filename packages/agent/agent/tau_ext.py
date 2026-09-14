@@ -47,6 +47,11 @@ _DATASET = BacktestDataset.from_env()
 _BUDGET = BacktestBudget.from_env()
 _WORKSPACE = os.environ.get("TAU_WORKSPACE") or os.getcwd()
 
+# "create" seeds an empty workspace and owes code; "modify" runs against a strategy
+# that already exists and may legitimately answer a question without touching it.
+# The runner sets this; anything unset is treated as a first generation.
+_IS_CREATE_SESSION = (os.environ.get("AGENT_SESSION_MODE") or "create") != "modify"
+
 
 def _workspace_problems(workspace: str) -> list[str]:
     """Return the reasons this workspace is not a finishable strategy, if any."""
@@ -77,6 +82,11 @@ def _workspace_problems(workspace: str) -> list[str]:
                     )
             except Exception as e:
                 problems.append(f"- {STRATEGY_FILE} validation error: {e}")
+
+    # Demanding an overview from a session that only answered a question would turn
+    # that answer into a file change, and a file change into a published version.
+    if not _IS_CREATE_SESSION:
+        return problems
 
     overview_path = os.path.join(workspace, OVERVIEW_FILE)
     if not os.path.isfile(overview_path):
@@ -298,9 +308,15 @@ def _budget_section() -> str:
         f"`backtest` runs against {_DATASET.describe()} "
         f"({_DATASET.bars} bars) and is capped at {_BUDGET.max_runs} run(s) for this "
         f"session.\n\n"
-        f"Execute `backtest` once to generate performance metrics and artifacts. "
-        f"Do NOT enter prolonged iterative parameter tuning loops, do NOT run custom optimization scripts in bash, "
-        f"and do NOT over-fit to the backtest dataset."
+        + (
+            "Execute `backtest` once to generate performance metrics and artifacts. "
+            if _IS_CREATE_SESSION
+            else "Once you have changed the strategy code, execute `backtest` once to "
+            "generate performance metrics and artifacts. A turn that only answers a "
+            "question needs no backtest run. "
+        )
+        + "Do NOT enter prolonged iterative parameter tuning loops, do NOT run custom optimization scripts in bash, "
+        "and do NOT over-fit to the backtest dataset."
     )
 
 
@@ -313,7 +329,22 @@ def _quant_toolkit_section() -> str:
         "Execution Rules:\n"
         "- Focus strictly on the user's requirements. Do not add unrequested indicators or complicated filters.\n"
         "- Do NOT write custom backtesting/simulation scripts or ad-hoc analysis loops in bash.\n"
-        "- Standard workflow: 1) Write `strategy.py`, 2) Verify with `pt-quant check strategy.py`, 3) Run `backtest` to generate artifacts, 4) Write `overview.md`, 5) Call `task_done`."
+        f"- {_workflow_rule()}"
+    )
+
+
+def _workflow_rule() -> str:
+    """The code-writing workflow, stated as a duty or as a branch of one."""
+    workflow = (
+        "1) Write `strategy.py`, 2) Verify with `pt-quant check strategy.py`, "
+        "3) Run `backtest` to generate artifacts, 4) Write `overview.md`, 5) Call `task_done`."
+    )
+    if _IS_CREATE_SESSION:
+        return f"Standard workflow: {workflow}"
+    return (
+        "Judge the request before you act on it. If it is a question, a review or an "
+        "analysis, read the files, answer it, and call `task_done` without editing "
+        f"anything. If it asks for a change, follow the standard workflow: {workflow}"
     )
 
 
@@ -327,6 +358,22 @@ def _strategy_design_section() -> str:
     )
 
 
+def _execution_guideline() -> str:
+    """Top-level guidance on how much work the session owes."""
+    path = (
+        f"write {STRATEGY_FILE}, verify with pt-quant check, run backtest once, "
+        f"write {OVERVIEW_FILE}, and call task_done"
+    )
+    tail = " Do not perform ad-hoc sandbox deduction or trial-and-error loops."
+    if _IS_CREATE_SESSION:
+        return f"Direct execution path: {path}.{tail}"
+    return (
+        "Decide first whether the request asks for a code change. To answer a "
+        "question, read the workspace and reply -- editing files is not required and "
+        f"not wanted. To make a change: {path}.{tail}"
+    )
+
+
 def setup(tau: ExtensionAPI) -> None:
     """Register this platform's tools, protocol and budget with the session."""
     global _TAU_API
@@ -337,9 +384,7 @@ def setup(tau: ExtensionAPI) -> None:
     tau.add_prompt_section("Strategy Design Principles", _strategy_design_section())
     tau.add_prompt_section("Backtest Budget", _budget_section())
     tau.add_prompt_section("Quant Toolkit & Skills", _quant_toolkit_section())
-    tau.add_prompt_guideline(
-        f"Direct execution path: write {STRATEGY_FILE}, verify with pt-quant check, run backtest once, write {OVERVIEW_FILE}, and call task_done. Do not perform ad-hoc sandbox deduction or trial-and-error loops."
-    )
+    tau.add_prompt_guideline(_execution_guideline())
     tau.on("tool_call", _block_exhausted_backtest)
     if os.getenv("AGENT_TAU_LINT_HOOK", "1") != "0":
         tau.on("tool_result", _audit_code_tool_result)

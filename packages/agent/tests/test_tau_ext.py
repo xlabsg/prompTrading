@@ -236,3 +236,37 @@ def test_backtest_records_custom_entry_via_tau_api(ext, monkeypatch):
     assert recorded[0][0] == "promptrading.backtest"
     assert recorded[0][1]["metrics"] == {"sharpe_ratio": 1.5}
     assert recorded[0][1]["params"] == {"period": 20}
+
+
+@pytest.fixture
+def modify_ext(tmp_path, monkeypatch):
+    """Import `tau_ext` as a refine session, which may answer without editing."""
+    monkeypatch.setenv("TAU_WORKSPACE", str(tmp_path))
+    monkeypatch.setenv("AGENT_BACKTEST_MAX_RUNS", "2")
+    monkeypatch.setenv("AGENT_SESSION_MODE", "modify")
+    monkeypatch.delitem(sys.modules, "agent.tau_ext", raising=False)
+    module = importlib.import_module("agent.tau_ext")
+    module.workspace = tmp_path  # type: ignore[attr-defined]
+    return module
+
+
+def test_refine_session_finishes_without_writing_an_overview(modify_ext):
+    """Answering a question must not be turned into a file change by the gate."""
+    (modify_ext.workspace / "strategy.py").write_text(STRATEGY_SRC)
+
+    result = _call(modify_ext._task_done, summary="Your Sharpe over the window is 1.2.")
+
+    assert result.details["complete"] is True
+
+
+def test_refine_session_prompt_offers_a_read_only_path(modify_ext):
+    workflow = modify_ext._quant_toolkit_section()
+    assert "Judge the request before you act on it." in workflow
+    assert "Standard workflow: 1)" not in workflow
+    assert "editing files is not required" in modify_ext._execution_guideline()
+    assert "needs no backtest run" in modify_ext._budget_section()
+
+
+def test_first_generation_prompt_still_orders_the_workflow(ext):
+    assert "Standard workflow: 1)" in ext._quant_toolkit_section()
+    assert "Direct execution path:" in ext._execution_guideline()

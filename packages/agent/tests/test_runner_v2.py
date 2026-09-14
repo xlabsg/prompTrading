@@ -172,6 +172,8 @@ def test_agent_task_template_has_no_stray_format_fields():
     }
     assert fields == {
         "intent",
+        "deliverables_header",
+        "priority_action",
         "prompt",
         "files",
         "strategy_file",
@@ -203,8 +205,32 @@ def test_existing_strategy_is_seeded_into_version_workspace(workspace, monkeypat
 
     assert runner_v2.main() == 0
     task = FakeAgent.instances[0].task
-    assert "Modify the existing trading strategy" in task
+    assert "Work on the existing trading strategy" in task
     assert "strategy.py" in task
+
+
+def test_refine_task_lets_the_model_answer_without_editing(workspace, monkeypatch):
+    """A refine job also carries questions, so the task must not order a rewrite."""
+    (workspace["strategy_dir"] / "strategy.py").write_text("# existing code\n")
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
+
+    assert runner_v2.main() == 0
+    task = FakeAgent.instances[0].task
+    assert "Do not edit any file" in task
+    assert "Changing nothing is a valid outcome." in task
+    assert "required only if you change the strategy" in task
+    assert "Write `strategy.py` immediately" not in task
+    assert FakeAgent.instances[0].kwargs["env"]["AGENT_SESSION_MODE"] == "modify"
+
+
+def test_first_generation_task_still_orders_the_code_first(workspace, monkeypatch):
+    monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
+
+    assert runner_v2.main() == 0
+    task = FakeAgent.instances[0].task
+    assert "Write `strategy.py` immediately" in task
+    assert "both required before `task_done`" in task
+    assert FakeAgent.instances[0].kwargs["env"]["AGENT_SESSION_MODE"] == "create"
 
 
 def test_first_generation_uses_create_intent(workspace, monkeypatch):
