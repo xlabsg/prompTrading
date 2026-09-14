@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import type { Strategy, StrategyGitCompareFile } from "@/lib/types";
 import { reposApi, strategiesApi } from "@/lib/api";
+import { hasGeneratedCode } from "@/lib/strategyState";
 import { DiffViewer } from "@/components/console/DiffViewer";
 import { useTranslation } from "react-i18next";
 
@@ -173,7 +174,7 @@ const CodeView = ({ strategy }: CodeViewProps) => {
     const strategyFilesQuery = useQuery({
         queryKey: ["strategy-files", strategy?.id],
         queryFn: () => strategy ? strategiesApi.getFiles(strategy.id) : Promise.resolve({ files: [] }),
-        enabled: Boolean(strategy && !isRepoStrategy && strategy.chat_status === "done"),
+        enabled: Boolean(strategy && !isRepoStrategy && hasGeneratedCode(strategy)),
     });
 
     const repoQuery = useQuery({
@@ -227,7 +228,7 @@ const CodeView = ({ strategy }: CodeViewProps) => {
                 ? strategiesApi.getGitCompare(strategy.id)
                 : strategiesApi.getWorkspaceCompare(strategy.id);
         },
-        enabled: Boolean(strategy && strategy.chat_status === "done"),
+        enabled: Boolean(strategy && hasGeneratedCode(strategy)),
     });
 
     const changedFiles = useMemo(
@@ -426,7 +427,9 @@ const CodeView = ({ strategy }: CodeViewProps) => {
         );
     }
 
-    if (strategy.chat_status !== "done") {
+    // Files already fetched stay on screen: react-query keeps them cached while a
+    // chat turn disables the query, so a running turn never empties the editor.
+    if (!hasGeneratedCode(strategy) && !strategyFilesQuery.data?.files?.length) {
         return (
             <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center">

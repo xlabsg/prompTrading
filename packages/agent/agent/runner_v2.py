@@ -285,7 +285,7 @@ AGENT_TASK_TEMPLATE = """{intent}
 ## Workspace
 You are working inside the strategy version workspace. Files present: {files}
 
-## Deliverables (both required before `task_done`)
+{deliverables_header}
 1. `{strategy_file}` exposing `generate_signals(data, params) -> dict`.
 2. `{overview_file}` containing a `# Summary` section and a ```mermaid diagram.
    - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{{"Cross(fast, slow)"}}`), brackets, or special characters.
@@ -306,16 +306,16 @@ You are working inside the strategy version workspace. Files present: {files}
 {capabilities}
 
 ## How to work
-- **Priority Action**: Write `{strategy_file}` immediately using `write` in your first turn! Do not spend rounds reading documentation before writing the code.
+{priority_action}
 - Always use tools (`write`, `edit`) directly to modify files. Do not output raw tool calls like `functions.write(...)` as code blocks in text.
 - Read before you edit. `edit` matches text exactly, so read the file first and
   reproduce the target text verbatim.
-- After writing `{strategy_file}`, call `backtest` to evaluate it on real market
-  data, then use the reported metrics to improve the strategy.
+- Once you have written or changed `{strategy_file}`, call `backtest` to evaluate
+  it on real market data, then use the reported metrics to improve the strategy.
 - You have at most {max_runs} backtest runs. Spend them deliberately: change
   something specific each time and check whether {score_key} improves.
-- Stop tuning when the budget is spent or the metrics stop improving, then
-  write `{overview_file}` and call `task_done`.
+- Stop tuning when the budget is spent or the metrics stop improving. Update
+  `{overview_file}` if the strategy changed, then call `task_done`.
 - You can run `pt-quant inspect-data`, `pt-quant check strategy.py`, `pt-quant dry-run strategy.py`, or `pt-quant indicators` using `bash`.
 - On-demand quant skills (indicators, patterns, risk, optimization) are available under `.tau/skills/`. Read them with `read` if you need formula or convention guidance.
 """
@@ -375,6 +375,27 @@ def _seed_workspace(version_dir: str, strategy_dir: str) -> list[str]:
     return seeded
 
 
+# A refine session is not a code-change session by definition: the same job type
+# carries "add a trend filter" and "what does my backtest say". The model is the
+# only thing that can tell them apart, so the task must let it answer without
+# editing -- an intent line that says "modify", deliverables that are always due,
+# and a "write strategy.py in your first turn" order together made every question
+# a rewrite.
+_CREATE_INTENT = "Create a new trading strategy from scratch."
+
+_MODIFY_INTENT = """Work on the existing trading strategy in this workspace.
+
+First decide what the request actually asks for, then take exactly one of these paths:
+- **Question, review or analysis** (the user wants to understand the strategy, its
+  parameters, or a backtest result): read the workspace files and answer it in your
+  final response. Do not edit any file, do not call `backtest`, then call `task_done`.
+- **Change request** (different rules, different parameters, a bug to fix): edit
+  `strategy.py` and keep the deliverables below valid.
+
+Changing nothing is a valid outcome. Never rewrite the strategy just to have
+something to hand back."""
+
+
 def _build_agent_task(
     *,
     prompt: str,
@@ -383,13 +404,24 @@ def _build_agent_task(
     capabilities: dict[str, Any],
     budget: BacktestBudget,
 ) -> str:
-    intent = (
-        "Create a new trading strategy from scratch."
-        if is_first_generation
-        else "Modify the existing trading strategy in this workspace."
-    )
+    if is_first_generation:
+        intent = _CREATE_INTENT
+        deliverables_header = "## Deliverables (both required before `task_done`)"
+        priority_action = (
+            f"- **Priority Action**: Write `{STRATEGY_FILE}` immediately using `write` in your "
+            "first turn! Do not spend rounds reading documentation before writing the code."
+        )
+    else:
+        intent = _MODIFY_INTENT
+        deliverables_header = "## Deliverables (required only if you change the strategy)"
+        priority_action = (
+            f"- **Priority Action**: Read `{STRATEGY_FILE}` before you answer or edit. Reach for "
+            "`write`/`edit` only once you have decided the request asks for a change."
+        )
     return AGENT_TASK_TEMPLATE.format(
         intent=intent,
+        deliverables_header=deliverables_header,
+        priority_action=priority_action,
         prompt=prompt.strip() or "Improve the strategy.",
         files=", ".join(sorted(files)) or "(empty workspace)",
         strategy_file=STRATEGY_FILE,
@@ -740,7 +772,12 @@ def main() -> int:
                 thinking_level=thinking_level,
                 session_id=parent_session_id,
                 validate=lambda text=None: _workspace_problems(version_dir, text),
-                env=tau_target.credential_env(),
+                env={
+                    **tau_target.credential_env(),
+                    # The extension builds its prompt sections from this: a refine
+                    # session must be allowed to answer without writing code.
+                    "AGENT_SESSION_MODE": "create" if is_first_generation else "modify",
+                },
             )
             agent_summary = session.summary
             _heal_from_message_text(version_dir, session.summary)
