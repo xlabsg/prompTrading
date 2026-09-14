@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import logging
 import time
 from datetime import datetime, timezone
@@ -782,25 +783,6 @@ def _snapshot_workspace_fingerprint(strategy_dir: str) -> dict[str, str]:
     return fingerprint
 
 
-def _is_modification_request(user_message: str) -> bool:
-    """Detect whether user query asks for strategy modifications rather than pure Q&A/explanation."""
-    s = user_message.lower().strip()
-    question_prefixes = (
-        "解释", "说明", "什么是", "为什么", "怎么看", "如何理解", "分析一下", "介绍一下",
-        "what is", "why", "how does", "explain", "describe", "analyze",
-    )
-    is_pure_question = any(s.startswith(p) for p in question_prefixes) or ("?" in s or "？" in s)
-
-    modification_keywords = (
-        "改", "换", "调", "加", "去", "删", "修", "优化", "重写", "设置", "重构",
-        "modify", "change", "update", "adjust", "optimize", "tune", "fix", "set", "refactor", "add", "remove"
-    )
-    has_mod_keyword = any(k in s for k in modification_keywords)
-    if is_pure_question and not has_mod_keyword:
-        return False
-    return has_mod_keyword or not is_pure_question
-
-
 def _agent_job_timeout_s() -> float:
     """Wall clock the chat endpoints wait on an agent container."""
     try:
@@ -811,6 +793,18 @@ def _agent_job_timeout_s() -> float:
 
 def _version_workspace_dir(strategy_id: str, version_id: str) -> str:
     return os.path.join(settings.workspaces_dir, strategy_id, "versions", version_id)
+
+
+def _discard_version_workspace(strategy_id: str, version_id: str) -> None:
+    """Remove the version dir a turn reserved but never published from."""
+    path = _version_workspace_dir(strategy_id, version_id)
+    try:
+        shutil.rmtree(path)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        # A leftover directory is harmless; failing the chat turn over it is not.
+        logger.warning("could not discard unused version workspace %s: %s", path, exc)
 
 
 def _read_version_agent_meta(strategy_id: str, version_id: str) -> dict[str, Any]:
@@ -1092,7 +1086,8 @@ def _finish_agent_chat_turn(
 
     The version row and the REFINE_STRATEGY job were created before dispatch and
     the worker owns the git commit and the published files, so all that is left
-    here is the chat transcript and the agent metadata the console reads back.
+    here is the chat transcript, the agent metadata the console reads back, and
+    recycling the version the turn reserved but never used.
     """
     strategy = db.get(Strategy, strategy_id)
     if strategy is None:
@@ -1103,8 +1098,21 @@ def _finish_agent_chat_turn(
     strategy.updated_at = datetime.now(timezone.utc)
 
     version = db.get(StrategyVersion, version_id)
-    if version is not None:
-        version.llm_meta = {**(version.llm_meta or {}), **outcome}
+    if version is None:
+        return
+
+    if not outcome.get("files_changed"):
+        # The version was reserved before dispatch, because the agent container
+        # needs a directory to work in. A turn that published nothing must not
+        # leave one behind: the console counts these rows to decide whether a
+        # rollback target exists, so questions would otherwise make "roll back
+        # to the previous version" land on a version identical to the current
+        # strategy.
+        db.delete(version)
+        _discard_version_workspace(strategy_id, version_id)
+        return
+
+    version.llm_meta = {**(version.llm_meta or {}), **outcome}
 
 
 def _extract_search_terms(message: str, limit: int = 6) -> list[str]:

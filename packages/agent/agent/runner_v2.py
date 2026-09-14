@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import json
 import os
 import subprocess
@@ -287,7 +288,7 @@ You are working inside the strategy version workspace. Files present: {files}
 ## Deliverables (both required before `task_done`)
 1. `{strategy_file}` exposing `generate_signals(data, params) -> dict`.
 2. `{overview_file}` containing a `# Summary` section and a ```mermaid diagram.
-   - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{"Cross(fast, slow)"}`), brackets, or special characters.
+   - For all node and edge labels in the mermaid diagram, ALWAYS enclose text in double quotes if it contains parentheses, indicators (e.g. `["Compute SMA(20)"]`, `{{"Cross(fast, slow)"}}`), brackets, or special characters.
 
 ## Contract for `generate_signals`
 - `data` is a pandas DataFrame with columns: timestamp, open, high, low, close, volume.
@@ -603,6 +604,34 @@ def _workspace_problems(version_dir: str, message_text: str | None = None) -> li
     return problems
 
 
+# Files the session rewrites on every run whether or not the strategy changed.
+# Hashing these would report "the agent edited your strategy" for a question.
+_SESSION_ARTIFACTS = frozenset(
+    {"tau_trace.html", "agent.log", "backtest_iterations.json", "llm_meta.json"}
+)
+
+
+def _workspace_fingerprint(version_dir: str) -> dict[str, str]:
+    """Hash the strategy content of a version dir, ignoring session artifacts."""
+    fingerprint: dict[str, str] = {}
+    if not os.path.isdir(version_dir):
+        return fingerprint
+    for root, _, files in os.walk(version_dir):
+        if ".git" in root or "__pycache__" in root:
+            continue
+        for name in sorted(files):
+            if name in _SESSION_ARTIFACTS:
+                continue
+            path = os.path.join(root, name)
+            try:
+                with open(path, "rb") as handle:
+                    digest = hashlib.sha256(handle.read()).hexdigest()
+            except OSError:
+                continue
+            fingerprint[os.path.relpath(path, version_dir)] = digest
+    return fingerprint
+
+
 def main() -> int:
     """Run the coding agent for one generate/refine job."""
     strategy_id = _env("STRATEGY_ID")
@@ -654,6 +683,11 @@ def main() -> int:
         seeded = _seed_workspace(version_dir, strategy_dir)
     print(f"[agent] seeded workspace with: {seeded or '(nothing)'} (is_first_generation={is_first_generation})")
 
+    # The session is allowed to change nothing. Everything downstream -- the
+    # audit, the publish, the git commit -- is conditioned on this baseline, so
+    # that answering a question costs the live strategy dir nothing.
+    baseline_fingerprint = _workspace_fingerprint(version_dir)
+
     session_metrics = SessionMetrics(session_id=strategy_id)
     platform_caps = _platform_capabilities()
 
@@ -677,6 +711,9 @@ def main() -> int:
     agent_summary = ""
     stop_reason = "task_done"
     agent_error = ""
+    # Assume the workspace changed: every path except a clean session that
+    # measurably touched nothing must audit and publish exactly as before.
+    files_changed = True
     session: tau_driver.TauSessionResult | None = None
     force_fallback = (
         (os.getenv("FORCE_FALLBACK") or "").strip().lower() in ("1", "true", "yes")
@@ -711,34 +748,43 @@ def main() -> int:
             code = _read_text(strat_file)
             _validate_strategy_code(code)
 
-            print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'auditing_code', 'detail': 'Validating strategy syntax and imports', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
-            # Post-generation static lint & sandbox dry-run
-            from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
-            healed, fixes = lint_and_heal_strategy_code(code)
-            if fixes:
-                _write_text(strat_file, healed)
-                print(f"[agent] Post-generation auto-healed imports: {fixes}")
-                code = healed
-            ok, dry_err = dry_run_strategy(code)
-            if not ok:
-                print(f"[agent] Post-generation dry-run warning: {dry_err}")
-            else:
-                print("[agent] Post-generation dry-run smoke test passed (100 synthetic bars evaluated successfully)")
+            files_changed = _workspace_fingerprint(version_dir) != baseline_fingerprint
 
-            # Post-generation AST safety and lookahead bias audit
-            try:
-                from agent.tools import init_default_tools
-                tools = init_default_tools()
-                auditor = tools.require("ast_auditor")
-                audit_res = asyncio.run(auditor.run(code=code))
-                if audit_res.success and audit_res.data:
-                    issues = audit_res.data.get("issues", [])
-                    if issues:
-                        print(f"[agent] AST audit detected {len(issues)} issue(s): {issues}")
-                    else:
-                        print("[agent] AST audit passed (0 lookahead bias or unsafe imports)")
-            except Exception as e:
-                print(f"[agent] AST audit warning: {e}")
+            if not files_changed:
+                # The session only read the workspace, so there is nothing to
+                # audit and nothing to publish. Auditing anyway would emit the
+                # console's "sandbox audit" step and let the healer rewrite
+                # strategy.py for a turn the user asked a question in.
+                print("[agent] session changed no strategy files: skipping audit and publish")
+            else:
+                print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'auditing_code', 'detail': 'Validating strategy syntax and imports', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
+                # Post-generation static lint & sandbox dry-run
+                from agent.strategy_lint import lint_and_heal_strategy_code, dry_run_strategy
+                healed, fixes = lint_and_heal_strategy_code(code)
+                if fixes:
+                    _write_text(strat_file, healed)
+                    print(f"[agent] Post-generation auto-healed imports: {fixes}")
+                    code = healed
+                ok, dry_err = dry_run_strategy(code)
+                if not ok:
+                    print(f"[agent] Post-generation dry-run warning: {dry_err}")
+                else:
+                    print("[agent] Post-generation dry-run smoke test passed (100 synthetic bars evaluated successfully)")
+
+                # Post-generation AST safety and lookahead bias audit
+                try:
+                    from agent.tools import init_default_tools
+                    tools = init_default_tools()
+                    auditor = tools.require("ast_auditor")
+                    audit_res = asyncio.run(auditor.run(code=code))
+                    if audit_res.success and audit_res.data:
+                        issues = audit_res.data.get("issues", [])
+                        if issues:
+                            print(f"[agent] AST audit detected {len(issues)} issue(s): {issues}")
+                        else:
+                            print("[agent] AST audit passed (0 lookahead bias or unsafe imports)")
+                except Exception as e:
+                    print(f"[agent] AST audit warning: {e}")
 
         except Exception as exc:
             print(f"[agent] agent_failed: {exc}", file=sys.stderr)
@@ -773,6 +819,7 @@ def main() -> int:
                 used_llm = False
                 stop_reason = "error_fallback"
                 agent_error = f"{type(exc).__name__}: {exc}"
+                files_changed = True
                 _write_text(os.path.join(version_dir, "strategy.py"), code)
 
     # Checked outside the try above: the recovery branch there would otherwise
@@ -781,37 +828,42 @@ def main() -> int:
     if session is not None and stop_reason == "task_done":
         _require_model_progress(session)
 
-    # Spec and protocol are platform-owned; write them if the agent did not.
-    for name, payload, writer in (
-        ("strategy_spec.yaml", DEFAULT_STRATEGY_SPEC_YAML, _write_text),
-        ("strategy_protocol.json", DEFAULT_STRATEGY_PROTOCOL, _write_json),
-    ):
-        target = os.path.join(version_dir, name)
-        if not os.path.isfile(target):
-            writer(target, payload)
-
     params_schema = _build_params_schema(code)
-    _write_json(os.path.join(version_dir, "params_schema.json"), params_schema)
-
     summary = prompt.strip().splitlines()[0][:80] if prompt else "Strategy"
+
+    if files_changed:
+        # Spec and protocol are platform-owned; write them if the agent did not.
+        for name, payload, writer in (
+            ("strategy_spec.yaml", DEFAULT_STRATEGY_SPEC_YAML, _write_text),
+            ("strategy_protocol.json", DEFAULT_STRATEGY_PROTOCOL, _write_json),
+        ):
+            target = os.path.join(version_dir, name)
+            if not os.path.isfile(target):
+                writer(target, payload)
+
+        _write_json(os.path.join(version_dir, "params_schema.json"), params_schema)
+
     meta_payload = {
         "version": 1,
         "summary": summary,
         "params_schema": params_schema,
         "signal_mode": DEFAULT_STRATEGY_PROTOCOL.get("signal_mode", "target_weights"),
     }
-    _write_json(os.path.join(version_dir, "strategy_meta.json"), meta_payload)
-
-    # The agent is required to produce overview.md; fall back only if it did not.
     overview_path = os.path.join(version_dir, OVERVIEW_FILE)
-    if os.path.isfile(overview_path):
-        overview_md = _read_text(overview_path)
-        overview_status = "agent_generated"
+    if not files_changed:
+        overview_status = "unchanged"
     else:
-        overview_md = _default_overview_markdown(summary)
-        overview_status = "fallback_missing"
-    overview_md = _ensure_overview_sections(overview_md, summary)
-    _write_text(overview_path, overview_md)
+        _write_json(os.path.join(version_dir, "strategy_meta.json"), meta_payload)
+
+        # The agent is required to produce overview.md; fall back only if it did not.
+        if os.path.isfile(overview_path):
+            overview_md = _read_text(overview_path)
+            overview_status = "agent_generated"
+        else:
+            overview_md = _default_overview_markdown(summary)
+            overview_status = "fallback_missing"
+        overview_md = _ensure_overview_sections(overview_md, summary)
+        _write_text(overview_path, overview_md)
 
     # The budget lives in the Tau child (the extension owns it), so replay the
     # metrics the driver collected into this process's budget before recording.
@@ -837,6 +889,7 @@ def main() -> int:
         "degraded": stop_reason in ("error_fallback", "recovered_after_error"),
         "agent_error": agent_error,
         "backtest_iterations": iteration,
+        "files_changed": files_changed,
     }
     _write_json(os.path.join(version_dir, "llm_meta.json"), llm_meta_payload)
 
@@ -849,31 +902,35 @@ def main() -> int:
         )
         raise RuntimeError(f"agent_error_fallback: {agent_error}")
 
-    print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'finalizing_strategy', 'detail': 'Publishing strategy to workspace', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
-    # Publish to the live strategy dir only once the version is complete.
-    for name in (
-        "strategy.py",
-        "strategy_spec.yaml",
-        "strategy_protocol.json",
-        "params_schema.json",
-        "strategy_meta.json",
-        "tau_trace.html",
-        OVERVIEW_FILE,
-    ):
-        src = os.path.join(version_dir, name)
-        if os.path.isfile(src):
-            _write_text(os.path.join(strategy_dir, name), _read_text(src))
+    if files_changed:
+        print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'finalizing_strategy', 'detail': 'Publishing strategy to workspace', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
+        # Publish to the live strategy dir only once the version is complete.
+        for name in (
+            "strategy.py",
+            "strategy_spec.yaml",
+            "strategy_protocol.json",
+            "params_schema.json",
+            "strategy_meta.json",
+            "tau_trace.html",
+            OVERVIEW_FILE,
+        ):
+            src = os.path.join(version_dir, name)
+            if os.path.isfile(src):
+                _write_text(os.path.join(strategy_dir, name), _read_text(src))
 
-    commit_msg = f"AI: {prompt[:80]}" if prompt else "AI: strategy update"
-    _git_commit(strategy_dir, commit_msg)
+        commit_msg = f"AI: {prompt[:80]}" if prompt else "AI: strategy update"
+        _git_commit(strategy_dir, commit_msg)
 
     print("\n=== Session Summary ===")
     print(json.dumps(session_metrics.summary(), indent=2))
     print(json.dumps({"backtest_iterations": iteration}, indent=2))
     get_langfuse().flush()
 
-    print(f"[agent:event] {json.dumps({'type': 'done', 'status': 'succeeded', 'summary': agent_summary or summary, 'files_changed': True, 'ts': time.time()}, ensure_ascii=False)}", flush=True)
-    print(f"[agent] wrote {STRATEGY_FILE}, strategy_spec.yaml and {OVERVIEW_FILE}")
+    print(f"[agent:event] {json.dumps({'type': 'done', 'status': 'succeeded', 'summary': agent_summary or summary, 'files_changed': files_changed, 'ts': time.time()}, ensure_ascii=False)}", flush=True)
+    if files_changed:
+        print(f"[agent] wrote {STRATEGY_FILE}, strategy_spec.yaml and {OVERVIEW_FILE}")
+    else:
+        print(f"[agent] left {strategy_dir} untouched")
     return 0
 
 

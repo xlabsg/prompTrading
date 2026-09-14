@@ -97,6 +97,9 @@ export interface StrategyActiveJob {
     created_at: string;
     started_at?: string | null;
     finished_at?: string | null;
+    // `mode` distinguishes a chat refine turn, which may well publish nothing,
+    // from a strategy generation run that always writes code.
+    payload?: { mode?: string | null } | null;
 }
 
 export interface Strategy {

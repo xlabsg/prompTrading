@@ -115,6 +115,12 @@ const ConsoleSidebar = ({
     }, [strategy?.id]);
 
     const isGenerating = isGeneratingStrategyCode || strategy?.chat_status === "generating";
+    // A chat refine turn runs the same agent, but it decides for itself whether to
+    // touch the strategy at all -- so the four-step generation pipeline must not be
+    // claimed up front for one. It gets a neutral working indicator instead.
+    const isChatRefineTurn =
+        !isGeneratingStrategyCode &&
+        strategy?.active_job?.payload?.mode === "autonomous_chat_refine";
 
     useEffect(() => {
         if (!isGenerating) {
@@ -1127,8 +1133,37 @@ const ConsoleSidebar = ({
                                 </motion.div>
                             )}
 
+                            {/* Agent working on a chat turn: no pipeline claim, because
+                                the turn may answer a question and publish nothing. */}
+                            {isChatRefineTurn && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    className="w-full min-w-0"
+                                >
+                                    <div className="rounded-2xl border border-primary/30 bg-card p-3.5 shadow-sm">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <div className="flex items-center justify-center w-7 h-7 rounded-full bg-primary/10 text-primary">
+                                                    <Loader2 size={15} className="animate-spin text-primary" />
+                                                </div>
+                                                <div className="text-xs font-semibold text-foreground">
+                                                    {t("console.sidebar.agentWorkingTitle")}
+                                                </div>
+                                            </div>
+                                            <span className="tabular-nums font-mono text-[11px] bg-muted px-2 py-0.5 rounded-full text-muted-foreground">
+                                                ⏱️ {t("console.sidebar.elapsedSeconds", { count: generatingElapsedSeconds, defaultValue: `${generatingElapsedSeconds}s` })}
+                                            </span>
+                                        </div>
+                                        <div className="mt-3 text-xs text-muted-foreground bg-muted/40 px-2.5 py-2 rounded-lg break-words leading-relaxed">
+                                            {generationProgressMessage || t("console.sidebar.agentWorkingSubtitle")}
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+
                             {/* Strategy Generation Active Card */}
-                            {(isGeneratingStrategyCode || strategy?.chat_status === "generating") && (
+                            {!isChatRefineTurn && (isGeneratingStrategyCode || strategy?.chat_status === "generating") && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}

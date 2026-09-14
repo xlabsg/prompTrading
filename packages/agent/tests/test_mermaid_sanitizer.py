@@ -1,6 +1,5 @@
 """Unit tests for mermaid_sanitizer."""
 
-import pytest
 from agent.mermaid_sanitizer import (
     sanitize_mermaid,
     sanitize_mermaid_line,
