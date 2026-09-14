@@ -899,7 +899,12 @@ const ConsoleSidebar = ({
                                             <div className="flex items-center gap-1.5 truncate">
                                                 <Loader2 size={13} className="animate-spin text-primary shrink-0" />
                                                 <span className="truncate">
-                                                    {generationProgressMessage || t("console.sidebar.confirmGenerating")}
+                                                    {generationProgressMessage ||
+                                                        t(
+                                                            isChatRefineTurn
+                                                                ? "console.sidebar.agentWorkingSubtitle"
+                                                                : "console.sidebar.confirmGenerating"
+                                                        )}
                                                 </span>
                                             </div>
                                             <span className="tabular-nums font-mono text-[11px] bg-background/80 px-1.5 py-0.5 rounded text-muted-foreground shrink-0 ml-1">
