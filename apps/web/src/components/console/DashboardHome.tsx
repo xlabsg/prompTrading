@@ -36,6 +36,7 @@ import { githubApi, reposApi, jobsApi } from "@/lib/api";
 import React from "react";
 import ImportStrategyModal from "@/components/strategy/ImportStrategyModal";
 import { TrendingSection } from "@/components/dashboard/TrendingSection";
+import { CommunityLinks } from "@/components/common/CommunityLinks";
 import { useTranslation } from "react-i18next";
 import { TRENDING_ENABLED } from "@/lib/featureFlags";
 
@@ -612,6 +613,11 @@ const DashboardHome = ({
                                 </div>
                             )}
                         </motion.div>
+
+                    {/* Community: the same destinations the README lists. */}
+                    <div className="mt-10 border-t border-border/60 pt-6">
+                        <CommunityLinks withIssues />
+                    </div>
                 </div>
             </div>
 

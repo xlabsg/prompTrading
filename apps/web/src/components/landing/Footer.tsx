@@ -1,5 +1,11 @@
 import { Logo } from "@/components/Logo";
 import { useTranslation } from "react-i18next";
+import {
+    DISCORD_URL,
+    GITHUB_ISSUES_URL,
+    GITHUB_URL,
+    TELEGRAM_URL,
+} from "@/components/common/CommunityLinks";
 
 const Footer = () => {
     const { t } = useTranslation();
@@ -15,24 +21,30 @@ const Footer = () => {
                         <p className="text-muted-foreground max-w-sm mb-6">
                             {t("landing.footer.description")}
                         </p>
-                        <div className="flex gap-4">
+                        <div className="flex flex-wrap gap-4">
                             <a
-                                href="#"
+                                href={GITHUB_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-muted-foreground hover:text-foreground transition-colors"
                             >
-                                {t("landing.footer.twitter")}
+                                {t("landing.footer.github")}
                             </a>
                             <a
-                                href="#"
+                                href={DISCORD_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-muted-foreground hover:text-foreground transition-colors"
                             >
                                 {t("landing.footer.discord")}
                             </a>
                             <a
-                                href="#"
+                                href={TELEGRAM_URL}
+                                target="_blank"
+                                rel="noopener noreferrer"
                                 className="text-muted-foreground hover:text-foreground transition-colors"
                             >
-                                {t("landing.footer.github")}
+                                {t("landing.footer.telegram")}
                             </a>
                         </div>
                     </div>
@@ -106,10 +118,22 @@ const Footer = () => {
                             </li>
                             <li>
                                 <a
-                                    href="#"
+                                    href={TELEGRAM_URL}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="text-muted-foreground hover:text-foreground transition-colors"
                                 >
                                     {t("landing.footer.contact")}
+                                </a>
+                            </li>
+                            <li>
+                                <a
+                                    href={GITHUB_ISSUES_URL}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                >
+                                    {t("landing.footer.issues")}
                                 </a>
                             </li>
                         </ul>
