@@ -123,9 +123,6 @@ The SDK has been integrated into the following files:
 - **services/api/app/trading_engine/enhanced_manager.py** - Integrates reconciliation mechanism
 - **services/api/app/trading_engine/sdk_config.py** - Converts DB config to SDK config
 
-### Database Integration
-- **services/api/migrations/add_trading_sdk_fields.sql** - Database schema updates
-
 ### API Integration
 - **services/api/app/routers/trading.py** - Exposes SDK configuration fields
 
