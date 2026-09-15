@@ -109,8 +109,12 @@ const ConsoleSidebar = ({
     const readyAutoTriggerRef = useRef(false);
     const activeJobStartTimeRef = useRef<number | null>(null);
     const activeListeningJobIdRef = useRef<string | null>(null);
+    // Mirrors the rank of the stage the pipeline currently highlights. The ladder
+    // only advances, so the progress message must advance with it.
+    const generationRankRef = useRef(GENERATION_STAGE_RANKS.thinking);
 
     useEffect(() => {
+        generationRankRef.current = GENERATION_STAGE_RANKS.thinking;
         setGenerationStage("thinking");
         setGenerationProgressMessage(null);
     }, [strategy?.id]);
@@ -317,6 +321,39 @@ const ConsoleSidebar = ({
             return data.detail || (data.step ? stepLabels[data.step] || data.step : null);
         },
         [t]
+    );
+
+    // Apply one agent progress event to the generation card.
+    //
+    // The four-step ladder is monotonic: once a later step is reached, an event
+    // that belongs to an earlier one -- the post-run `auditing_code` step, for
+    // instance -- must not overwrite the message with an earlier step's text.
+    // Gating both on the same rank keeps the heading and the ladder describing
+    // the same step.
+    const applyGenerationEvent = useCallback(
+        (evt: {
+            type?: string;
+            step?: string;
+            detail?: string;
+            message?: string;
+            tool?: string;
+            path?: string;
+            stage?: string;
+            success?: boolean;
+        }) => {
+            const nextStage = getGenerationStage(evt);
+            const nextRank = GENERATION_STAGE_RANKS[nextStage] ?? 1;
+            if (nextRank < generationRankRef.current) {
+                return;
+            }
+            generationRankRef.current = nextRank;
+            setGenerationStage(nextStage);
+            const msg = getProgressMessage(evt);
+            if (msg) {
+                setGenerationProgressMessage(msg);
+            }
+        },
+        [getGenerationStage, getProgressMessage]
     );
 
     // Get chat history from strategy
@@ -617,16 +654,7 @@ const ConsoleSidebar = ({
             activeJob.id,
             (evt) => {
                 if (cancelled) return;
-                const stage = getGenerationStage(evt);
-                setGenerationStage((prev) => {
-                    const prevRank = GENERATION_STAGE_RANKS[prev] ?? 1;
-                    const nextRank = GENERATION_STAGE_RANKS[stage] ?? 1;
-                    return nextRank >= prevRank ? stage : prev;
-                });
-                const msg = getProgressMessage(evt);
-                if (msg) {
-                    setGenerationProgressMessage(msg);
-                }
+                applyGenerationEvent(evt);
             }
         ).then((job) => {
             if (cancelled) return;
@@ -656,8 +684,7 @@ const ConsoleSidebar = ({
         strategy?.id,
         strategy?.chat_status,
         strategy?.active_job,
-        getGenerationStage,
-        getProgressMessage,
+        applyGenerationEvent,
         getGenerateErrorMessage,
         refreshStrategyData,
         onStrategyGenerated,
@@ -669,6 +696,7 @@ const ConsoleSidebar = ({
         setIsGeneratingStrategyCode(true);
         activeJobStartTimeRef.current = Date.now();
         setGeneratingElapsedSeconds(0);
+        generationRankRef.current = GENERATION_STAGE_RANKS.thinking;
         setGenerationProgressMessage(t("console.sidebar.confirmGenerating"));
         setGenerationStage("thinking");
         try {
@@ -684,16 +712,7 @@ const ConsoleSidebar = ({
             const job = await jobsApi.waitForCompletionWithStream(
                 result.job.id,
                 (evt) => {
-                    const stage = getGenerationStage(evt);
-                    setGenerationStage((prev) => {
-                        const prevRank = GENERATION_STAGE_RANKS[prev] ?? 1;
-                        const nextRank = GENERATION_STAGE_RANKS[stage] ?? 1;
-                        return nextRank >= prevRank ? stage : prev;
-                    });
-                    const msg = getProgressMessage(evt);
-                    if (msg) {
-                        setGenerationProgressMessage(msg);
-                    }
+                    applyGenerationEvent(evt);
                 }
             );
             if (job.status !== "succeeded") {
@@ -717,8 +736,7 @@ const ConsoleSidebar = ({
         refreshStrategyData,
         onStrategyGenerated,
         getGenerateErrorMessage,
-        getProgressMessage,
-        getGenerationStage,
+        applyGenerationEvent,
         t,
     ]);
 

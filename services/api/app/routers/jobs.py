@@ -31,8 +31,10 @@ def _detect_step_from_line(line: str) -> str | None:
     lower = line.lower()
     if "seeded workspace with" in lower or "tau provider=" in lower:
         return "initializing_agent"
-    if "backtest dataset=" in lower or "backtest subprocess" in lower:
-        return "running_backtest"
+    # The agent prints `backtest dataset=<...>` at startup, before it authors
+    # anything; it is configuration, not a run. Mapping it to `running_backtest`
+    # jumped the four-step pipeline to the last step during the authoring turn.
+    # A real backtest is reported by the structured `[agent:event]` tool_start.
     if "ast audit passed" in lower or "ast audit detected" in lower:
         return "auditing_code"
     if "session summary" in lower or "wrote strategy.py" in lower:
