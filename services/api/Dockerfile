@@ -4,10 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Install PostgreSQL client for migrations
 # FFmpeg for YouTube audio processing (DISABLED - YouTube import temporarily disabled)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends postgresql-client git && \
+    apt-get install -y --no-install-recommends git && \
     rm -rf /var/lib/apt/lists/*
     # ffmpeg && \
     # rm -rf /var/lib/apt/lists/*
@@ -74,9 +73,6 @@ COPY services/api/pytest.ini /app/pytest.ini
 
 # Copy scripts
 COPY services/api/scripts /app/services/api/scripts
-
-# Copy migrations
-COPY services/api/migrations /app/services/api/migrations
 
 ENV PYTHONPATH=/app
 

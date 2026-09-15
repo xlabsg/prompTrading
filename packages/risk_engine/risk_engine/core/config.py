@@ -121,7 +121,6 @@ class StateConfig:
     """状态管理配置"""
     # 持久化
     enable_redis: bool = True
-    enable_postgres: bool = True
     save_interval_seconds: float = 1.0  # 保存间隔（限流）
 
     # Redis 配置

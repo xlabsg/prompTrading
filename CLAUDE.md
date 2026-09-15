@@ -158,7 +158,6 @@ Risk Engine is integrated directly into `executor.py` / `monitor.py` / `manager.
 
 **Integration Points**:
 - Backend: `executor.py`, `monitor.py`, `manager.py`
-- Database: `migrations/add_trading_sdk_fields.sql`
 - API: `routers/trading.py` (exposes risk control fields)
 - Frontend: `LiveTradingView.tsx` (configuration UI)
 
