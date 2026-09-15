@@ -27,7 +27,7 @@ SIMPLE_SCRIPT = [
     {"type": "tool_execution_start", "toolCallId": "c1", "toolName": "write", "args": {"path": "strategy.py"}},
     {"type": "tool_execution_end", "toolCallId": "c1", "toolName": "write", "result": {}, "isError": False},
     {"type": "turn_end"},
-    {"type": "message_end", "message": {"content": [{"type": "text", "text": "Wrote the strategy."}]}},
+    {"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "Wrote the strategy."}]}},
     {"type": "agent_end", "messages": []},
     {"type": "agent_settled"},
 ]
@@ -97,7 +97,7 @@ def test_agent_end_with_will_retry_is_not_the_end(tmp_path, clean_env, monkeypat
         {"type": "auto_retry_start"},
         {"type": "auto_retry_end"},
         {"type": "turn_end"},
-        {"type": "message_end", "message": {"content": [{"type": "text", "text": "second attempt"}]}},
+        {"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "second attempt"}]}},
         {"type": "agent_end", "messages": [], "will_retry": False},
         {"type": "agent_settled"},
     ]
@@ -216,6 +216,55 @@ def test_snake_case_tool_events_are_still_read(tmp_path, clean_env, monkeypatch)
     assert result.tool_errors == {"edit": 1}
 
 
+def test_only_the_assistant_answer_reaches_the_chat_stream(tmp_path, clean_env, monkeypatch):
+    """Tau emits `message_end` for the injected task prompt and for tool-calling
+    turns (whose text carries file bodies). Neither is the user's answer, so
+    neither may be streamed as a chat token or recorded as the summary."""
+    script = [
+        {"type": "message_end", "message": {"role": "user", "content": "Work on the existing strategy..."}},
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": '"""strategy.py body"""'},
+                    {"type": "toolCall", "id": "c1", "name": "write", "arguments": {}},
+                ],
+            },
+        },
+        {"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "Final answer."}]}},
+        {"type": "agent_settled"},
+    ]
+    events: list[dict] = []
+    result = _run_with_fake(
+        tmp_path, monkeypatch, script, validate=lambda: [], progress=events.append
+    )
+
+    streamed = [e["text"] for e in events if e.get("phase") == "message"]
+    assert streamed == ["Final answer."]
+    assert result.summary == "Final answer."
+
+
+def test_tool_call_text_is_not_the_summary(tmp_path, clean_env, monkeypatch):
+    """A tool-calling turn's text is working material, not the answer."""
+    script = [
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": '"""strategy.py body"""'},
+                    {"type": "toolCall", "id": "c1", "name": "write", "arguments": {}},
+                ],
+            },
+        },
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.summary == ""
+
+
 def test_progress_callback_failure_does_not_fail_the_run(tmp_path, clean_env, monkeypatch):
     def explode(_payload):
         raise RuntimeError("redis is down")
@@ -244,7 +293,7 @@ THREE_TURN_SCRIPT = [
     {"type": "turn_end"},
     {"type": "turn_end"},
     {"type": "turn_end"},
-    {"type": "message_end", "message": {"content": [{"type": "text", "text": "still going"}]}},
+    {"type": "message_end", "message": {"role": "assistant", "content": [{"type": "text", "text": "still going"}]}},
     {"type": "agent_settled"},
 ]
 

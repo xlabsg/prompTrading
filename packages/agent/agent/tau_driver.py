@@ -513,9 +513,13 @@ def _record(
                         break
         if kind == "message_end":
             text = _message_text(msg)
-            if text:
+            # Only the assistant's tool-free text is the answer: the injected
+            # task prompt arrives as a user-role message, and tool-calling turns
+            # carry file bodies and skill text. Neither is the summary, and
+            # neither belongs in the chat stream.
+            if text and isinstance(msg, dict) and msg.get("role") == "assistant" and not _has_tool_call(msg):
                 result.summary = text
-            _report(progress_callback, {"phase": "message", "text": text})
+                _report(progress_callback, {"phase": "message", "text": text})
 
 
 
@@ -545,6 +549,16 @@ def _message_text(message: Any) -> str:
         if isinstance(block, dict) and block.get("type") == "text"
     ]
     return "".join(parts).strip()
+
+
+def _has_tool_call(message: Any) -> bool:
+    """True when the assistant message requests a tool (i.e. is not the answer)."""
+    if not isinstance(message, dict):
+        return False
+    content = message.get("content")
+    if not isinstance(content, list):
+        return False
+    return any(isinstance(block, dict) and block.get("type") == "toolCall" for block in content)
 
 
 def _report(progress_callback: ProgressCallback | None, payload: dict[str, Any]) -> None:

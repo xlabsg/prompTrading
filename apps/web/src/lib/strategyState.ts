@@ -5,6 +5,22 @@ export function isChatRefineTurn(strategy?: Strategy | null): boolean {
     return strategy?.active_job?.payload?.mode === "autonomous_chat_refine";
 }
 
+/** True while the agent is generating the workspace overview for a finished strategy. */
+export function isOverviewGeneration(strategy?: Strategy | null): boolean {
+    return strategy?.active_job?.payload?.mode === "generate_overview";
+}
+
+/**
+ * Any agent container run against a strategy whose code already exists.
+ *
+ * These flip `chat_status` to `generating` for the duration of the run, but they
+ * are not a strategy (re)generation, so views must not fall back to the
+ * generation experience for them.
+ */
+export function isBackgroundAgentTurn(strategy?: Strategy | null): boolean {
+    return isChatRefineTurn(strategy) || isOverviewGeneration(strategy);
+}
+
 /**
  * True once the strategy has code to show.
  *
@@ -15,5 +31,5 @@ export function isChatRefineTurn(strategy?: Strategy | null): boolean {
  */
 export function hasGeneratedCode(strategy?: Strategy | null): boolean {
     if (!strategy) return false;
-    return strategy.chat_status === "done" || isChatRefineTurn(strategy);
+    return strategy.chat_status === "done" || isBackgroundAgentTurn(strategy);
 }
