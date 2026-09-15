@@ -41,6 +41,12 @@ coverage/
 .pytest_cache/
 *.egg-info/
 
+# Playwright (UI E2E)
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/blob-report/
+apps/web/playwright/.cache/
+
 # ...but the template must be tracked
 !infra/compose/.env.example
 uv.lock

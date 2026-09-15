@@ -69,6 +69,8 @@ npm run dev        # Start dev server with HMR
 npm run build      # Build for production
 npm run lint       # Run ESLint
 npm run typecheck  # TypeScript check without emit (tsc --noEmit)
+npm run e2e        # Playwright UI E2E (needs the dev Compose stack + LLM key)
+npm run e2e:ui     # Playwright UI mode
 ```
 
 ### Backend & API Testing
@@ -372,11 +374,21 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
 
 ## Testing Conventions
 
+- **A test must be able to fail for the reason it targets.** Assert the behaviour
+  the product promises, not whatever the code currently emits. Never weaken, skip,
+  or delete an assertion — and never reshape a test around a bug — just to get a
+  green run; fix the code, or fix the test's setup. A test that mocks the thing it
+  claims to verify, or that cannot fail, is not evidence.
 - pytest for Python packages and services. Tests live beside the implementation
   (e.g. `packages/control_plane/tests/`), named `test_<unit>.py`, with reusable
   fixtures.
-- Web console tests (vitest or Playwright) go under `apps/web/src/__tests__`;
-  snapshot tests sit next to their components.
+- UI end-to-end tests live in `apps/web/e2e/` (Playwright) and run with
+  `npm run e2e` (or `npm run e2e:ui`). They drive a real browser against the dev
+  Compose stack and, for the generation journey, a real agent container + LLM, so
+  they are slow and need `infra/compose/.env` keys. Use them for anything that
+  only manifests in the browser — view/state transitions, streaming rendering,
+  duplicate requests on remount. Component/snapshot tests sit under
+  `apps/web/src/__tests__`.
 - Prioritise coverage of trading-critical paths: strategy evaluation, order
   placement, WebSocket broadcasting. Add a regression test when patching these.
 - Container smoke tests are required for the changes listed under Working Rules —

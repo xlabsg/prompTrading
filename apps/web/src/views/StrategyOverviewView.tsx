@@ -834,7 +834,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
             <TabsContent value="narrative" className="flex-1 min-h-0 mt-0">
               <ScrollArea className="h-full rounded-md border p-4 bg-muted/10">
                 {hasOverview ? (
-                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word]">
+                  <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word]" data-testid="overview-content">
                     <ReactMarkdown
                       components={{
                         code({ className, children }) {
@@ -852,12 +852,12 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                 ) : overviewQuery.isLoading ? (
                   <div className="text-sm text-muted-foreground">{t("overview.loadingOverview")}</div>
                 ) : isOverviewGenerating || overviewGenerateStatus === "generating" ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground gap-2">
+                  <div className="flex items-center justify-center h-full text-muted-foreground gap-2" data-testid="overview-auto-generating">
                     <Loader2 size={16} className="animate-spin" />
                     <span>{t("overview.autoGenerating")}</span>
                   </div>
                 ) : strategy?.chat_status === "generating" ? (
-                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50">
+                  <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50" data-testid="overview-strategy-generation">
                     <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
                       <Loader2 size={24} className="animate-spin text-primary" />
                     </div>
