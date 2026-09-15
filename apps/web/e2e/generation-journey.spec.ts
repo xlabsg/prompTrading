@@ -27,7 +27,9 @@ const INTERNAL_MARKERS = [
 
 const PROMPT = "BTC-USDT 1h 双均线金叉做多死叉做空，2% 追踪止损";
 const NUDGE = "你来定，按你的建议直接生成完整策略，不需要再确认。";
-const REFINE_QUESTION = "用一句话说明这个策略的核心逻辑，不要修改任何文件。";
+// A pure question. No "don't edit" instruction: the product promises a question
+// answers without rewriting the strategy, and this asserts that it does.
+const REFINE_QUESTION = "用一句话说明这个策略的核心逻辑。";
 
 async function visible(page: Page, testId: string): Promise<boolean> {
   return page
@@ -40,6 +42,13 @@ async function visible(page: Page, testId: string): Promise<boolean> {
 async function chatStatus(page: Page, strategyId: string): Promise<string> {
   const res = await page.request.get(`/api/strategies/${strategyId}`);
   return (await res.json())?.chat_status;
+}
+
+/** Published `strategy.py`, i.e. the live workspace the user sees. */
+async function publishedStrategy(page: Page, strategyId: string): Promise<string> {
+  const res = await page.request.get(`/api/strategies/${strategyId}/files`);
+  const files = ((await res.json())?.files ?? []) as Array<{ name: string; content?: string }>;
+  return (files.find((f) => f.name === "strategy.py")?.content ?? "").trim();
 }
 
 /**
@@ -70,8 +79,11 @@ test("create → generate → overview: one trigger, no internal leak", async ({
   test.setTimeout(20 * 60 * 1000);
 
   const generateOverviewBodies: string[] = [];
+  let generateAndBacktestCount = 0;
   page.on("request", (req) => {
-    if (req.method() === "POST" && req.url().includes("/chat/stream")) {
+    if (req.method() !== "POST") return;
+    if (req.url().includes("/generate_and_backtest")) generateAndBacktestCount += 1;
+    if (req.url().includes("/chat/stream")) {
       const body = req.postData() || "";
       if (body.includes("/generate_overview")) generateOverviewBodies.push(body);
     }
@@ -126,6 +138,14 @@ test("create → generate → overview: one trigger, no internal leak", async ({
   // generation completes -- we observe that window ourselves in phase 3.
   await page.goto(`/strategy/${strategyId}/code`);
 
+  // Remount mid-generation: the console must attach to the running job, not
+  // start another one, and must not touch the overview while code is being
+  // generated. This is the "a reload re-triggers generation" class.
+  await page.reload();
+  await page.waitForTimeout(5_000);
+  expect(generateAndBacktestCount, "remount started a second generation").toBe(1);
+  expect(generateOverviewBodies.length, "overview generation ran during strategy generation").toBe(0);
+
   // Phase 2: wait for generation to finish.
   const doneDeadline = Date.now() + 10 * 60 * 1000;
   while (Date.now() < doneDeadline) {
@@ -138,14 +158,20 @@ test("create → generate → overview: one trigger, no internal leak", async ({
   expect(await chatStatus(page, strategyId), "strategy did not finish generating").toBe("done");
 
   // Phase 2b: a chat refine turn is where internal context used to leak into the
-  // bubble. Ask a question (no code change) and watch the streamed reply.
+  // bubble, and where a "question" used to rewrite the strategy. Ask a pure
+  // question and assert the reply streams clean *and* the code is untouched.
   const chatInput = page.getByTestId("chat-input");
+  const codeBefore = await publishedStrategy(page, strategyId);
   await chatInput.fill(REFINE_QUESTION);
   await page.getByTestId("chat-send").click();
   await expect(chatInput).toBeDisabled({ timeout: 15_000 });
   await expect(chatInput).toBeEnabled({ timeout: 5 * 60 * 1000 });
   await sampleChat();
   expect(leaked, `chat bubble streamed internal text: ${leaked}`).toBeNull();
+
+  const codeAfter = await publishedStrategy(page, strategyId);
+  expect(codeAfter, "a question rewrote strategy.py").toBe(codeBefore);
+  expect(codeAfter.length, "strategy.py is empty after the refine turn").toBeGreaterThan(0);
 
   // Phase 3: remove the overview the generation agent wrote, so opening the
   // Overview view must run the auto-generation path, then watch it.

@@ -388,7 +388,9 @@ See `LIVE_TRADING_SETUP.md` for OKX integration details. Key points:
   they are slow and need `infra/compose/.env` keys. Use them for anything that
   only manifests in the browser — view/state transitions, streaming rendering,
   duplicate requests on remount. Component/snapshot tests sit under
-  `apps/web/src/__tests__`.
+  `apps/web/src/__tests__`. Pixel baselines are opt-in (`npm run e2e:visual`,
+  regenerate with `VISUAL_E2E=1 npx playwright test visual --update-snapshots`)
+  because they are tied to a rendering platform.
 - Prioritise coverage of trading-critical paths: strategy evaluation, order
   placement, WebSocket broadcasting. Add a regression test when patching these.
 - Container smoke tests are required for the changes listed under Working Rules —

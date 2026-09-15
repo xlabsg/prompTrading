@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
-    "e2e:ui": "playwright test --ui"
+    "e2e:ui": "playwright test --ui",
+    "e2e:visual": "VISUAL_E2E=1 playwright test visual"
   },
   "dependencies": {
     "@antv/g6": "^5.1.1",
