@@ -112,6 +112,40 @@ def test_e2e_generate_and_backtest_with_fallback(e2e_client: E2EClient, e2e_stra
 
 @pytest.mark.integration
 @pytest.mark.e2e_core
+@pytest.mark.timeout(1200)
+def test_e2e_slash_symbol_is_canonicalized(e2e_client: E2EClient, e2e_strategy_id: str):
+    """Regression: `okx:BTC/USDT` used to reach the container as an instId and
+    die with okx_api_error:51001. The API must canonicalize it to `BTC-USDT` so
+    the worker's backtest succeeds."""
+    start_ms, end_ms = last_30d_range_ms()
+
+    request_data = {
+        "prompt": "Simple moving average crossover strategy",
+        "dataset": {
+            "exchange": "okx",
+            "symbol": "BTC/USDT",
+            "interval": "1h",
+            "start_ms": start_ms,
+            "end_ms": end_ms,
+        },
+        "params": {"fast": 10, "slow": 30},
+        "llm_meta": {"fallback_on_error": True, "force_fallback": True},
+    }
+
+    payload = e2e_client.post_json(f"/api/strategies/{e2e_strategy_id}/generate_and_backtest", request_data)
+    job_id = payload["job"]["id"]
+    run_id = payload["backtest_run"]["id"]
+
+    job = wait_for_job_completion(e2e_client, job_id, timeout_s=1200)
+    assert job["status"] == "succeeded", f"Job failed: {job.get('error_message')}"
+
+    run = wait_for_backtest_completion(e2e_client, run_id, timeout_s=1200)
+    assert run["status"] == "succeeded", f"Backtest failed: {run.get('error_message')}"
+    assert run.get("metrics"), "Backtest produced no metrics"
+
+
+@pytest.mark.integration
+@pytest.mark.e2e_core
 def test_invalid_dataset_parameters(e2e_client: E2EClient, e2e_strategy_id: str):
     base = f"/api/strategies/{e2e_strategy_id}/generate_and_backtest"
 
@@ -135,6 +169,15 @@ def test_invalid_dataset_parameters(e2e_client: E2EClient, e2e_strategy_id: str)
         json={"prompt": "Test strategy", "dataset": {"exchange": "okx", "symbol": "BTC-USDT-SWAP", "interval": ""}},
     )
     assert res.status_code == 400
+
+    # A notation the exchange cannot resolve must fail here, not in the container.
+    res = e2e_client.request(
+        "POST",
+        base,
+        json={"prompt": "Test strategy", "dataset": {"exchange": "okx", "symbol": "/", "interval": "1h"}},
+    )
+    assert res.status_code == 400
+    assert "invalid_symbol" in (res.json().get("detail") or "")
 
 
 @pytest.mark.integration

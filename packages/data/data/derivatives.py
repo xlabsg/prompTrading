@@ -14,6 +14,13 @@ from typing import Optional
 import pandas as pd
 import requests
 
+from data.instruments import (
+    Exchange,
+    InstrumentKind,
+    InvalidInstrument,
+    parse_instrument,
+)
+
 logger = logging.getLogger(__name__)
 
 BINANCE_FAPI_BASE = "https://fapi.binance.com"
@@ -24,35 +31,21 @@ OKX_API_BASE = "https://www.okx.com"
 # Symbol Helpers
 # =====================================================================
 
-def _normalize_binance_symbol(symbol: str) -> str:
-    s = (symbol or "").strip().upper()
-    return s.replace("-", "").replace("_", "").replace("/", "")
+def _binance_futures_symbol(symbol: str) -> str:
+    """Binance USDⓈ-M native symbol (`BTC-USDT` / `BTCUSDT` -> `BTCUSDT`)."""
+    return parse_instrument(symbol, exchange=Exchange.BINANCE).to_native()
 
 
-def _normalize_okx_inst_id(inst_id: str) -> str:
-    s = (inst_id or "").strip().upper()
-    if not s:
-        return "BTC-USDT-SWAP"
-    if s.endswith("-SWAP"):
-        return s
-    parts = s.replace("/", "-").replace("_", "-").split("-")
-    if len(parts) >= 2:
-        return f"{parts[0]}-{parts[1]}-SWAP"
-    return f"{s}-USDT-SWAP"
+def _okx_swap_inst_id(inst_id: str) -> str:
+    """OKX perpetual instId (`BTC-USDT` -> `BTC-USDT-SWAP`). Funding is swap-only."""
+    return parse_instrument(inst_id, exchange=Exchange.OKX, kind=InstrumentKind.SWAP).to_native()
 
 
 def _extract_base_ccy(symbol_or_inst: str) -> str:
-    s = (symbol_or_inst or "").strip().upper()
-    s = s.replace("-SWAP", "")
-    if "-" in s or "/" in s or "_" in s:
-        parts = s.replace("/", "-").replace("_", "-").split("-")
-        if parts and parts[0]:
-            return parts[0]
-    # Binance format: BTCUSDT -> BTC, ETHUSDT -> ETH
-    for quote in ("USDT", "USDC", "BUSD", "USD"):
-        if s.endswith(quote) and len(s) > len(quote):
-            return s[: -len(quote)]
-    return s or "BTC"
+    try:
+        return parse_instrument(symbol_or_inst, exchange=Exchange.OKX).base
+    except InvalidInstrument:
+        return "BTC"
 
 
 # =====================================================================
@@ -69,7 +62,7 @@ def fetch_binance_funding_rates(
 
     Returns DataFrame: ['timestamp', 'funding_rate']
     """
-    sym = _normalize_binance_symbol(symbol)
+    sym = _binance_futures_symbol(symbol)
     params: dict[str, object] = {"symbol": sym, "limit": min(1000, max(1, limit))}
     if start_ms is not None:
         params["startTime"] = int(start_ms)
@@ -116,7 +109,7 @@ def fetch_binance_open_interest(
 
     Returns DataFrame: ['timestamp', 'open_interest']
     """
-    sym = _normalize_binance_symbol(symbol)
+    sym = _binance_futures_symbol(symbol)
     p = period.lower()
     if p not in ("5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d"):
         p = "1h"
@@ -174,7 +167,7 @@ def fetch_okx_funding_rates(
 
     Returns DataFrame: ['timestamp', 'funding_rate']
     """
-    inst = _normalize_okx_inst_id(inst_id)
+    inst = _okx_swap_inst_id(inst_id)
     params: dict[str, object] = {"instId": inst, "limit": min(100, max(1, limit))}
     headers = {"User-Agent": "Mozilla/5.0 (compatible; PromptTrading/1.0)"}
     try:

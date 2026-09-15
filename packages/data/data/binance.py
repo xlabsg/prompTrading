@@ -7,10 +7,17 @@ import pandas as pd
 import requests
 
 from data.cache import cached_fetch, interval_to_ms
+from data.instruments import Exchange, parse_instrument
 
 
 @dataclass(frozen=True)
 class KlinesRequest:
+    """Binance klines request.
+
+    `symbol` may be canonical (`BTC-USDT`) or Binance's concatenated form
+    (`BTCUSDT`); it is converted to Binance's native spelling at the network
+    boundary.
+    """
     symbol: str
     interval: str
     start_ms: Optional[int] = None
@@ -26,6 +33,7 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
 
     Returns DataFrame with columns: timestamp (ms), open, high, low, close, volume.
     """
+    native = parse_instrument(req.symbol, exchange=Exchange.BINANCE).to_native()
     per_page = int(req.limit)
     if per_page <= 0:
         raise ValueError("limit must be positive")
@@ -39,7 +47,7 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
     next_start_ms = int(req.start_ms) if req.start_ms is not None else None
     max_pages = 500  # safety cap
     for _ in range(max_pages):
-        params: dict[str, object] = {"symbol": req.symbol, "interval": req.interval, "limit": per_page}
+        params: dict[str, object] = {"symbol": native, "interval": req.interval, "limit": per_page}
         if next_start_ms is not None:
             params["startTime"] = int(next_start_ms)
         if req.end_ms is not None:
@@ -94,8 +102,8 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
                 fetch_binance_funding_rates,
                 fetch_binance_open_interest,
             )
-            fr_df = fetch_binance_funding_rates(req.symbol, start_ms=req.start_ms, end_ms=req.end_ms, limit=1000)
-            oi_df = fetch_binance_open_interest(req.symbol, period="1h", start_ms=req.start_ms, end_ms=req.end_ms, limit=500)
+            fr_df = fetch_binance_funding_rates(native, start_ms=req.start_ms, end_ms=req.end_ms, limit=1000)
+            oi_df = fetch_binance_open_interest(native, period="1h", start_ms=req.start_ms, end_ms=req.end_ms, limit=500)
             df = align_derivatives_onto_ohlcv(df, fr_df, oi_df)
         except Exception:
             if "funding_rate" not in df.columns:
@@ -108,6 +116,7 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
 
 def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
     """Cache-aware wrapper around the Binance klines API."""
+    instrument = parse_instrument(req.symbol, exchange=Exchange.BINANCE)
 
     def _fetch(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
         return _fetch_klines_uncached(
@@ -122,7 +131,7 @@ def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
 
     df = cached_fetch(
         exchange="binance",
-        symbol=req.symbol,
+        symbol=instrument.cache_symbol(),
         interval=req.interval,
         start_ms=req.start_ms,
         end_ms=req.end_ms,

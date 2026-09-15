@@ -8,15 +8,16 @@ import pandas as pd
 import requests
 
 from data.cache import cached_fetch
+from data.instruments import Exchange, parse_instrument
 
 
 @dataclass(frozen=True)
 class CandlesRequest:
     """OKX candles request.
 
-    inst_id examples:
-      - Spot: BTC-USDT
-      - Swap: BTC-USDT-SWAP
+    `inst_id` may be any notation `parse_instrument` accepts (`BTC/USDT`,
+    `BTC-USDT`, `BTC-USDT-SWAP`); it is converted to OKX's native spelling at the
+    network boundary.
     """
 
     inst_id: str
@@ -126,9 +127,7 @@ def _fetch_candles_uncached(req: CandlesRequest) -> pd.DataFrame:
     - OKX returns candles in reverse chronological order; we normalize to ascending.
     - MVP supports best-effort pagination to collect up to `req.limit` bars.
     """
-    inst_id = (req.inst_id or "").strip()
-    if not inst_id:
-        raise ValueError("inst_id is required")
+    inst_id = parse_instrument(req.inst_id, exchange=Exchange.OKX).to_native()
     bar = (req.bar or "").strip()
     if not bar:
         raise ValueError("bar is required")
@@ -243,9 +242,11 @@ def _fetch_candles_uncached(req: CandlesRequest) -> pd.DataFrame:
 def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
     """Cache-aware wrapper around the OKX candles API.
 
-    Bars are cached per (okx, inst_id, bar); `limit` is applied after slicing so
-    the cache key stays independent of how many bars a given call wants.
+    Bars are cached per (okx, canonical inst, bar); `limit` is applied after
+    slicing so the cache key stays independent of how many bars a given call
+    wants. All input notations collapse onto one cache entry.
     """
+    instrument = parse_instrument(req.inst_id, exchange=Exchange.OKX)
 
     def _fetch(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
         return _fetch_candles_uncached(
@@ -260,7 +261,7 @@ def fetch_candles(req: CandlesRequest) -> pd.DataFrame:
 
     df = cached_fetch(
         exchange="okx",
-        symbol=req.inst_id,
+        symbol=instrument.cache_symbol(),
         interval=req.bar,
         start_ms=req.start_ms,
         end_ms=req.end_ms,

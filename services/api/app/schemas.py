@@ -49,7 +49,7 @@ class StrategyVersionResponse(BaseModel):
 
 class DatasetRequest(BaseModel):
     exchange: str = Field(default="binance")
-    symbol: str = Field(default="BTCUSDT")
+    symbol: str = Field(default="BTC-USDT")
     interval: str = Field(default="1h")
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None

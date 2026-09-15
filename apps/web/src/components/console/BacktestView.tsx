@@ -108,10 +108,10 @@ const BacktestView = ({
             { value: "ETH-USDT-SWAP", label: t("backtest.symbols.ethUsdtSwap") },
         ],
         binance: [
-            { value: "BTCUSDT", label: "BTCUSDT" },
-            { value: "ETHUSDT", label: "ETHUSDT" },
-            { value: "SOLUSDT", label: "SOLUSDT" },
-            { value: "BNBUSDT", label: "BNBUSDT" },
+            { value: "BTC-USDT", label: "BTC-USDT" },
+            { value: "ETH-USDT", label: "ETH-USDT" },
+            { value: "SOL-USDT", label: "SOL-USDT" },
+            { value: "BNB-USDT", label: "BNB-USDT" },
         ],
         us_stock: [],
     }), [t]);

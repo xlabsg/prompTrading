@@ -24,6 +24,7 @@ from control_plane.models import (
 )
 from control_plane.enums import BacktestStatus
 from control_plane.templates import TEMPLATE_STRATEGIES
+from data.instruments import normalize_symbol
 from worker.settings import settings
 from worker.backtest_runner import execute_backtest_container, load_backtest_metrics
 
@@ -71,12 +72,8 @@ def handle_template_backtest(
     exchange = config.get("exchange", "okx")
     interval = config.get("intervals", ["1h"])[0] if config.get("intervals") else "1h"
 
-    # Convert symbol format for OKX (BTCUSDT -> BTC-USDT)
-    if exchange == "okx" and "USDT" in symbol and "-" not in symbol:
-        # Convert BTCUSDT -> BTC-USDT for spot trading
-        base = symbol.replace("USDT", "")
-        symbol = f"{base}-USDT"
-        logger.info(f"[TEMPLATE_BACKTEST] Converted symbol to OKX format: {symbol}")
+    # Canonical internal notation; the data provider converts to exchange-native.
+    symbol = normalize_symbol(symbol, exchange=exchange)
 
     logger.info(f"[TEMPLATE_BACKTEST] Config: {exchange} {symbol} {interval}")
 
