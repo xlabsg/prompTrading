@@ -228,6 +228,11 @@ const ConsoleSidebar = ({
             stage?: string;
             message?: string;
         }): "thinking" | "writing" | "auditing" | "backtesting" | "finalizing" => {
+            // The agent container reports its phase explicitly; a create session
+            // labels the authoring turn `writing` rather than `thinking`.
+            if (data.stage && data.stage in GENERATION_STAGE_RANKS) {
+                return data.stage as GenerationStage;
+            }
             if (data.tool === "backtest" || data.step === "running_backtest" || data.step === "evaluating_metrics") {
                 return "backtesting";
             }
@@ -260,6 +265,7 @@ const ConsoleSidebar = ({
             message?: string;
             detail?: string;
             stage?: string;
+            success?: boolean;
         }): string | null => {
             const stepLabels: Record<string, string> = {
                 initializing_agent: t("console.sidebar.agentSteps.initializing_agent"),
@@ -273,15 +279,21 @@ const ConsoleSidebar = ({
                 return stepLabels[data.step];
             }
 
-            // Semantic tool recognition
+            // Semantic tool recognition. The agent container's `message` is a
+            // log line, not a UI string, so translate here instead of echoing it.
             if (data.tool === "backtest") {
-                return data.message || t("console.sidebar.agentSteps.running_backtest");
+                if (data.type === "tool_end") {
+                    return data.success === false
+                        ? t("console.sidebar.agentSteps.backtest_failed")
+                        : t("console.sidebar.agentSteps.evaluating_metrics");
+                }
+                return t("console.sidebar.agentSteps.running_backtest");
             }
             if (data.tool === "bash") {
-                return data.message || t("console.sidebar.agentSteps.auditing_code");
+                return t("console.sidebar.agentSteps.auditing_code");
             }
             if (data.tool === "task_done") {
-                return data.message || t("console.sidebar.agentSteps.finalizing_strategy");
+                return t("console.sidebar.agentSteps.finalizing_strategy");
             }
 
             if (data.path) {
@@ -291,18 +303,18 @@ const ConsoleSidebar = ({
                     : t("console.sidebar.editingFile", { path: data.path });
             }
 
-            if (
-                data.stage === "thinking" ||
-                (data.message && (data.message.includes("思考") || data.message.toLowerCase().includes("thinking")))
-            ) {
-                return data.message || t("console.sidebar.aiThinking");
+            if (data.stage === "writing") {
+                return t("console.sidebar.agentSteps.writing_code");
+            }
+            if (data.stage === "thinking") {
+                return t("console.sidebar.aiThinking");
             }
 
             if (data.tool) {
                 return t("console.sidebar.executingTool", { tool: data.tool });
             }
 
-            return data.message || data.detail || (data.step ? stepLabels[data.step] || data.step : null);
+            return data.detail || (data.step ? stepLabels[data.step] || data.step : null);
         },
         [t]
     );

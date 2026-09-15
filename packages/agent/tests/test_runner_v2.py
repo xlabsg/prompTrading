@@ -69,6 +69,49 @@ def _reset_fake():
     FakeAgent.instances = []
 
 
+def test_create_session_reports_its_authoring_turn_as_writing(capsys):
+    """The pipeline must not skip `writing`.
+
+    A create session authors the strategy in its first model turn, but Tau only
+    reports the tool call once the arguments are complete, so the turn arrives as
+    a generic `thinking` event. Reporting it as `writing` is what keeps the four
+    steps honest.
+    """
+    state = {"authoring_done": False}
+
+    def printer(event):
+        runner_v2._print_progress(event, is_first_generation=True, state=state)
+
+    printer({"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."})
+    first = _events(capsys)
+    assert first[-1]["stage"] == "writing"
+    assert first[-1]["message"] == "正在编写策略代码..."
+
+    # Once code has been authored, later turns are thinking again.
+    printer({"phase": "tool_start", "tool": "write", "args": {"path": "strategy.py"}})
+    capsys.readouterr()
+    printer({"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."})
+    assert _events(capsys)[-1]["stage"] == "thinking"
+
+
+def test_refine_session_keeps_thinking(capsys):
+    """A refine turn may answer a question, so it must not claim `writing`."""
+    runner_v2._print_progress(
+        {"phase": "thinking", "stage": "thinking", "message": "大模型思考与策略逻辑推演中..."},
+        is_first_generation=False,
+    )
+    assert _events(capsys)[-1]["stage"] == "thinking"
+
+
+def _events(capsys) -> list[dict]:
+    out = capsys.readouterr().out
+    return [
+        json.loads(line[len("[agent:event] ") :])
+        for line in out.splitlines()
+        if line.startswith("[agent:event] ")
+    ]
+
+
 def test_agent_runs_in_version_dir_not_strategy_dir(workspace, monkeypatch):
     """Version isolation: a run must not edit the live strategy in place."""
     monkeypatch.setattr(runner_v2.tau_driver, "run_session", FakeAgent.as_run_session)
