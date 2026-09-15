@@ -7,7 +7,7 @@ import pandas as pd
 import requests
 
 from data.cache import cached_fetch, interval_to_ms
-from data.instruments import Exchange, parse_instrument
+from data.instruments import Exchange, InstrumentKind, parse_instrument
 
 
 @dataclass(frozen=True)
@@ -16,7 +16,8 @@ class KlinesRequest:
 
     `symbol` may be canonical (`BTC-USDT`) or Binance's concatenated form
     (`BTCUSDT`); it is converted to Binance's native spelling at the network
-    boundary.
+    boundary. Spot only: a SWAP instrument is rejected rather than silently
+    served spot bars.
     """
     symbol: str
     interval: str
@@ -28,12 +29,24 @@ class KlinesRequest:
 BINANCE_SPOT_BASE_URL = "https://api.binance.com"
 
 
+def _binance_spot_symbol(symbol: str) -> str:
+    """Binance spot native symbol, rejecting swap notation.
+
+    Binance Futures share the concatenated ticker with spot, so a swap request
+    would otherwise be served spot bars and cached under a `-SWAP` key.
+    """
+    instrument = parse_instrument(symbol, exchange=Exchange.BINANCE)
+    if instrument.kind is InstrumentKind.SWAP:
+        raise ValueError("binance_swap_not_supported")
+    return instrument.to_native()
+
+
 def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
     """Fetch OHLCV klines from Binance Spot public API.
 
     Returns DataFrame with columns: timestamp (ms), open, high, low, close, volume.
     """
-    native = parse_instrument(req.symbol, exchange=Exchange.BINANCE).to_native()
+    native = _binance_spot_symbol(req.symbol)
     per_page = int(req.limit)
     if per_page <= 0:
         raise ValueError("limit must be positive")
@@ -116,7 +129,10 @@ def _fetch_klines_uncached(req: KlinesRequest) -> pd.DataFrame:
 
 def fetch_klines(req: KlinesRequest) -> pd.DataFrame:
     """Cache-aware wrapper around the Binance klines API."""
+    # Validate before the cache so a swap request cannot hit stale-fallback.
     instrument = parse_instrument(req.symbol, exchange=Exchange.BINANCE)
+    if instrument.kind is InstrumentKind.SWAP:
+        raise ValueError("binance_swap_not_supported")
 
     def _fetch(start_ms: int | None, end_ms: int | None) -> pd.DataFrame:
         return _fetch_klines_uncached(

@@ -53,6 +53,20 @@ def test_blank_symbol_rejected(raw):
         parse_instrument(raw, exchange=Exchange.OKX)
 
 
+@pytest.mark.parametrize("raw", ["BTC-USDT-INVALID", "BTC/USDT/ETH", "BTC//USDT", "BTC-", "-USDT"])
+def test_surplus_or_blank_components_rejected(raw):
+    # Must not be silently coerced into BTC-USDT.
+    with pytest.raises(InvalidInstrument):
+        parse_instrument(raw, exchange=Exchange.OKX)
+
+
+def test_binance_rejects_swap_instead_of_serving_spot_bars():
+    from data.binance import KlinesRequest, fetch_klines
+
+    with pytest.raises(ValueError, match="binance_swap_not_supported"):
+        fetch_klines(KlinesRequest(symbol="BTC-USDT-SWAP", interval="1h"))
+
+
 def test_unknown_exchange_rejected():
     with pytest.raises(InvalidInstrument):
         parse_instrument("BTC-USDT", exchange="nasdaq")

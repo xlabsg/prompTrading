@@ -138,18 +138,21 @@ def parse_instrument(
             break
 
     if "/" in text:
-        parts = [p for p in text.split("/") if p]
+        parts: list[str] | None = text.split("/")
     elif "-" in text:
-        parts = [p for p in text.split("-") if p]
+        parts = text.split("-")
     else:
-        parts = [text]
+        parts = None
 
-    if len(parts) >= 2:
+    # A separated symbol is exactly BASE-QUOTE. Anything longer (dated futures,
+    # a stray prefix/suffix) or with a blank component is a different market and
+    # must not be silently coerced into one.
+    if parts is not None:
+        if len(parts) != 2 or not parts[0] or not parts[1]:
+            raise InvalidInstrument(f"invalid_symbol:{raw}")
         base, quote = parts[0], parts[1]
-    elif len(parts) == 1:
-        base, quote = _split_concatenated(parts[0])
     else:
-        raise InvalidInstrument(f"invalid_symbol:{raw}")
+        base, quote = _split_concatenated(text)
 
     if not base or not quote:
         raise InvalidInstrument(f"invalid_symbol:{raw}")
