@@ -418,6 +418,7 @@ const DashboardHome = ({
                                     onChange={(e) => setPrompt(e.target.value)}
                                     onKeyDown={handleKeyDown}
                                     placeholder={t.inputPlaceholder}
+                                    data-testid="new-strategy-input"
                                     className="resize-none bg-muted/50 text-base leading-relaxed placeholder:text-muted-foreground/60"
                                     style={{ minHeight: `${promptMinHeight}px`, maxHeight: `${textareaMaxHeight}px` }}
                                     disabled={isCreating}

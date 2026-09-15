@@ -943,7 +943,7 @@ const ConsoleSidebar = ({
             {/* Chat Messages */}
             <div className="flex-1 min-h-0 min-w-0 relative">
                 <ScrollArea className="h-full w-full" ref={scrollRef}>
-                    <div className="p-4 space-y-4 max-w-full">
+                    <div className="p-4 space-y-4 max-w-full" data-testid="chat-messages">
                     {chatHistory.length === 0 && !pendingUserMessage ? (
                         <div className="text-center py-8">
                             <MessageSquare className="w-10 h-10 text-muted-foreground/50 mx-auto mb-3" />
@@ -1090,7 +1090,7 @@ const ConsoleSidebar = ({
                                     animate={{ opacity: 1 }}
                                     className="flex justify-start w-full min-w-0"
                                 >
-                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md">
+                                    <div className="max-w-[92%] min-w-0 rounded-2xl px-4 py-3 text-sm bg-muted rounded-bl-md" data-testid="chat-streaming">
                                         {streamingMessage ? (
                                             <div className="space-y-2 min-w-0">
                                                 <div className="prose prose-sm dark:prose-invert max-w-none break-words [overflow-wrap:anywhere] [word-break:break-word] leading-relaxed prose-p:my-1.5 prose-ul:my-1.5 prose-ol:my-1.5 prose-li:my-0.5 prose-headings:my-2 prose-pre:max-w-full prose-pre:overflow-x-auto">
@@ -1176,6 +1176,7 @@ const ConsoleSidebar = ({
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     className="w-full min-w-0"
+                                    data-testid="generation-card"
                                 >
                                     <div className="rounded-2xl border border-primary/30 bg-card p-3.5 shadow-sm space-y-3">
                                         <div className="flex items-center justify-between">
@@ -1398,6 +1399,7 @@ const ConsoleSidebar = ({
                         value={message}
                         onChange={(e) => setMessage(e.target.value)}
                         onKeyDown={handleKeyDown}
+                        data-testid="chat-input"
                         placeholder={
                             strategy?.chat_status === "done"
                                 ? t("console.sidebar.refinePlaceholder")
@@ -1411,6 +1413,7 @@ const ConsoleSidebar = ({
                         onClick={handleSendMessage}
                         disabled={!message.trim() || isStreaming}
                         className="absolute bottom-3 right-3 h-8 w-8 rounded-full"
+                        data-testid="chat-send"
                     >
                         {isStreaming ? (
                             <Loader2 size={14} className="animate-spin" />
