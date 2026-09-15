@@ -135,6 +135,16 @@ function parseTimeMs(raw: unknown, fallbackIndex: number): number {
   return toUnixMs(raw, fallbackIndex);
 }
 
+function parseIsoToMs(raw?: string | null): number {
+  if (!raw) return 0;
+  let s = raw.trim();
+  if (!s.endsWith("Z") && !s.includes("+") && !/[+-]\d{2}:\d{2}$/.test(s)) {
+    s = `${s}Z`;
+  }
+  const parsed = Date.parse(s);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function inferMedianBarIntervalMs(points: Array<{ time: number }>): number | null {
   if (!points || points.length < 3) return null;
   const diffs: number[] = [];
@@ -445,6 +455,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
     queryFn: () => strategiesApi.getOverview(strategyId as string),
     enabled: Boolean(strategyId),
   });
+  const refetchOverview = overviewQuery.refetch;
 
   const backtestsQuery = useQuery({
     queryKey: ["backtests", strategyId],
@@ -506,6 +517,14 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
 
   const hasOverview = overviewContent.length > 0;
   const isOverviewGenerating = isOverviewGeneration(strategy);
+
+  // The generation agent writes `overview.md` itself. While that job runs, this
+  // view caches the pre-generation (empty) overview, so `hasOverview` stays
+  // false after `chat_status` flips to done and the auto-trigger would launch a
+  // redundant second agent run. Re-fetch before deciding the overview is
+  // missing, once the strategy has been touched since the cached read.
+  const overviewIsStale =
+    overviewQuery.dataUpdatedAt < parseIsoToMs(strategy?.updated_at);
 
   const triggerOverviewGeneration = useCallback(
     async (manual = false) => {
@@ -577,9 +596,13 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
     // remounted); attaching to it beats spawning a second container.
     const activeJob = strategy.active_job;
     if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) return;
+    if (overviewIsStale) {
+      void refetchOverview();
+      return;
+    }
     if (autoGenerateTriggeredRef.current[strategy.id]) return;
     void triggerOverviewGeneration(false);
-  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, strategy?.active_job, triggerOverviewGeneration, overviewQuery.isLoading, overviewQuery.isSuccess]);
+  }, [hasOverview, overviewIsStale, overviewGenerateStatus, strategy?.chat_status, strategy?.id, strategy?.active_job, triggerOverviewGeneration, overviewQuery.isLoading, overviewQuery.isSuccess, refetchOverview]);
 
   const equitySeries = useMemo(() => {
     const points = equityQuery.data?.data || [];
