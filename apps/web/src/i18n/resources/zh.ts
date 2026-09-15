@@ -146,6 +146,8 @@ const zh = {
         auditing_code: "正在验证策略语法与未来函数...",
         finalizing_strategy: "正在发布策略代码与概览...",
         evaluating_metrics: "正在评估回测指标...",
+        writing_code: "正在编写策略代码...",
+        backtest_failed: "回测执行失败",
       },
       stageLabels: {
         thinking: "大模型思考中",

@@ -514,7 +514,12 @@ def _heal_from_message_text(version_dir: str, text: str) -> None:
                 pass
 
 
-def _print_progress(event: dict[str, Any]) -> None:
+def _print_progress(
+    event: dict[str, Any],
+    *,
+    is_first_generation: bool = False,
+    state: dict[str, bool] | None = None,
+) -> None:
     """Echo one driver event to the container log.
 
     The worker kills a container that has produced no output for
@@ -524,20 +529,34 @@ def _print_progress(event: dict[str, Any]) -> None:
     The `path=` field is the only channel the API has for telling the user which
     file the agent is touching: chat refine reads these lines back off the job
     log, so keep the shape parseable.
+
+    A create session authors the strategy in its first model turn, and Tau only
+    reports the resulting tool call once the arguments are complete, so that turn
+    is otherwise indistinguishable from thinking. Report it as `writing` until the
+    first write/edit/backtest lands, so the four-step pipeline credits the
+    authoring turn to `writing` instead of skipping it.
     """
+    if state is None:
+        state = {"authoring_done": False}
     phase = event.get("phase")
     if phase == "thinking":
-        msg = str(event.get("message") or "大模型思考与策略逻辑推演中...")
+        if is_first_generation and not state["authoring_done"]:
+            stage, msg = "writing", "正在编写策略代码..."
+        else:
+            stage = "thinking"
+            msg = str(event.get("message") or "大模型思考与策略逻辑推演中...")
         print(f"[agent] {msg}", flush=True)
         evt = {
             "type": "progress",
-            "stage": "thinking",
+            "stage": stage,
             "phase": "thinking",
             "message": msg,
             "ts": time.time(),
         }
         print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
     elif phase == "tool_start":
+        if str(event.get("tool") or "") in {"write", "edit", "write_file", "edit_file", "backtest"}:
+            state["authoring_done"] = True
         args = event.get("args")
         path = str(args.get("path") or "") if isinstance(args, dict) else ""
         suffix = f" path={os.path.basename(path)}" if path else ""
@@ -764,10 +783,15 @@ def main() -> int:
         parent_session_id = os.getenv("PARENT_TAU_SESSION_ID")
         print(f"[agent:event] {json.dumps({'type': 'step', 'step': 'initializing_agent', 'detail': f'Starting Tau agent with {tau_target.provider}/{tau_target.model}', 'ts': time.time()}, ensure_ascii=False)}", flush=True)
         try:
+            progress_state = {"authoring_done": False}
             session = tau_driver.run_session(
                 task=task,
                 workspace=version_dir,
-                progress_callback=_print_progress,
+                progress_callback=lambda event: _print_progress(
+                    event,
+                    is_first_generation=is_first_generation,
+                    state=progress_state,
+                ),
                 provider=tau_target.provider,
                 model=tau_target.model,
                 extension_path=TAU_EXTENSION_PATH,

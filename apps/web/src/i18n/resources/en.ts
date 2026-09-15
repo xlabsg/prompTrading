@@ -147,6 +147,8 @@ const en = {
         auditing_code: "Auditing syntax & lookahead bias...",
         finalizing_strategy: "Publishing strategy code & overview...",
         evaluating_metrics: "Evaluating backtest metrics...",
+        writing_code: "Writing strategy code...",
+        backtest_failed: "Backtest failed",
       },
       stageLabels: {
         thinking: "LLM Reasoning",
