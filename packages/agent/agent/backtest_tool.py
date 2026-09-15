@@ -22,6 +22,7 @@ import pandas as pd
 
 from backtest.protocol import normalize_signals
 from backtest.vectorized import BacktestConfig, run_backtest
+from data.instruments import InvalidInstrument, parse_instrument
 
 # Defaults chosen to match the Stable5 preset so agent-side numbers are
 # comparable to the platform's own backtests.
@@ -76,6 +77,14 @@ class BacktestDataset:
     bars: int = DEFAULT_BARS
     start_ms: Optional[int] = None
     end_ms: Optional[int] = None
+
+    def __post_init__(self) -> None:
+        # Canonical notation internally; providers convert to exchange-native.
+        # Unparseable symbols are left as-is so `load_dataset` reports them.
+        try:
+            self.symbol = parse_instrument(self.symbol, exchange=self.exchange).canonical()
+        except InvalidInstrument:
+            pass
 
     @classmethod
     def from_env(cls) -> "BacktestDataset":

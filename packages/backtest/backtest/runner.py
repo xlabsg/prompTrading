@@ -14,6 +14,7 @@ from backtest.load_strategy import load_callable_from_file
 from backtest.spec import load_strategy_spec
 from backtest.vectorized import BacktestConfig, run_backtest
 from data.binance import KlinesRequest, fetch_klines
+from data.instruments import parse_instrument
 from data.okx import CandlesRequest as OkxCandlesRequest
 from data.okx import fetch_candles as fetch_okx_candles
 from data.okx import interval_to_okx_bar
@@ -160,6 +161,8 @@ def main() -> int:
 
     exchange = _env("EXCHANGE", "binance")
     symbol = _env("SYMBOL", "BTCUSDT")
+    # One canonical notation for the whole run: fetch, artifacts, decision IDs.
+    symbol = parse_instrument(symbol, exchange=exchange).canonical()
     interval = _env("INTERVAL", "1h")
     start_ms = _env_int("START_MS")
     end_ms = _env_int("END_MS")

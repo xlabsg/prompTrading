@@ -2,19 +2,19 @@ import unittest
 import pandas as pd
 from data.derivatives import (
     align_derivatives_onto_ohlcv,
-    _normalize_binance_symbol,
-    _normalize_okx_inst_id,
+    _binance_futures_symbol,
+    _okx_swap_inst_id,
     _extract_base_ccy,
 )
 
 
 class TestDerivativesWiring(unittest.TestCase):
     def test_symbol_helpers(self):
-        self.assertEqual(_normalize_binance_symbol("BTC-USDT"), "BTCUSDT")
-        self.assertEqual(_normalize_binance_symbol("eth/usdt"), "ETHUSDT")
+        self.assertEqual(_binance_futures_symbol("BTC-USDT"), "BTCUSDT")
+        self.assertEqual(_binance_futures_symbol("eth/usdt"), "ETHUSDT")
 
-        self.assertEqual(_normalize_okx_inst_id("BTC-USDT"), "BTC-USDT-SWAP")
-        self.assertEqual(_normalize_okx_inst_id("ETH-USDT-SWAP"), "ETH-USDT-SWAP")
+        self.assertEqual(_okx_swap_inst_id("BTC-USDT"), "BTC-USDT-SWAP")
+        self.assertEqual(_okx_swap_inst_id("ETH-USDT-SWAP"), "ETH-USDT-SWAP")
 
         self.assertEqual(_extract_base_ccy("BTC-USDT-SWAP"), "BTC")
         self.assertEqual(_extract_base_ccy("ETHUSDT"), "ETH")

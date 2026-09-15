@@ -12,6 +12,7 @@ import pandas as pd
 import requests
 
 from data.cache import cached_fetch
+from data.instruments import Exchange, parse_instrument
 
 
 YFINANCE_INTERVAL = "1d"
@@ -29,13 +30,8 @@ class USStockDailyRequest:
 
 
 def _normalize_symbol(symbol: str) -> str:
-    s = (symbol or "").strip().upper()
-    if not s:
-        raise ValueError("symbol is required")
-    if s.endswith(".US"):
-        s = s[:-3]
-    s = s.replace(".", "-")
-    return s
+    """US-stock native ticker: uppercase, `AAPL.US` -> `AAPL`, `BRK.B` -> `BRK-B`."""
+    return parse_instrument(symbol, exchange=Exchange.US_STOCK).to_native()
 
 
 def _max_retries() -> int:

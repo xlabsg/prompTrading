@@ -18,6 +18,7 @@ from control_plane.versions import create_strategy_version
 from control_plane.models import BacktestRun, Dataset, Job, Strategy
 from control_plane.queue import enqueue_job
 from control_plane.workspaces import get_run_dir, init_strategy_workspace
+from data.instruments import InvalidInstrument, normalize_symbol
 from app.auth import require_strategy_member
 from app.deps import get_db, get_redis
 from app.schemas import (
@@ -176,6 +177,12 @@ def _create_dataset(db: Session, dataset: DatasetRequest) -> Dataset:
     symbol = (dataset.symbol or "").strip()
     if not symbol:
         raise HTTPException(status_code=400, detail="missing_symbol")
+    # Canonicalise at the boundary so a notation the exchange rejects can never
+    # reach a container. Fail fast with the offending input instead.
+    try:
+        symbol = normalize_symbol(symbol, exchange=exchange)
+    except InvalidInstrument as exc:
+        raise HTTPException(status_code=400, detail=f"invalid_symbol:{dataset.symbol}") from exc
     interval = (dataset.interval or "").strip()
     if not interval:
         raise HTTPException(status_code=400, detail="missing_interval")

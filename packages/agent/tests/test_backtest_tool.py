@@ -201,8 +201,8 @@ def test_dataset_from_env(monkeypatch):
     monkeypatch.setenv("AGENT_BACKTEST_INTERVAL", "4h")
     monkeypatch.setenv("AGENT_BACKTEST_BARS", "500")
     ds = BacktestDataset.from_env()
-    assert (ds.exchange, ds.symbol, ds.interval, ds.bars) == ("binance", "ETHUSDT", "4h", 500)
-    assert ds.describe() == "binance:ETHUSDT:4h"
+    assert (ds.exchange, ds.symbol, ds.interval, ds.bars) == ("binance", "ETH-USDT", "4h", 500)
+    assert ds.describe() == "binance:ETH-USDT:4h"
 
 
 def test_budget_from_env(monkeypatch):
