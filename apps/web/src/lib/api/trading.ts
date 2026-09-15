@@ -3,7 +3,6 @@
  */
 
 import { apiBaseUrl } from "../api";
-const API_BASE_URL = apiBaseUrl();
 
 interface TradingConfigRequest {
     exchange: string;
@@ -92,7 +91,10 @@ interface SymbolsListResponse {
 }
 
 async function fetchApi(path: string, options: RequestInit = {}) {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    // Resolve lazily: `api.ts` re-exports this module, so calling an imported
+    // function at module scope runs before `api.ts`'s dev-time `import.meta.env`
+    // assignment and yields an empty base URL.
+    const response = await fetch(`${apiBaseUrl()}${path}`, {
         credentials: "include",
         ...options,
         headers: {
