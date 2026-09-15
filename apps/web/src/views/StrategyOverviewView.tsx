@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, GitBranch, Loader2, Pause, Play, Sparkles, TrendingDown, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { isOverviewGeneration } from "@/lib/strategyState";
 import { backtestsApi, strategiesApi } from "@/lib/api";
 import type { BacktestCandle, BacktestSignalEvent, BacktestTrade, BacktestSignalsPayload, Strategy } from "@/lib/types";
 import TradingViewChart from "@/components/charts/TradingViewChart";
@@ -504,6 +505,7 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
   }, [overviewQuery.data]);
 
   const hasOverview = overviewContent.length > 0;
+  const isOverviewGenerating = isOverviewGeneration(strategy);
 
   const triggerOverviewGeneration = useCallback(
     async (manual = false) => {
@@ -571,9 +573,13 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
     if (!strategy?.id || strategy.chat_status !== "done" || hasOverview) return;
     if (overviewQuery.isLoading || !overviewQuery.isSuccess) return;
     if (overviewGenerateStatus === "generating") return;
+    // An agent job is already running for this strategy (e.g. the page was
+    // remounted); attaching to it beats spawning a second container.
+    const activeJob = strategy.active_job;
+    if (activeJob && (activeJob.status === "queued" || activeJob.status === "running")) return;
     if (autoGenerateTriggeredRef.current[strategy.id]) return;
     void triggerOverviewGeneration(false);
-  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, triggerOverviewGeneration, overviewQuery.isLoading, overviewQuery.isSuccess]);
+  }, [hasOverview, overviewGenerateStatus, strategy?.chat_status, strategy?.id, strategy?.active_job, triggerOverviewGeneration, overviewQuery.isLoading, overviewQuery.isSuccess]);
 
   const equitySeries = useMemo(() => {
     const points = equityQuery.data?.data || [];
@@ -845,6 +851,11 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                   </div>
                 ) : overviewQuery.isLoading ? (
                   <div className="text-sm text-muted-foreground">{t("overview.loadingOverview")}</div>
+                ) : isOverviewGenerating || overviewGenerateStatus === "generating" ? (
+                  <div className="flex items-center justify-center h-full text-muted-foreground gap-2">
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>{t("overview.autoGenerating")}</span>
+                  </div>
                 ) : strategy?.chat_status === "generating" ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-primary/20 rounded-lg p-6 gap-5 bg-card/50">
                     <div className="flex items-center justify-center w-12 h-12 rounded-full bg-primary/10 text-primary">
@@ -883,11 +894,6 @@ const StrategyOverviewView: React.FC<StrategyOverviewViewProps> = ({ strategy })
                 ) : strategy?.chat_status !== "done" ? (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-3 bg-muted/10 p-6 text-center">
                     <p className="text-sm">{t("overview.waitingForStrategy")}</p>
-                  </div>
-                ) : overviewGenerateStatus === "generating" ? (
-                  <div className="flex items-center justify-center h-full text-muted-foreground gap-2">
-                    <Loader2 size={16} className="animate-spin" />
-                    <span>{t("overview.autoGenerating")}</span>
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full text-muted-foreground border-2 border-dashed rounded-lg gap-4 bg-muted/10">

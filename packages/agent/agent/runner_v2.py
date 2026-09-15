@@ -580,12 +580,14 @@ def _print_progress(event: dict[str, Any]) -> None:
         }
         print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)
     elif phase == "message":
-        text = " ".join(str(event.get("text") or "").split())
-        if text:
-            print(f"[agent] {text[:200]}", flush=True)
+        raw = str(event.get("text") or "")
+        if raw.strip():
+            print(f"[agent] {' '.join(raw.split())[:200]}", flush=True)
             evt = {
                 "type": "token",
-                "content": text[:200],
+                # Full text (markdown preserved) so the live chat bubble reads
+                # like the final answer; the console replaces it once persisted.
+                "content": raw[:8000],
                 "ts": time.time(),
             }
             print(f"[agent:event] {json.dumps(evt, ensure_ascii=False)}", flush=True)

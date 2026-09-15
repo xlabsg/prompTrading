@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { jobsApi, strategiesApi } from "@/lib/api";
 import { buildGenerationPrompt } from "@/lib/strategyPrompt";
-import { isChatRefineTurn as isChatRefineTurnJob } from "@/lib/strategyState";
+import { isChatRefineTurn as isChatRefineTurnJob, isOverviewGeneration } from "@/lib/strategyState";
 import type { Strategy, ChatMessage } from "@/lib/types";
 import { useTranslation } from "react-i18next";
 import { actionRegistry, parseActionFromMessage, ActionPayload } from "@/lib/actions";
@@ -120,6 +120,14 @@ const ConsoleSidebar = ({
     // touch the strategy at all -- so the four-step generation pipeline must not be
     // claimed up front for one. It gets a neutral working indicator instead.
     const isChatRefineTurn = !isGeneratingStrategyCode && isChatRefineTurnJob(strategy);
+    // Generating the overview runs the same agent against finished code. It must
+    // not claim the strategy-generation pipeline either.
+    const isOverviewGenerating = !isGeneratingStrategyCode && isOverviewGeneration(strategy);
+    const workingSubtitle = isOverviewGenerating
+        ? t("overview.autoGenerating")
+        : isChatRefineTurn
+            ? t("console.sidebar.agentWorkingSubtitle")
+            : t("console.sidebar.confirmGenerating");
 
     useEffect(() => {
         if (!isGenerating) {
@@ -899,11 +907,7 @@ const ConsoleSidebar = ({
                                                 <Loader2 size={13} className="animate-spin text-primary shrink-0" />
                                                 <span className="truncate">
                                                     {generationProgressMessage ||
-                                                        t(
-                                                            isChatRefineTurn
-                                                                ? "console.sidebar.agentWorkingSubtitle"
-                                                                : "console.sidebar.confirmGenerating"
-                                                        )}
+                                                        workingSubtitle}
                                                 </span>
                                             </div>
                                             <span className="tabular-nums font-mono text-[11px] bg-background/80 px-1.5 py-0.5 rounded text-muted-foreground shrink-0 ml-1">
@@ -1167,7 +1171,7 @@ const ConsoleSidebar = ({
                             )}
 
                             {/* Strategy Generation Active Card */}
-                            {!isChatRefineTurn && (isGeneratingStrategyCode || strategy?.chat_status === "generating") && (
+                            {!isChatRefineTurn && !isOverviewGenerating && (isGeneratingStrategyCode || strategy?.chat_status === "generating") && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
