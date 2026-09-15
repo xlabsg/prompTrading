@@ -245,6 +245,26 @@ def test_only_the_assistant_answer_reaches_the_chat_stream(tmp_path, clean_env, 
     assert result.summary == "Final answer."
 
 
+def test_tool_call_text_is_not_the_summary(tmp_path, clean_env, monkeypatch):
+    """A tool-calling turn's text is working material, not the answer."""
+    script = [
+        {
+            "type": "message_end",
+            "message": {
+                "role": "assistant",
+                "content": [
+                    {"type": "text", "text": '"""strategy.py body"""'},
+                    {"type": "toolCall", "id": "c1", "name": "write", "arguments": {}},
+                ],
+            },
+        },
+        {"type": "agent_settled"},
+    ]
+    result = _run_with_fake(tmp_path, monkeypatch, script, validate=lambda: [])
+
+    assert result.summary == ""
+
+
 def test_progress_callback_failure_does_not_fail_the_run(tmp_path, clean_env, monkeypatch):
     def explode(_payload):
         raise RuntimeError("redis is down")

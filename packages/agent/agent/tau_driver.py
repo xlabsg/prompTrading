@@ -513,14 +513,12 @@ def _record(
                         break
         if kind == "message_end":
             text = _message_text(msg)
-            is_assistant = isinstance(msg, dict) and msg.get("role") == "assistant"
-            if text and is_assistant:
+            # Only the assistant's tool-free text is the answer: the injected
+            # task prompt arrives as a user-role message, and tool-calling turns
+            # carry file bodies and skill text. Neither is the summary, and
+            # neither belongs in the chat stream.
+            if text and isinstance(msg, dict) and msg.get("role") == "assistant" and not _has_tool_call(msg):
                 result.summary = text
-            # Only the assistant's tool-free text is the answer the user asked
-            # for. Tau also emits `message_end` for the injected task prompt and
-            # for tool-calling turns (whose text carries file bodies and skill
-            # text); streaming those put internal context in the chat bubble.
-            if text and is_assistant and not _has_tool_call(msg):
                 _report(progress_callback, {"phase": "message", "text": text})
 
 
